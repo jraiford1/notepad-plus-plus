@@ -631,7 +631,7 @@ namespace nppmac::ui
 
 	// Debugging aid: NPPMAC_TEST_TYPE=<text> types the text into the key window after NPPMAC_TEST_TYPE_DELAY
 	// seconds (default 2), as key events going through the application like the user's; '\n' is Return
-	// and '^' makes the next character a Command shortcut ("^s" is ⌘S).
+	// and ESC is Escape, and '^' makes the next character a Command shortcut ("^s" is ⌘S).
 	void scheduleTyping()
 	{
 		const char* text = std::getenv("NPPMAC_TEST_TYPE");
@@ -640,30 +640,35 @@ namespace nppmac::ui
 		const char* delayText = std::getenv("NPPMAC_TEST_TYPE_DELAY");
 		const double delay = delayText ? std::atof(delayText) : 2.0;
 		NSString* characters = [NSString stringWithUTF8String:text];
-		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
-			NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
-			for (NSUInteger i = 0; i < characters.length; ++i)
+		// One key every 50 ms, each to the key window of its moment, as a person types: a key that
+		// opens a dialog is followed by keys for the dialog.
+		constexpr double keyInterval = 0.05;
+		int keyIndex = 0;
+		for (NSUInteger i = 0; i < characters.length; ++i)
+		{
+			NSEventModifierFlags modifiers = 0;
+			if ([characters characterAtIndex:i] == '^' && i + 1 < characters.length)
 			{
-				NSEventModifierFlags modifiers = 0;
-				if ([characters characterAtIndex:i] == '^' && i + 1 < characters.length)
-				{
-					modifiers = NSEventModifierFlagCommand;
-					++i;
-				}
-				NSString* character = [characters substringWithRange:NSMakeRange(i, 1)];
-				const bool isReturn = [character isEqualToString:@"\n"];
-				if (isReturn)
-					character = @"\r";
-				const unsigned short keyCode = isReturn ? 36 : 0;
+				modifiers = NSEventModifierFlagCommand;
+				++i;
+			}
+			NSString* character = [characters substringWithRange:NSMakeRange(i, 1)];
+			const bool isReturn = [character isEqualToString:@"\n"];
+			const bool isEscape = [character isEqualToString:@"\x1b"];
+			if (isReturn)
+				character = @"\r";
+			const unsigned short keyCode = isReturn ? 36 : (isEscape ? 53 : 0);
+			NSTimer* timer = [NSTimer timerWithTimeInterval:delay + keyIndex++ * keyInterval repeats:NO block:^(NSTimer*) {
+				NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
 				for (NSEventType type : {NSEventTypeKeyDown, NSEventTypeKeyUp})
 				{
 					NSEvent* event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers timestamp:NSProcessInfo.processInfo.systemUptime
 						windowNumber:window.windowNumber context:nil characters:character charactersIgnoringModifiers:character isARepeat:NO keyCode:keyCode];
 					[NSApp sendEvent:event];
 				}
-			}
-		}];
-		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+			}];
+			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+		}
 	}
 
 	void dumpMenuBar(NSMenu* menu, int depth)

@@ -43,6 +43,7 @@ namespace nppmac::user
 		{
 			KeyboardState _keys{};
 			std::u16string _characters;
+			bool _toFocus = false; // keyboard input: for the window that has the focus when it is read
 		};
 
 		struct QueuedMessage
@@ -224,6 +225,13 @@ namespace nppmac::user
 			auto& messages = queue();
 			for (auto it = messages.begin(); it != messages.end(); ++it)
 			{
+				// As on Windows, keyboard input goes to the window that has the focus when it is read,
+				// so keys typed ahead of a dialog reach the dialog.
+				if (it->_input && it->_input->_toFocus)
+				{
+					Window* focus = focusWindow() ? focusWindow() : activeWindow();
+					it->_msg.hwnd = focus ? focus->_hwnd : nullptr;
+				}
 				if (!matches(it->_msg, hwnd, filterMin, filterMax))
 					continue;
 				*msg = it->_msg;
@@ -427,6 +435,23 @@ namespace nppmac::user
 		if (!window->_subclasses.empty())
 			return callSubclass(window, 0, message, wParam, lParam);
 		return window->_windowProc ? window->_windowProc(window->_hwnd, message, wParam, lParam) : 0;
+	}
+
+	// Keyboard input, addressed when it is read (see takeMessage).
+	void postKeyboardInput(UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent = nullptr, const std::u16string& characters = {})
+	{
+		MSG msg{};
+		msg.message = message;
+		msg.wParam = wParam;
+		msg.lParam = lParam;
+		msg.time = GetTickCount();
+		const ui::Point cursor = ui::cursorPosition();
+		msg.pt = {cursor._x, cursor._y};
+		auto input = std::make_shared<InputState>(InputState{g_asyncKeyState, characters, true});
+		{
+			std::lock_guard lock{g_queueMutex};
+			queue().push_back({msg, nativeEvent, input});
+		}
 	}
 
 	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent, const std::u16string& characters)
@@ -744,7 +769,7 @@ namespace nppmac::ui
 		// Alt (Option) without Ctrl makes system keys, as on Windows.
 		const bool system = (event._modifiers & modifierAlt) && !(event._modifiers & modifierControl);
 		const UINT message = event._down ? (system ? WM_SYSKEYDOWN : WM_KEYDOWN) : (system ? WM_SYSKEYUP : WM_KEYUP);
-		postMessage(target, message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent, event._down ? event._characters : std::u16string{});
+		postKeyboardInput(message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent, event._down ? event._characters : std::u16string{});
 	}
 
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down)
@@ -757,7 +782,7 @@ namespace nppmac::ui
 			return;
 		const bool system = virtualKey == VK_MENU || ((modifiers & modifierAlt) && !(modifiers & modifierControl));
 		const UINT message = down ? (system ? WM_SYSKEYDOWN : WM_KEYDOWN) : (system ? WM_SYSKEYUP : WM_KEYUP);
-		postMessage(target, message, virtualKey, keyLParam(virtualKey, down, false));
+		postKeyboardInput(message, virtualKey, keyLParam(virtualKey, down, false));
 	}
 
 	void windowManagerInsertText(const std::u16string& text)
@@ -767,7 +792,7 @@ namespace nppmac::ui
 		if (!target)
 			return;
 		for (const char16_t ch : text)
-			postMessage(target, WM_CHAR, ch, 1);
+			postKeyboardInput(WM_CHAR, ch, 1);
 	}
 }
 

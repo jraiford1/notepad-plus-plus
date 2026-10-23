@@ -86,6 +86,9 @@ namespace nppmac::controls
 		return size.cx;
 	}
 
+	// A ComboLBox tells its combo box which item was clicked (wParam: the index).
+	constexpr UINT comboListChosen = WM_APP + 0x3F01;
+
 	// Asks the parent for the control's colors with a WM_CTLCOLOR* message, as Windows controls do:
 	// the parent sets the DC's text and background colors and returns the background brush.
 	inline HBRUSH controlColors(HWND hwnd, HDC hdc, UINT message)
