@@ -404,11 +404,13 @@ namespace nppmac::ui
 		case NSEventTypeKeyDown:
 		case NSEventTypeKeyUp:
 		{
-			// Command-Q quits and Command-Tab style system keys stay the system's; every other key
-			// goes to the window manager, so that TranslateAccelerator sees it first, as on Windows.
+			// The application menu's own keys (Command-Q, Command-H, Command-, for Settings) stay the
+			// menu's; every other key goes to the window manager, so that TranslateAccelerator sees it
+			// first, as on Windows.
 			const NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
 			NSString* plain = event.charactersIgnoringModifiers.lowercaseString;
-			if (event.type == NSEventTypeKeyDown && flags == NSEventModifierFlagCommand && ([plain isEqualToString:@"q"] || [plain isEqualToString:@"h"]))
+			if (event.type == NSEventTypeKeyDown && flags == NSEventModifierFlagCommand
+				&& ([plain isEqualToString:@"q"] || [plain isEqualToString:@"h"] || [plain isEqualToString:@","]))
 			{
 				[super sendEvent:event];
 				return;
