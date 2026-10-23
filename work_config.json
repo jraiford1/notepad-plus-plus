@@ -1,0 +1,11 @@
+{
+  "html_url": "http://localhost:8765/notepad-macos/",
+  "project": "Notepad++ macOS",
+  "tracker_dir": "../notepad-plus-plus-tracker",
+  "project_root": ".",
+  "roles": "solo",
+  "planning": "at_pickup",
+  "timezone": "America/New_York",
+  "change_id": {"required": false},
+  "vcs": {"mode": "git", "main_branch": "master", "tag_pattern": "macos-v{version}"}
+}
