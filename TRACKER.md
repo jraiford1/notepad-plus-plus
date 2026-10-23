@@ -7,9 +7,9 @@
 
 - **What we deliver.** A fork of Notepad++ (`jraiford1/notepad-plus-plus`) that adds a native macOS build
   alongside the unchanged Windows build.
-- **Where they live.** The macOS front end is in `PowerEditor/macos/`; it reuses the vendored `scintilla/`,
-  `lexilla/` and `PowerEditor/src/pugixml`, and Notepad++'s own `langs.model.xml` and `stylers.model.xml`.
-  The Windows code (`PowerEditor/src`) is left as upstream has it so that `upstream/master` keeps merging cleanly.
+- **Where they live.** Everything macOS-specific is in `macos/` (see `macos/README.md`): the migration engine,
+  the Win32 runtime and the build. Upstream's tree (`PowerEditor/`, `scintilla/`, `lexilla/`, `boostregex/`)
+  is never edited, so `upstream/master` keeps merging cleanly.
 - **Who consumes a release.** Mac users of the fork, through a zipped `.app` attached to a GitHub release on the
   fork (the `X` step).
 
@@ -19,23 +19,25 @@
 |---|---|
 | **Change** (a `CHANGE` item) | A code change to the macOS build (or to shared files it uses), committed to `master` as `W<n>: ...` |
 | **Working copy / increment** | A branch per `W` item, merged to `master` |
-| **APPLIED** | Merged to `master`; the macOS build (`cmake` in `PowerEditor/macos`) succeeds and its tests (`ctest`) pass |
+| **APPLIED** | Merged to `master`; the macOS build (`cmake -S macos`) succeeds and its tests (`ctest`) pass |
 | **Cut** (`C` item) | Proposed, see Q1: a `macos-v<version>` tag on `master` and a zipped `Notepad++.app` |
 | **Distribution** (`X` item) | Proposed, see Q1: publishing that zip as a GitHub release on the fork; the release tag identifies it |
 | **Change ID** | None |
 
 ## How release artifacts are produced
 
-No `cut_script` yet. Until there is one: configure and build `PowerEditor/macos` in Release, run `ctest`, then
+No `cut_script` yet. Until there is one: configure and build `macos` in Release, run `ctest`, then
 `ditto -c -k --keepParent Notepad++.app Notepad++-macos-<version>.zip`. Code signing and notarization need the
 owner's Apple Developer identity and are a person's step; unsigned builds must be opened with right-click → Open.
 
 ## Verification checks and tooling
 
-- `cmake -S PowerEditor/macos -B build/macos && cmake --build build/macos` must succeed with no new warnings.
-- `ctest --test-dir build/macos` runs the unit tests of the portable code (language/theme loading, encoding, EOL).
+- `cmake -S macos -B macos/build && cmake --build macos/build` must succeed with no new warnings.
+- `ctest --test-dir macos/build` runs the engine's rule tests (and, as they arrive, the runtime's tests).
+- `cmake --build macos/build --target nppAllSources -- -k` must compile every upstream source file.
+- The engine is deterministic: two runs over the same upstream tree give byte-identical output.
 - Manual smoke test: launch the app, open a source file, check highlighting, find/replace, save, reopen.
-- The Windows build is unaffected: no file under `PowerEditor/src` is changed except where an item says so.
+- The Windows build is unaffected: `git diff upstream/master -- PowerEditor scintilla lexilla boostregex` is empty.
 
 ## Q1
 
