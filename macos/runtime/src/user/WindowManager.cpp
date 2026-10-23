@@ -246,6 +246,15 @@ namespace nppmac::user
 		return g_focus;
 	}
 
+	void setSeeThrough(HWND hwnd, bool seeThrough)
+	{
+		Window* window = fromHandle(hwnd);
+		if (!window || window->_nativeControl)
+			return;
+		window->_seeThrough = seeThrough;
+		nppmac::ui::setSeeThrough(window->_view, seeThrough);
+	}
+
 	void setFocusWindow(Window* window)
 	{
 		g_focus = window;
@@ -707,6 +716,8 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 		SetMenu(window->_hwnd, menu);
 	if (exStyle & WS_EX_ACCEPTFILES)
 		nppmac::ui::setAcceptsFiles(window->_view, true);
+	if (exStyle & WS_EX_TRANSPARENT)
+		setSeeThrough(window->_hwnd, true);
 
 	if (!window->send(WM_NCCREATE, 0, reinterpret_cast<LPARAM>(&create)))
 	{

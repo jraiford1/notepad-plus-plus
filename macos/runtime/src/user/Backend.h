@@ -160,7 +160,12 @@ namespace nppmac::ui
 	// The surface a custom-drawn view paints into: a CGContextRef with a top-left origin in points,
 	// already scaled for the display. Valid until the view is resized or destroyed.
 	void* surfaceContext(NativeView* view);
-	// Clears the parts of the surface that the next paint will redraw is the owner's job (WM_ERASEBKGND).
+
+	// A see-through view (a group box, WS_EX_TRANSPARENT): what it does not paint shows the views
+	// under it, and the mouse goes through it to them, as HTTRANSPARENT does on Windows. Its surface
+	// is cleared before each paint.
+	void setSeeThrough(NativeView* view, bool seeThrough);
+	void clearSurface(NativeView* view, const Rect& rect);
 
 	// For built-in classes backed by a native control (Scintilla, buttons, edits...): the window
 	// manager hands over an NSView created elsewhere (as an opaque pointer) to place in the hierarchy.

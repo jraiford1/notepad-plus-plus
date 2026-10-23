@@ -99,6 +99,7 @@ namespace nppmac::user
 
 		ui::NativeView* _view = nullptr;
 		bool _nativeControl = false;        // backed by a native control (no surface, no WM_PAINT)
+		bool _seeThrough = false;           // see nppmac::ui::setSeeThrough
 		bool _visible = false;
 		bool _created = false;              // WM_CREATE has been sent
 		bool _applyingGeometry = false;     // the window manager is moving the native window itself
@@ -168,6 +169,9 @@ namespace nppmac::user
 
 	Window* focusWindow();
 	void setFocusWindow(Window* window);
+
+	// Makes a window see-through (nppmac::ui::setSeeThrough): group boxes and WS_EX_TRANSPARENT.
+	void setSeeThrough(HWND hwnd, bool seeThrough);
 	Window* activeWindow();
 	void setActiveWindow(Window* window);
 

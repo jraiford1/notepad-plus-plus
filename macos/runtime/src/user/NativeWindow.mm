@@ -46,6 +46,7 @@ namespace nppmac::ui
 		int _surfaceHeight = 0;
 		CGFloat _surfaceScale = 1;
 		bool _acceptsFiles = false;
+		bool _seeThrough = false;
 	};
 
 	double primaryScreenHeight()
@@ -125,7 +126,13 @@ namespace nppmac::ui
 
 - (BOOL)isOpaque
 {
-	return YES;
+	return !(_native && _native->_seeThrough);
+}
+
+- (NSView*)hitTest:(NSPoint)point
+{
+	NSView* hit = [super hitTest:point];
+	return hit == self && _native && _native->_seeThrough ? nil : hit;
 }
 
 - (void)updateTrackingAreas
@@ -551,7 +558,7 @@ namespace
 			}
 			CGContextRelease(native->_surface);
 		}
-		else
+		else if (!native->_seeThrough)
 		{
 			CGContextSetRGBFillColor(surface, 0.94, 0.94, 0.94, 1);
 			CGContextFillRect(surface, CGRectMake(0, 0, width * scale, height * scale));
@@ -972,6 +979,24 @@ namespace nppmac::ui
 			[native->_window deminiaturize:nil];
 		else if (native->_window.isZoomed)
 			[native->_window zoom:nil];
+	}
+
+	void setSeeThrough(NativeView* native, bool seeThrough)
+	{
+		if (!native || native->_adopted || native->_seeThrough == seeThrough)
+			return;
+		native->_seeThrough = seeThrough;
+		native->_view.needsDisplay = YES;
+	}
+
+	void clearSurface(NativeView* native, const UiRect& rect)
+	{
+		if (!native)
+			return;
+		ensureSurface(native);
+		if (!native->_surface)
+			return;
+		CGContextClearRect(native->_surface, CGRectMake(rect._left, rect._top, rect.width(), rect.height()));
 	}
 
 	void* surfaceContext(NativeView* native)

@@ -166,8 +166,10 @@ namespace nppmac::controls
 					return 0;
 				case SB_SETPARTS:
 				{
-					const int count = std::clamp(static_cast<int>(wParam), 1, 256);
 					const auto* rights = reinterpret_cast<const int*>(lParam);
+					if (wParam == 0 || wParam > 256 || !rights)
+						return FALSE;
+					const int count = static_cast<int>(wParam);
 					bar->_parts.resize(static_cast<size_t>(count));
 					for (int i = 0; i < count; ++i)
 						bar->_parts[static_cast<size_t>(i)]._right = rights[i];

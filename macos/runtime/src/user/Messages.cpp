@@ -541,6 +541,8 @@ namespace nppmac::user
 		if (IsRectEmpty(&_invalid))
 			return;
 		(void)area;
+		if (_seeThrough)
+			ui::clearSurface(_view, {_invalid.left, _invalid.top, _invalid.right, _invalid.bottom});
 		HWND hwnd = _hwnd;
 		static const bool trace = std::getenv("NPPMAC_TRACE_PAINT") != nullptr;
 		if (trace)
