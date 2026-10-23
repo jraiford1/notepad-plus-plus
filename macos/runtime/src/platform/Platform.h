@@ -60,6 +60,39 @@ namespace nppmac::platform
 		critical,
 	};
 
+	// The Open and Save panels. Paths are UTF-8 POSIX paths.
+	struct FilePanelCheckBox
+	{
+		int _id = 0;
+		std::string _label;
+		bool _checked = false;
+		bool _enabled = true;
+	};
+
+	struct FilePanelRequest
+	{
+		bool _save = false;
+		bool _multipleSelection = false;
+		bool _pickFolders = false;
+		std::string _title;
+		std::string _directory;
+		std::string _fileName;
+		std::vector<std::string> _fileTypeNames; // shown in the Save panel's file type menu
+		int _fileTypeIndex = 0;
+		std::vector<FilePanelCheckBox> _checkBoxes;
+	};
+
+	struct FilePanelResult
+	{
+		bool _ok = false;
+		std::vector<std::string> _paths;
+		int _fileTypeIndex = 0;
+		std::vector<FilePanelCheckBox> _checkBoxes; // with their final states
+	};
+
+	// Runs the panel modally. NPPMAC_TEST_FILE_PANEL=<path> answers with that path instead, for tests.
+	FilePanelResult runFilePanel(const FilePanelRequest& request);
+
 	// Shows a modal alert; returns the index of the chosen button (buttons are listed left to right
 	// as on Windows; on the Mac the first is the rightmost). escapeButton is chosen by Escape.
 	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,

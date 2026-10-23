@@ -16,6 +16,7 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <cstdlib>
 #include <unistd.h>
 
 #include "Platform.h"
@@ -195,5 +196,137 @@ namespace nppmac::platform
 		const NSModalResponse response = [alert runModal];
 		const int position = static_cast<int>(response - NSAlertFirstButtonReturn);
 		return position >= 0 && position < static_cast<int>(order.size()) ? order[static_cast<size_t>(position)] : escapeButton;
+	}
+}
+
+
+@interface NppMacFilePanelAccessory : NSObject
+{
+@public
+	NSPopUpButton* _fileTypes;
+	std::vector<NSButton*> _checkBoxes;
+}
+@end
+
+@implementation NppMacFilePanelAccessory
+@end
+
+namespace nppmac::platform
+{
+	namespace
+	{
+		NSString* toNSString(const std::string& text)
+		{
+			return [NSString stringWithUTF8String:text.c_str()] ?: @"";
+		}
+
+		// The file type menu and the program's check boxes, stacked under each other.
+		NSView* createAccessory(const FilePanelRequest& request, NppMacFilePanelAccessory* accessory)
+		{
+			NSStackView* stack = [[NSStackView alloc] init];
+			stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+			stack.alignment = NSLayoutAttributeLeading;
+			stack.edgeInsets = NSEdgeInsetsMake(8, 16, 8, 16);
+			stack.spacing = 6;
+			if (request._save && request._fileTypeNames.size() > 1)
+			{
+				NSStackView* row = [[NSStackView alloc] init];
+				row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+				[row addView:[NSTextField labelWithString:@"Save as type:"] inGravity:NSStackViewGravityLeading];
+				NSPopUpButton* fileTypes = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+				for (const std::string& name : request._fileTypeNames)
+					[fileTypes addItemWithTitle:toNSString(name)];
+				// Titles must be unique in a pop-up button; repeated names are added as menu items.
+				if (fileTypes.numberOfItems != static_cast<NSInteger>(request._fileTypeNames.size()))
+				{
+					[fileTypes removeAllItems];
+					for (const std::string& name : request._fileTypeNames)
+						[fileTypes.menu addItemWithTitle:toNSString(name) action:nil keyEquivalent:@""];
+				}
+				if (request._fileTypeIndex >= 0 && request._fileTypeIndex < fileTypes.numberOfItems)
+					[fileTypes selectItemAtIndex:request._fileTypeIndex];
+				[row addView:fileTypes inGravity:NSStackViewGravityLeading];
+				[stack addView:row inGravity:NSStackViewGravityLeading];
+				accessory->_fileTypes = fileTypes;
+			}
+			for (const FilePanelCheckBox& checkBox : request._checkBoxes)
+			{
+				NSButton* button = [NSButton checkboxWithTitle:toNSString(checkBox._label) target:nil action:nil];
+				button.state = checkBox._checked ? NSControlStateValueOn : NSControlStateValueOff;
+				button.enabled = checkBox._enabled;
+				[stack addView:button inGravity:NSStackViewGravityLeading];
+				accessory->_checkBoxes.push_back(button);
+			}
+			if (stack.views.count == 0)
+				return nil;
+			stack.frame = NSMakeRect(0, 0, 400, stack.fittingSize.height);
+			return stack;
+		}
+	}
+
+	FilePanelResult runFilePanel(const FilePanelRequest& request)
+	{
+		FilePanelResult result;
+		result._fileTypeIndex = request._fileTypeIndex;
+		result._checkBoxes = request._checkBoxes;
+		if (const char* testPath = std::getenv("NPPMAC_TEST_FILE_PANEL"))
+		{
+			result._ok = *testPath != '\0';
+			if (result._ok)
+				result._paths.push_back(testPath);
+			return result;
+		}
+
+		NSSavePanel* panel = nil;
+		if (request._save)
+		{
+			panel = [NSSavePanel savePanel];
+			panel.allowsOtherFileTypes = YES;
+			panel.extensionHidden = NO;
+			panel.nameFieldStringValue = toNSString(request._fileName);
+		}
+		else
+		{
+			NSOpenPanel* openPanel = [NSOpenPanel openPanel];
+			openPanel.allowsMultipleSelection = request._multipleSelection;
+			openPanel.canChooseDirectories = request._pickFolders;
+			openPanel.canChooseFiles = !request._pickFolders;
+			openPanel.canCreateDirectories = request._pickFolders;
+			openPanel.resolvesAliases = YES;
+			panel = openPanel;
+		}
+		panel.showsHiddenFiles = YES;
+		if (!request._title.empty())
+			panel.message = toNSString(request._title);
+		if (!request._directory.empty())
+			panel.directoryURL = [NSURL fileURLWithPath:toNSString(request._directory) isDirectory:YES];
+
+		NppMacFilePanelAccessory* accessory = [[NppMacFilePanelAccessory alloc] init];
+		if (NSView* view = createAccessory(request, accessory))
+		{
+			panel.accessoryView = view;
+			if ([panel isKindOfClass:NSOpenPanel.class])
+				static_cast<NSOpenPanel*>(panel).accessoryViewDisclosed = YES;
+		}
+
+		[NSApp activateIgnoringOtherApps:YES];
+		if ([panel runModal] != NSModalResponseOK)
+			return result;
+
+		result._ok = true;
+		if ([panel isKindOfClass:NSOpenPanel.class])
+		{
+			for (NSURL* url in static_cast<NSOpenPanel*>(panel).URLs)
+				result._paths.push_back(url.path.UTF8String);
+		}
+		else if (panel.URL)
+		{
+			result._paths.push_back(panel.URL.path.UTF8String);
+		}
+		if (accessory->_fileTypes)
+			result._fileTypeIndex = static_cast<int>(accessory->_fileTypes.indexOfSelectedItem);
+		for (size_t i = 0; i < accessory->_checkBoxes.size(); ++i)
+			result._checkBoxes[i]._checked = accessory->_checkBoxes[i].state == NSControlStateValueOn;
+		return result;
 	}
 }
