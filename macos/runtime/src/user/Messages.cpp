@@ -623,6 +623,22 @@ namespace nppmac::user
 				target = fromHandle(capture);
 			}
 		}
+		else
+		{
+			// A window that answers WM_NCHITTEST with HTTRANSPARENT (a plain label) passes the mouse
+			// on to its parent.
+			while (target->isChild() && target->_parent)
+			{
+				POINT screen{position._x, position._y};
+				ClientToScreen(target->_hwnd, &screen);
+				if (target->send(WM_NCHITTEST, 0, MAKELPARAM(static_cast<short>(screen.x), static_cast<short>(screen.y))) != HTTRANSPARENT)
+					break;
+				Window* parent = target->_parent;
+				ScreenToClient(parent->_hwnd, &screen);
+				position = {screen.x, screen.y};
+				target = parent;
+			}
+		}
 
 		const LPARAM coordinates = MAKELPARAM(static_cast<short>(position._x), static_cast<short>(position._y));
 		const WPARAM flags = modifierFlagsForMessage();
