@@ -16,14 +16,38 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <csignal>
 #include <cstring>
+#include <execinfo.h>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "nppmac/Startup.h"
+#include "user/Backend.h"
 
 namespace
 {
+	// Test runs (NPPMAC_TEST_RUN=1) report a crash as a backtrace on stderr and exit quietly,
+	// instead of going through the system crash reporter and its "quit unexpectedly" dialog.
+	void crashHandler(int signal)
+	{
+		void* frames[64];
+		const int count = backtrace(frames, 64);
+		const char header[] = "nppmac: crashed, backtrace:\n";
+		write(STDERR_FILENO, header, sizeof(header) - 1);
+		backtrace_symbols_fd(frames, count, STDERR_FILENO);
+		_exit(128 + signal);
+	}
+
+	void installTestCrashHandler()
+	{
+		if (!std::getenv("NPPMAC_TEST_RUN"))
+			return;
+		for (const int signal : {SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE, SIGTRAP})
+			std::signal(signal, crashHandler);
+	}
+
 	std::u16string g_commandLine;
 	std::u16string g_commandLineArguments;
 	std::vector<std::u16string> g_wideArguments;
@@ -59,8 +83,24 @@ namespace
 
 namespace nppmac
 {
+	namespace
+	{
+		std::u16string g_applicationName = u"Application";
+	}
+
+	void setApplicationName(const std::u16string& name)
+	{
+		g_applicationName = name;
+	}
+
+	const std::u16string& applicationName()
+	{
+		return g_applicationName;
+	}
+
 	void startup(int argc, char* argv[])
 	{
+		installTestCrashHandler();
 		__argc = argc;
 		__argv = argv;
 
@@ -90,7 +130,7 @@ namespace nppmac
 			g_commandLine += quoted;
 		}
 
-		[NSApplication sharedApplication];
+		nppmac::ui::createApplication();
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		[NSApp finishLaunching];
 		[NSApp activateIgnoringOtherApps:YES];

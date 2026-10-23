@@ -19,6 +19,7 @@
 
 #include <windows.h>
 
+#include "menuCmdID.h"
 #include "nppmac/Startup.h"
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nShowCmd);
@@ -26,5 +27,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 int main(int argc, char* argv[])
 {
 	nppmac::startup(argc, argv);
+	// The Mac application menu's About and Settings run Notepad++'s own commands.
+	nppmac::setApplicationName(u"Notepad++");
+	nppmac::setApplicationMenuCommands(IDM_ABOUT, IDM_SETTING_PREFERENCE);
 	return wWinMain(GetModuleHandleW(nullptr), nullptr, nppmac::commandLineArguments(), SW_SHOWDEFAULT);
 }

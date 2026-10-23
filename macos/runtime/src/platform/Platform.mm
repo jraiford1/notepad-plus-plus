@@ -134,6 +134,39 @@ namespace nppmac::platform
 		NSBeep();
 	}
 
+	long pasteboardChangeCount()
+	{
+		return NSPasteboard.generalPasteboard.changeCount;
+	}
+
+	std::vector<std::string> pasteboardTypes()
+	{
+		std::vector<std::string> result;
+		for (NSPasteboardType type in NSPasteboard.generalPasteboard.types)
+			result.push_back(type.UTF8String);
+		return result;
+	}
+
+	std::vector<unsigned char> pasteboardData(const std::string& type)
+	{
+		NSData* data = [NSPasteboard.generalPasteboard dataForType:[NSString stringWithUTF8String:type.c_str()]];
+		if (!data)
+			return {};
+		const auto* bytes = static_cast<const unsigned char*>(data.bytes);
+		return std::vector<unsigned char>(bytes, bytes + data.length);
+	}
+
+	void setPasteboard(const std::vector<std::pair<std::string, std::vector<unsigned char>>>& items)
+	{
+		NSPasteboard* pasteboard = NSPasteboard.generalPasteboard;
+		NSMutableArray<NSPasteboardType>* types = [NSMutableArray array];
+		for (const auto& [type, data] : items)
+			[types addObject:[NSString stringWithUTF8String:type.c_str()]];
+		[pasteboard declareTypes:types owner:nil];
+		for (const auto& [type, data] : items)
+			[pasteboard setData:[NSData dataWithBytes:data.data() length:data.size()] forType:[NSString stringWithUTF8String:type.c_str()]];
+	}
+
 	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,
 		AlertStyle style, int defaultButton, int escapeButton)
 	{

@@ -67,7 +67,51 @@ set_target_properties(NotepadPlusPlus PROPERTIES
 	MACOSX_BUNDLE_BUNDLE_NAME "Notepad++"
 	MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jraiford1.notepad-plus-plus-macos"
 )
+target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 target_link_libraries(NotepadPlusPlus PRIVATE
 	nppRuntime nppRuntimeHeaders nppRuntimeStubs nppUuid nppScintilla nppLexilla
 	${nppSystemLibraries}
 )
+
+# --- Resources ---------------------------------------------------------------------------------------
+# Upstream's .rc files (rcFiles in PowerEditor/src/CMakeLists.txt), compiled with llvm-rc from the
+# original sources, in upstream's directory and with upstream's include list, as on Windows. The
+# .res files go into Contents/Resources/res, where the runtime's resource loader reads them.
+find_program(NPPMAC_LLVM_RC llvm-rc HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
+string(REGEX MATCH "SET\\(rcFiles([^)]*)\\)" nppRcMatch "${nppUpstreamCMake}")
+string(REGEX REPLACE "[ \t\r\n]+" ";" nppRcFiles "${CMAKE_MATCH_1}")
+list(FILTER nppRcFiles INCLUDE REGEX "\\.rc$")
+string(REGEX MATCH "SET\\(projIncludDir([^)]*)\\)" nppRcIncludeMatch "${nppUpstreamCMake}")
+string(REGEX REPLACE "[ \t\r\n]+" ";" nppRcIncludes "${CMAKE_MATCH_1}")
+set(nppRcFlags "")
+foreach(includeDir IN LISTS nppRcIncludes)
+	if(NOT includeDir STREQUAL "")
+		list(APPEND nppRcFlags -I "${includeDir}")
+	endif()
+endforeach()
+list(APPEND nppRcFlags -I "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/include")
+foreach(wineDir IN LISTS NPPMAC_WINE_INCLUDE_DIRS)
+	list(APPEND nppRcFlags -I "${wineDir}")
+endforeach()
+
+set(nppResFiles "")
+foreach(rcFile IN LISTS nppRcFiles)
+	string(REGEX REPLACE "^\\./" "" rcRelative "${rcFile}")
+	get_filename_component(rcName "${rcRelative}" NAME_WE)
+	set(resFile "${CMAKE_CURRENT_BINARY_DIR}/res/${rcName}.res")
+	get_filename_component(rcDirectory "${NPP_UPSTREAM_SRC}/${rcRelative}" DIRECTORY)
+	file(GLOB rcDependencies "${rcDirectory}/*.h" "${rcDirectory}/*.rc")
+	add_custom_command(
+		OUTPUT "${resFile}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/res"
+		COMMAND "${NPPMAC_LLVM_RC}" ${nppRcFlags} -c 65001 -D_WIN64 -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0601 -DNTDDI_VERSION=0x06010000
+			-fo "${resFile}" "${rcRelative}"
+		WORKING_DIRECTORY "${NPP_UPSTREAM_SRC}"
+		DEPENDS "${NPP_UPSTREAM_SRC}/${rcRelative}" ${rcDependencies}
+		COMMENT "Compiling resources ${rcRelative}"
+		VERBATIM
+	)
+	set_source_files_properties("${resFile}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION "Resources/res")
+	list(APPEND nppResFiles "${resFile}")
+endforeach()
+target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})

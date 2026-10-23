@@ -18,8 +18,17 @@
 
 #pragma once
 
+#include <string>
+
 namespace nppmac
 {
+	// The name shown in the application menu ("About <name>", "Quit <name>").
+	void setApplicationName(const std::u16string& name);
+	const std::u16string& applicationName();
+
+	// The program's commands for the application menu's About and Settings items (WM_COMMAND ids).
+	void setApplicationMenuCommands(unsigned about, unsigned preferences);
+
 	// Sets up the CRT command line (__argc, __argv, __wargv, GetCommandLineW) and AppKit.
 	void startup(int argc, char* argv[]);
 

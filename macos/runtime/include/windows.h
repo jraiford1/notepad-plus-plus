@@ -20,4 +20,14 @@
 
 #include_next <windows.h>
 
+#ifdef RC_INVOKED
+// The Windows SDK's resource headers define the newer button styles; Wine's only in commctrl.h.
+#ifndef BS_SPLITBUTTON
+#define BS_SPLITBUTTON 0x0000000CL
+#define BS_DEFSPLITBUTTON 0x0000000DL
+#define BS_COMMANDLINK 0x0000000EL
+#define BS_DEFCOMMANDLINK 0x0000000FL
+#endif
+#else
 #include "nppmac/Win32Overloads.h"
+#endif

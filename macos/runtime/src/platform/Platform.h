@@ -47,6 +47,12 @@ namespace nppmac::platform
 	bool moveToTrash(const std::string& path);
 	void beep();
 
+	// The general pasteboard. Types are UTI strings; "public.utf8-plain-text" is text.
+	long pasteboardChangeCount();
+	std::vector<std::string> pasteboardTypes();
+	std::vector<unsigned char> pasteboardData(const std::string& type);
+	void setPasteboard(const std::vector<std::pair<std::string, std::vector<unsigned char>>>& items);
+
 	enum class AlertStyle
 	{
 		information,
