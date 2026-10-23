@@ -36,6 +36,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -327,7 +328,10 @@ namespace nppmac
 	std::u16string format(std::u16string_view formatString, const Args&... args)
 	{
 		const std::string narrowFormat = toUtf8(formatString);
-		return toUtf16(std::vformat(narrowFormat, std::make_format_args(formatArgument(args)...)));
+		auto converted = std::make_tuple(formatArgument(args)...);
+		return std::apply([&narrowFormat](auto&... values) {
+			return toUtf16(std::vformat(narrowFormat, std::make_format_args(values...)));
+		}, converted);
 	}
 
 	template <typename... Args>

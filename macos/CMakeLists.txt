@@ -64,5 +64,8 @@ endforeach()
 
 # --- 3. Runtime and generated source ------------------------------------------------------------
 
+include(runtime/wine/WineHeaders.cmake) # sets NPPMAC_WINE_INCLUDE_DIRS and NPPMAC_WINE_UUID_DIR
 add_subdirectory(runtime)
 add_subdirectory(core)
+add_subdirectory(thirdparty)
+add_subdirectory(app)

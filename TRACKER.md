@@ -34,7 +34,7 @@ owner's Apple Developer identity and are a person's step; unsigned builds must b
 
 - `cmake -S macos -B macos/build && cmake --build macos/build` must succeed with no new warnings.
 - `ctest --test-dir macos/build` runs the engine's rule tests (and, as they arrive, the runtime's tests).
-- `cmake --build macos/build --target nppAllSources -- -k` must compile every upstream source file.
+- `cmake --build macos/build --target nppUpstream -- -k` must compile every upstream source file.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.
 - Manual smoke test: launch the app, open a source file, check highlighting, find/replace, save, reopen.
 - The Windows build is unaffected: `git diff upstream/master -- PowerEditor scintilla lexilla boostregex` is empty.

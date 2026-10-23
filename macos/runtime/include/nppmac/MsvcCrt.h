@@ -87,9 +87,12 @@ inline char* _strdup(const char* str)
 	return strdup(str);
 }
 
-// Truncation marker for the _s functions' count argument.
+// Truncation marker for the _s functions' count argument, and their "truncated" result.
 #ifndef _TRUNCATE
 #define _TRUNCATE (static_cast<size_t>(-1))
+#endif
+#ifndef STRUNCATE
+#define STRUNCATE 80
 #endif
 
 // Path component limits of _splitpath.

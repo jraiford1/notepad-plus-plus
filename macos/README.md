@@ -56,7 +56,7 @@ The first configure downloads the Wine source release once (about 45 MB) into th
 To see how much of upstream compiles, build every upstream source file:
 
 ```bash
-cmake --build macos/build --target nppAllSources -- -k
+cmake --build macos/build --target nppUpstream -- -k
 ```
 
 ## Status

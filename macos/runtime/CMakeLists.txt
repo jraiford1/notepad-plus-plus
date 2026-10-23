@@ -3,8 +3,6 @@
 # Declarations come from Wine's headers (see wine/WineHeaders.cmake); include/ comes first so the
 # runtime can supply or replace a header where Wine's does not fit macOS.
 
-include(wine/WineHeaders.cmake)
-
 add_library(nppRuntimeHeaders INTERFACE)
 target_include_directories(nppRuntimeHeaders INTERFACE
 	${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -18,3 +16,19 @@ target_compile_definitions(nppRuntimeHeaders INTERFACE
 target_compile_options(nppRuntimeHeaders INTERFACE
 	"SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/include/nppmac/ForcedInclude.h\""
 )
+
+file(GLOB_RECURSE nppRuntimeSources CONFIGURE_DEPENDS
+	"${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
+	"${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+)
+add_library(nppRuntime STATIC ${nppRuntimeSources})
+target_include_directories(nppRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# AppKit code (.mm) and Win32 code (.cpp) never share a translation unit: Cocoa's headers and the
+# Windows headers both define BOOL, Polygon, GetCurrentProcess and more.
+set_source_files_properties(${nppRuntimeSources} PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore")
+
+add_executable(nppRuntimeCrtTest test/CrtTest.cpp)
+target_link_libraries(nppRuntimeCrtTest PRIVATE nppRuntime nppRuntimeStubs)
+add_test(NAME runtimeCrt COMMAND nppRuntimeCrtTest)
