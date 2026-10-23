@@ -23,10 +23,13 @@
 // Upstream's own fixes for non-MSVC compilers (__try/__except and friends).
 #include "../../../../PowerEditor/gcc/gcc-fixes.h"
 
-// Notepad++ does not use sockets, and Wine's winsock.h clashes with the htonl() family
-// of macros from the macOS SDK.
+// Notepad++ does not use sockets, and Wine's winsock.h clashes with the htonl() family of macros
+// and the select() declarations of the macOS SDK: both parts of it are skipped.
 #ifndef _WINSOCKAPI_
 #define _WINSOCKAPI_
+#endif
+#ifndef __WINE_WINSOCKAPI_STDLIB_H
+#define __WINE_WINSOCKAPI_STDLIB_H
 #endif
 
 #include "nppmac/PlatformDecls.h"

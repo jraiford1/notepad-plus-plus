@@ -663,9 +663,7 @@ FILE* _wfopen(const char16_t* fileName, const char16_t* mode)
 		if (*p != u't' && *p != u' ')
 			narrowMode.push_back(static_cast<char>(*p));
 	}
-	std::string path = nppmac::toUtf8(fileName);
-	std::replace(path.begin(), path.end(), '\\', '/');
-	return std::fopen(path.c_str(), narrowMode.c_str());
+	return std::fopen(nppmac::nativePath(std::u16string_view{fileName}).c_str(), narrowMode.c_str());
 }
 
 errno_t _wfopen_s(FILE** file, const char16_t* fileName, const char16_t* mode)
@@ -919,6 +917,25 @@ errno_t strcat_s(char* dest, size_t destSize, const char* src)
 
 namespace nppmac
 {
+	std::string nativePath(std::string_view path)
+	{
+		if (path.starts_with("\\\\?\\"))
+			path.remove_prefix(4);
+		std::string result{path};
+		std::replace(result.begin(), result.end(), '\\', '/');
+		return result;
+	}
+
+	std::string nativePath(std::u16string_view path)
+	{
+		return nativePath(std::string_view{toUtf8(path)});
+	}
+
+	FILE* fopen(const char* path, const char* mode)
+	{
+		return std::fopen(nativePath(std::string_view{path}).c_str(), mode);
+	}
+
 	std::string toUtf8(std::u16string_view str)
 	{
 		std::string result;

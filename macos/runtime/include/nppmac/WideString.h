@@ -182,6 +182,13 @@ namespace nppmac
 	std::string toUtf8(std::u16string_view str);
 	std::u16string toUtf16(std::string_view str);
 
+	// A path as upstream writes it (Windows separators, "\\?\" prefix) as a macOS path, UTF-8.
+	// Every place a path leaves upstream code for the macOS C library goes through this.
+	std::string nativePath(std::u16string_view path);
+	std::string nativePath(std::string_view path);
+
+	FILE* fopen(const char* path, const char* mode);
+
 	template <typename T>
 	std::u16string to_u16string(T value)
 	{
@@ -351,17 +358,23 @@ namespace nppmac
 		PathStream() = default;
 
 		explicit PathStream(const char16_t* fileName, std::ios_base::openmode mode = defaultMode)
-			: Stream{toUtf8(fileName), mode} {}
+			: Stream{nativePath(std::u16string_view{fileName}), mode} {}
 
 		explicit PathStream(const std::u16string& fileName, std::ios_base::openmode mode = defaultMode)
-			: Stream{toUtf8(fileName), mode} {}
+			: Stream{nativePath(std::u16string_view{fileName}), mode} {}
+
+		explicit PathStream(const std::string& fileName, std::ios_base::openmode mode = defaultMode)
+			: Stream{nativePath(std::string_view{fileName}), mode} {}
+
+		explicit PathStream(const char* fileName, std::ios_base::openmode mode = defaultMode)
+			: Stream{nativePath(std::string_view{fileName}), mode} {}
 
 		void open(const char16_t* fileName, std::ios_base::openmode mode = defaultMode) {
-			Stream::open(toUtf8(fileName), mode);
+			Stream::open(nativePath(std::u16string_view{fileName}), mode);
 		}
 
 		void open(const std::u16string& fileName, std::ios_base::openmode mode = defaultMode) {
-			Stream::open(toUtf8(fileName), mode);
+			Stream::open(nativePath(std::u16string_view{fileName}), mode);
 		}
 	};
 

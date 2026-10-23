@@ -25,4 +25,7 @@ namespace nppmac
 
 	// The command line after the program name, as WinMain's pCmdLine receives it.
 	char16_t* commandLineArguments();
+
+	// The whole command line, as GetCommandLineW returns it.
+	const char16_t* commandLine();
 }
