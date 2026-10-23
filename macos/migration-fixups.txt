@@ -1,0 +1,13 @@
+# Fixups: the places where upstream's logic, not just its types, assumes Windows.
+# npp-migrate applies each one to the upstream file before its rules, and stops if the upstream
+# text is no longer there exactly once. Keep this list short: anything the runtime can do instead,
+# it should.
+
+# A path starting with '/' is drive-relative on Windows and gets the current drive's letter; on
+# macOS it is absolute and there is no drive, so the letter would be a NUL inside the path.
+file: MISC/Common/Common.cpp
+<<<<
+		if ((relativeFilePath[0] == '\\' && relativeFilePath[1] != '\\') || relativeFilePath[0] == '/')
+====
+		if (relativeFilePath[0] == '\\' && relativeFilePath[1] != '\\')
+>>>>

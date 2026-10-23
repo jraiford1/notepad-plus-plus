@@ -419,6 +419,8 @@ ATOM WINAPI RegisterClassExW(const WNDCLASSEXW* info)
 	windowClass->_background = info->hbrBackground;
 	if (info->lpszMenuName && !isAtom(info->lpszMenuName))
 		windowClass->_menuName = info->lpszMenuName;
+	else if (info->lpszMenuName)
+		windowClass->_menuOrdinal = static_cast<WORD>(reinterpret_cast<uintptr_t>(info->lpszMenuName));
 	windowClass->_extra.resize(static_cast<size_t>(std::max(0, info->cbClsExtra)));
 	windowClass->_atom = g_nextAtom++;
 	const ATOM atom = windowClass->_atom;
@@ -487,7 +489,10 @@ BOOL WINAPI GetClassInfoExW(HINSTANCE, LPCWSTR className, LPWNDCLASSEXW info)
 	info->hIconSm = windowClass->_smallIcon;
 	info->hCursor = windowClass->_cursor;
 	info->hbrBackground = windowClass->_background;
-	info->lpszMenuName = windowClass->_menuName.empty() ? nullptr : windowClass->_menuName.c_str();
+	if (windowClass->_menuOrdinal)
+		info->lpszMenuName = MAKEINTRESOURCEW(windowClass->_menuOrdinal);
+	else
+		info->lpszMenuName = windowClass->_menuName.empty() ? nullptr : windowClass->_menuName.c_str();
 	info->lpszClassName = windowClass->_name.c_str();
 	return windowClass->_atom;
 }
@@ -636,6 +641,11 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 	{
 		window->_owner = parent ? fromHandle(GetAncestor(parent->_hwnd, GA_ROOT)) : nullptr;
 		topLevels().insert(topLevels().begin(), window);
+		// A top-level window without a menu of its own gets its class's.
+		if (!menu && windowClass->_menuOrdinal)
+			menu = LoadMenuW(windowClass->_instance, MAKEINTRESOURCEW(windowClass->_menuOrdinal));
+		else if (!menu && !windowClass->_menuName.empty())
+			menu = LoadMenuW(windowClass->_instance, windowClass->_menuName.c_str());
 	}
 	windows()[reinterpret_cast<uintptr_t>(window->_hwnd)] = window;
 
@@ -692,6 +702,9 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 			{rect.left, rect.top, rect.right, rect.bottom}, topLevelStyle(style, exStyle));
 	}
 	applyGeometry(window, rect);
+	// The menu is there before WM_CREATE, which may read it with GetMenu.
+	if (!(style & WS_CHILD) && menu)
+		SetMenu(window->_hwnd, menu);
 	if (exStyle & WS_EX_ACCEPTFILES)
 		nppmac::ui::setAcceptsFiles(window->_view, true);
 
@@ -728,8 +741,7 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 		window->_style &= ~WS_VISIBLE;
 		ShowWindow(hwnd, (style & WS_CHILD) ? SW_SHOWNA : SW_SHOW);
 	}
-	if (!(style & WS_CHILD) && windowClass->_menuName.empty() && menu && !window->_id)
-		SetMenu(hwnd, menu);
+
 	return hwnd;
 }
 

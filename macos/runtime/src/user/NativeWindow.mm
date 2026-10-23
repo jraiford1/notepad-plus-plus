@@ -22,6 +22,9 @@
 
 #include "Backend.h"
 
+#include <cstdio>
+#include <string>
+
 using namespace nppmac::ui;
 
 // MacTypes (Carbon) also defines Point and Rect.
@@ -583,6 +586,8 @@ namespace
 
 namespace nppmac::ui
 {
+	void dumpMenuBar(NSMenu* menu, int depth);
+
 	// Debugging aid: NPPMAC_SNAPSHOT=<file.png> renders the frontmost program window into a PNG after
 	// NPPMAC_SNAPSHOT_DELAY seconds (default 5), without needing screen-recording permission;
 	// NPPMAC_SNAPSHOT_EXIT=1 then quits.
@@ -596,7 +601,10 @@ namespace nppmac::ui
 		NSString* file = [NSString stringWithUTF8String:path];
 		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
 			if (std::getenv("NPPMAC_DUMP_TREE"))
+			{
 				windowManagerDumpTree();
+				dumpMenuBar(NSApp.mainMenu, 0);
+			}
 			for (NSWindow* window in NSApp.orderedWindows)
 			{
 				if (![window isKindOfClass:NppMacWindow.class] || !window.isVisible)
@@ -614,13 +622,66 @@ namespace nppmac::ui
 		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 	}
 
+	// Debugging aid: NPPMAC_TEST_TYPE=<text> types the text into the key window after NPPMAC_TEST_TYPE_DELAY
+	// seconds (default 2), as key events going through the application like the user's; '\n' is Return
+	// and '^' makes the next character a Command shortcut ("^s" is ⌘S).
+	void scheduleTyping()
+	{
+		const char* text = std::getenv("NPPMAC_TEST_TYPE");
+		if (!text || !*text)
+			return;
+		const char* delayText = std::getenv("NPPMAC_TEST_TYPE_DELAY");
+		const double delay = delayText ? std::atof(delayText) : 2.0;
+		NSString* characters = [NSString stringWithUTF8String:text];
+		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
+			NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
+			for (NSUInteger i = 0; i < characters.length; ++i)
+			{
+				NSEventModifierFlags modifiers = 0;
+				if ([characters characterAtIndex:i] == '^' && i + 1 < characters.length)
+				{
+					modifiers = NSEventModifierFlagCommand;
+					++i;
+				}
+				NSString* character = [characters substringWithRange:NSMakeRange(i, 1)];
+				const bool isReturn = [character isEqualToString:@"\n"];
+				if (isReturn)
+					character = @"\r";
+				const unsigned short keyCode = isReturn ? 36 : 0;
+				for (NSEventType type : {NSEventTypeKeyDown, NSEventTypeKeyUp})
+				{
+					NSEvent* event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers timestamp:NSProcessInfo.processInfo.systemUptime
+						windowNumber:window.windowNumber context:nil characters:character charactersIgnoringModifiers:character isARepeat:NO keyCode:keyCode];
+					[NSApp sendEvent:event];
+				}
+			}
+		}];
+		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+	}
+
+	void dumpMenuBar(NSMenu* menu, int depth)
+	{
+		for (NSMenuItem* item in menu.itemArray)
+		{
+			if (item.isSeparatorItem)
+				continue;
+			std::fprintf(stderr, "%*s%s%s\n", depth * 2, "", item.title.UTF8String, item.keyEquivalent.length ? (std::string{"  ["} + item.keyEquivalent.UTF8String + "]").c_str() : "");
+			if (item.submenu && depth < 1)
+				dumpMenuBar(item.submenu, depth + 1);
+		}
+	}
+
 	void createApplication()
 	{
+		// AppKit adds Dictation and Emoji items to any menu titled "Edit", again each time the program
+		// refills it; the editor takes its input as key events, which those do not send.
+		[NSUserDefaults.standardUserDefaults registerDefaults:@{@"NSDisabledDictationMenuItem": @YES, @"NSDisabledCharacterPaletteMenuItem": @YES}];
 		[NppMacApplication sharedApplication];
 		g_applicationDelegate = [[NppMacApplicationDelegate alloc] init];
 		NSApp.delegate = g_applicationDelegate;
 		g_windowDelegate = [[NppMacWindowDelegate alloc] init];
 		scheduleSnapshot();
+		scheduleTyping();
 	}
 
 	NativeView* createView(ViewOwner* owner, ViewKind kind, NativeView* parent, const UiRect& frame, const TopLevelStyle& style)

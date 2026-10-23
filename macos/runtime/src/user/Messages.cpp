@@ -21,9 +21,11 @@
 #include "Window.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <pthread.h>
 #include <unordered_map>
@@ -32,11 +34,35 @@ namespace nppmac::user
 {
 	namespace
 	{
+		using KeyboardState = std::array<BYTE, 256>;
+
+		// What a keyboard or mouse message brings with it: the key state after the input, and a key
+		// down's characters. They take effect when the message is retrieved, as on Windows, where
+		// GetKeyState follows the messages the program has read and not the keyboard itself.
+		struct InputState
+		{
+			KeyboardState _keys{};
+			std::u16string _characters;
+		};
+
 		struct QueuedMessage
 		{
 			MSG _msg{};
 			void* _nativeEvent = nullptr; // retained native key event, released when processed
+			std::shared_ptr<InputState> _input;
 		};
+
+		KeyboardState g_asyncKeyState{}; // the keyboard as it is now
+		KeyboardState g_keyState{};      // as of the last input message retrieved
+		unsigned g_modifiers = 0;
+		std::unordered_map<BYTE, std::u16string> g_pendingCharacters; // characters of the key downs retrieved
+
+		void applyInputState(const MSG& msg, const InputState& input)
+		{
+			g_keyState = input._keys;
+			if (msg.message == WM_KEYDOWN || msg.message == WM_SYSKEYDOWN)
+				g_pendingCharacters[static_cast<BYTE>(msg.wParam)] = input._characters;
+		}
 
 		// A message sent from another thread, waiting for the GUI thread to process it.
 		struct CrossThreadSend
@@ -205,6 +231,8 @@ namespace nppmac::user
 					*nativeEvent = it->_nativeEvent;
 				if (remove)
 				{
+					if (it->_input)
+						applyInputState(it->_msg, *it->_input);
 					if (it->_msg.message == WM_TIMER)
 					{
 						for (Timer* timer : timers())
@@ -386,9 +414,6 @@ namespace nppmac::user
 			return 0;
 		}
 
-		BYTE g_keyState[256]{};
-		unsigned g_modifiers = 0;
-		std::unordered_map<BYTE, std::u16string> g_pendingCharacters; // characters produced by the last key down
 	}
 
 	// --- Messages ---------------------------------------------------------------------------------
@@ -404,7 +429,7 @@ namespace nppmac::user
 		return window->_windowProc ? window->_windowProc(window->_hwnd, message, wParam, lParam) : 0;
 	}
 
-	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent)
+	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent, const std::u16string& characters)
 	{
 		MSG msg{};
 		msg.hwnd = window ? window->_hwnd : nullptr;
@@ -414,9 +439,12 @@ namespace nppmac::user
 		msg.time = GetTickCount();
 		const ui::Point cursor = ui::cursorPosition();
 		msg.pt = {cursor._x, cursor._y};
+		std::shared_ptr<InputState> input;
+		if ((message >= WM_KEYFIRST && message <= WM_KEYLAST) || (message >= WM_MOUSEFIRST && message <= WM_MOUSELAST))
+			input = std::make_shared<InputState>(InputState{g_asyncKeyState, characters});
 		{
 			std::lock_guard lock{g_queueMutex};
-			queue().push_back({msg, nativeEvent});
+			queue().push_back({msg, nativeEvent, input});
 		}
 		if (!isGuiThread())
 			ui::wakeEventLoop();
@@ -531,13 +559,13 @@ namespace nppmac::user
 	{
 		if (down)
 		{
-			if (!(g_keyState[virtualKey] & 0x80))
-				g_keyState[virtualKey] ^= 0x01; // toggle state, as for Caps Lock
-			g_keyState[virtualKey] |= 0x80;
+			if (!(g_asyncKeyState[virtualKey] & 0x80))
+				g_asyncKeyState[virtualKey] ^= 0x01; // toggle state, as for Caps Lock
+			g_asyncKeyState[virtualKey] |= 0x80;
 		}
 		else
 		{
-			g_keyState[virtualKey] &= static_cast<BYTE>(~0x80);
+			g_asyncKeyState[virtualKey] &= static_cast<BYTE>(~0x80);
 		}
 	}
 
@@ -562,11 +590,11 @@ namespace nppmac::user
 			flags |= MK_SHIFT;
 		if (g_modifiers & ui::modifierControl)
 			flags |= MK_CONTROL;
-		if (g_keyState[VK_LBUTTON] & 0x80)
+		if (g_asyncKeyState[VK_LBUTTON] & 0x80)
 			flags |= MK_LBUTTON;
-		if (g_keyState[VK_RBUTTON] & 0x80)
+		if (g_asyncKeyState[VK_RBUTTON] & 0x80)
 			flags |= MK_RBUTTON;
-		if (g_keyState[VK_MBUTTON] & 0x80)
+		if (g_asyncKeyState[VK_MBUTTON] & 0x80)
 			flags |= MK_MBUTTON;
 		return flags;
 	}
@@ -698,9 +726,7 @@ namespace nppmac::ui
 		// Alt (Option) without Ctrl makes system keys, as on Windows.
 		const bool system = (event._modifiers & modifierAlt) && !(event._modifiers & modifierControl);
 		const UINT message = event._down ? (system ? WM_SYSKEYDOWN : WM_KEYDOWN) : (system ? WM_SYSKEYUP : WM_KEYUP);
-		if (event._down)
-			g_pendingCharacters[virtualKey] = event._characters;
-		postMessage(target, message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent);
+		postMessage(target, message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent, event._down ? event._characters : std::u16string{});
 	}
 
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down)
@@ -1465,18 +1491,18 @@ SHORT WINAPI GetKeyState(int virtualKey)
 
 SHORT WINAPI GetAsyncKeyState(int virtualKey)
 {
-	return static_cast<SHORT>((g_keyState[virtualKey & 0xFF] & 0x80) ? 0x8000 : 0);
+	return static_cast<SHORT>((g_asyncKeyState[virtualKey & 0xFF] & 0x80) ? 0x8000 : 0);
 }
 
 BOOL WINAPI GetKeyboardState(PBYTE state)
 {
-	std::memcpy(state, g_keyState, sizeof(g_keyState));
+	std::copy(g_keyState.begin(), g_keyState.end(), state);
 	return TRUE;
 }
 
 BOOL WINAPI SetKeyboardState(LPBYTE state)
 {
-	std::memcpy(g_keyState, state, sizeof(g_keyState));
+	std::copy(state, state + g_keyState.size(), g_keyState.begin());
 	return TRUE;
 }
 

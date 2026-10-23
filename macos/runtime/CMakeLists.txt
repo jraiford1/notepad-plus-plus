@@ -27,7 +27,7 @@ target_include_directories(nppRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # AppKit code (.mm) and Win32 code (.cpp) never share a translation unit: Cocoa's headers and the
 # Windows headers both define BOOL, Polygon, GetCurrentProcess and more.
 set_source_files_properties(${nppRuntimeSources} PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
-target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore" "-framework CoreText")
+target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" iconv)
 # The Scintilla window class talks to Scintilla's Cocoa view.
 target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include" "${NPP_ROOT}/scintilla/cocoa")
 

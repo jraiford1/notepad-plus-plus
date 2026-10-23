@@ -55,6 +55,7 @@ namespace nppmac::user
 		HCURSOR _cursor = nullptr;
 		HBRUSH _background = nullptr;
 		std::u16string _menuName;
+		WORD _menuOrdinal = 0; // a menu named by MAKEINTRESOURCE
 		std::vector<BYTE> _extra;
 		std::shared_ptr<BuiltInClass> _builtIn;
 		ATOM _atom = 0;
@@ -173,7 +174,9 @@ namespace nppmac::user
 	// --- Messages ---------------------------------------------------------------------------------
 
 	LRESULT callWindowProc(Window* window, UINT message, WPARAM wParam, LPARAM lParam);
-	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent = nullptr);
+	// Keyboard and mouse messages carry the input state they were posted with (and a key down its
+	// characters), which takes effect when they are retrieved.
+	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent = nullptr, const std::u16string& characters = {});
 	// The native key event that came with the message being processed (or nullptr).
 	void* currentNativeEvent();
 	DWORD messageTime();

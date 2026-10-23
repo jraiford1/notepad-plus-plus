@@ -36,7 +36,8 @@ add_custom_command(
 	OUTPUT "${NPPMAC_GENERATED_DIR}/migration-report.tsv"
 	BYPRODUCTS ${nppGeneratedFiles}
 	COMMAND npp-migrate "${NPP_UPSTREAM_SRC}" "${NPPMAC_GENERATED_SRC}" --report "${NPPMAC_GENERATED_DIR}/migration-report.tsv"
-	DEPENDS npp-migrate ${nppUpstreamFiles}
+		--fixups "${CMAKE_CURRENT_SOURCE_DIR}/migration-fixups.txt"
+	DEPENDS npp-migrate ${nppUpstreamFiles} "${CMAKE_CURRENT_SOURCE_DIR}/migration-fixups.txt"
 	COMMENT "Migrating PowerEditor/src for macOS"
 	VERBATIM
 )
