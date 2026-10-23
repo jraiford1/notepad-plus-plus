@@ -28,10 +28,11 @@ namespace nppmac::controls
 	void registerTooltip();
 	void registerButton();
 	void registerStatic();
+	void registerEdit();
 
-	void registerControl(const char16_t* name, WNDPROC proc, UINT style)
+	void registerControl(const char16_t* name, WNDPROC proc, UINT style, LPCWSTR cursor)
 	{
-		user::registerBuiltInClass(name, proc, style, sizeof(LONG_PTR) * 2, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
+		user::registerBuiltInClass(name, proc, style, sizeof(LONG_PTR) * 2, LoadCursorW(nullptr, cursor), nullptr, nullptr);
 	}
 }
 
@@ -66,6 +67,7 @@ namespace nppmac::user
 		controls::registerTooltip();
 		controls::registerButton();
 		controls::registerStatic();
+		controls::registerEdit();
 
 		static const char16_t* const classes[] = {
 			WC_BUTTONW, WC_STATICW, WC_EDITW, WC_COMBOBOXW, WC_COMBOBOXEXW, WC_LISTBOXW, WC_SCROLLBARW,

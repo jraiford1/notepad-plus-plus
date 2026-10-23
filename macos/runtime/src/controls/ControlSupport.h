@@ -112,5 +112,5 @@ namespace nppmac::controls
 		return text;
 	}
 
-	void registerControl(const char16_t* name, WNDPROC proc, UINT style = CS_DBLCLKS);
+	void registerControl(const char16_t* name, WNDPROC proc, UINT style = CS_DBLCLKS, LPCWSTR cursor = IDC_ARROW);
 }
