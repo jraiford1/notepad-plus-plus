@@ -16,8 +16,10 @@ set(NPPMAC_WINE_URL "https://dl.winehq.org/wine/source/11.x/wine-${NPPMAC_WINE_V
 set(wineRoot "${CMAKE_BINARY_DIR}/wine")
 set(wineSource "${wineRoot}/wine-${NPPMAC_WINE_VERSION}")
 set(wineGenerated "${wineRoot}/generated-include")
-set(wineStamp "${wineRoot}/headers-${NPPMAC_WINE_VERSION}.stamp")
+set(wineUuid "${wineRoot}/generated-uuid")
+set(wineStamp "${wineRoot}/headers-${NPPMAC_WINE_VERSION}-2.stamp")
 set(NPPMAC_WINE_INCLUDE_DIRS "${wineGenerated}" "${wineSource}/include")
+set(NPPMAC_WINE_UUID_DIR "${wineUuid}")
 
 if(EXISTS "${wineStamp}")
 	return()
@@ -91,10 +93,12 @@ if(NOT result EQUAL 0)
 	message(FATAL_ERROR "Building widl failed")
 endif()
 
-# --- Generate the COM headers --------------------------------------------------------------------
+# --- Generate the COM headers and interface identifiers ---------------------------------------------
 
 # Some .idl files (mostly OLE DB) do not compile on their own; Notepad++ does not use them.
-file(MAKE_DIRECTORY "${wineGenerated}")
+# For each header, widl -u also writes the IID/CLSID definitions (Wine's uuid library) as C.
+file(REMOVE_RECURSE "${wineGenerated}" "${wineUuid}")
+file(MAKE_DIRECTORY "${wineGenerated}" "${wineUuid}")
 file(GLOB wineIdlFiles "${wineSource}/include/*.idl")
 set(generatedCount 0)
 foreach(idlFile IN LISTS wineIdlFiles)
@@ -108,6 +112,13 @@ foreach(idlFile IN LISTS wineIdlFiles)
 	)
 	if(result EQUAL 0)
 		math(EXPR generatedCount "${generatedCount} + 1")
+		execute_process(
+			COMMAND "${widlBuild}/widl" --nostdinc "-I${wineSource}/include" -u -o "${wineUuid}/${idlName}_i.c" "${idlFile}"
+			RESULT_VARIABLE result OUTPUT_QUIET ERROR_QUIET
+		)
+		if(NOT result EQUAL 0)
+			file(REMOVE "${wineUuid}/${idlName}_i.c")
+		endif()
 	else()
 		file(REMOVE "${wineGenerated}/${idlName}.h")
 	endif()

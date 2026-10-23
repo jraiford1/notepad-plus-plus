@@ -23,6 +23,8 @@
 #pragma once
 
 #include <filesystem>
+
+#include "nppmac/WideString.h"
 #include <string>
 #include <string_view>
 
@@ -39,11 +41,12 @@ namespace nppmac::filesystem
 		path() = default;
 		path(const std::filesystem::path& p) : _path{p} {}
 		path(std::filesystem::path&& p) : _path{std::move(p)} {}
-		path(const char16_t* p) : _path{p} {}
-		path(const std::u16string& p) : _path{p} {}
-		path(std::u16string_view p) : _path{p} {}
-		path(const char* p) : _path{p} {}
-		path(const std::string& p) : _path{p} {}
+		// Upstream's paths use '\\' separators; they become '/' here, as everywhere a path enters macOS.
+		path(const char16_t* p) : _path{nativePath(std::u16string_view{p})} {}
+		path(const std::u16string& p) : _path{nativePath(std::u16string_view{p})} {}
+		path(std::u16string_view p) : _path{nativePath(p)} {}
+		path(const char* p) : _path{nativePath(std::string_view{p})} {}
+		path(const std::string& p) : _path{nativePath(std::string_view{p})} {}
 
 		operator const std::filesystem::path&() const {
 			return _path;

@@ -69,6 +69,7 @@ namespace nppmigrate
 			{"stoull", "nppmac::stoull"},
 			{"stof", "nppmac::stof"},
 			{"stod", "nppmac::stod"},
+			{"fopen", "nppmac::fopen"},         // reads '\\' in paths as a separator
 			{"ifstream", "nppmac::ifstream"},   // file streams that also open UTF-16 paths
 			{"ofstream", "nppmac::ofstream"},
 			// The narrow printf family formats as on Windows (LLP64: %ld and %lu are 32-bit, %I64d, ...).

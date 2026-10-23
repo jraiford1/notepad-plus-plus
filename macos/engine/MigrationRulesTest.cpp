@@ -62,6 +62,7 @@ namespace
 		{"unqualified format untouched", "EolType format; format = f(format);", "EolType format; format = f(format);"},
 		{"unqualified fstream untouched", "fstream f;", "fstream f;"},
 		{"sprintf family", "sprintf(buf, \"%lu\", n); ::snprintf(b, 4, f); std::sprintf(c, f);", "nppmac::sprintf(buf, \"%lu\", n); ::nppmac::snprintf(b, 4, f); nppmac::sprintf(c, f);"},
+		{"fopen", "FILE* f = fopen(path, \"rb\"); f = ::fopen(p, m);", "FILE* f = nppmac::fopen(path, \"rb\"); f = ::nppmac::fopen(p, m);"},
 		{"std::wcslen", "size_t n = std::wcslen(p);", "size_t n = ::wcslen(p);"},
 		{"unqualified wcslen untouched", "size_t n = wcslen(p);", "size_t n = wcslen(p);"},
 		{"member named wstring untouched", "obj.wstring = 1; ptr->to_wstring();", "obj.wstring = 1; ptr->to_wstring();"},
