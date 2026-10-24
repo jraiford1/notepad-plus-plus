@@ -69,8 +69,10 @@ set_target_properties(NotepadPlusPlus PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jraiford1.notepad-plus-plus-macos"
 )
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
+# The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions
+# they use in the app (see macos/plugins).
 target_link_libraries(NotepadPlusPlus PRIVATE
-	nppRuntime nppRuntimeHeaders nppRuntimeStubs nppUuid nppScintilla nppLexilla
+	"$<LINK_LIBRARY:WHOLE_ARCHIVE,nppRuntime>" nppRuntimeHeaders nppRuntimeStubs nppUuid nppScintilla nppLexilla
 	${nppSystemLibraries}
 )
 
@@ -120,5 +122,5 @@ target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
 # --- Tests -------------------------------------------------------------------------------------------
 # The end-to-end smoke test needs a window server (a logged-in macOS session); its label lets it be
 # left out with ctest -LE gui.
-add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>")
+add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>")
 set_tests_properties(nppSmokeTest PROPERTIES LABELS gui TIMEOUT 600)

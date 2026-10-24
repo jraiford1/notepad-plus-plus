@@ -18,13 +18,24 @@
 # End-to-end smoke test: runs the app the way a user would, through the runtime's test aids, with a
 # throwaway settings folder. Fails on a crash, a hang or a wrong result.
 #
-#     smoke-test.sh <path to Notepad++.app/Contents/MacOS/Notepad++>
+#     smoke-test.sh <path to Notepad++.app/Contents/MacOS/Notepad++> [<path to the HelloMac plugin>]
+#
+# With the plugin, it is installed in the app's plugins folder for the test and removed after.
 
 set -u
 
-app="${1:?usage: smoke-test.sh <Notepad++ executable>}"
+app="${1:?usage: smoke-test.sh <Notepad++ executable> [<HelloMac plugin>]}"
+plugin="${2:-}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/npp-smoke.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+pluginFolder="$(dirname "$app")/../Resources/plugins/HelloMac"
+cleanup()
+{
+	rm -rf "$work"
+	if [ -n "$plugin" ]; then
+		rm -rf "$pluginFolder"
+	fi
+}
+trap cleanup EXIT
 settings="$work/settings"
 mkdir -p "$settings"
 failures=0
@@ -89,6 +100,17 @@ files=("$work/find.txt")
 for command in 47000 48011 48009 44084; do
 	run "command-$command" NPPMAC_TEST_COMMAND=$command && echo "ok   command $command"
 done
+
+# A plugin: HelloMac's first command (the first plugin command id, 22000) inserts its greeting, which
+# is then saved through the Save As panel.
+if [ -n "$plugin" ]; then
+	mkdir -p "$pluginFolder"
+	cp "$plugin" "$pluginFolder/HelloMac.dll"
+	files=()
+	run plugin NPPMAC_TEST_COMMAND=22000 NPPMAC_TEST_TYPE='^s' NPPMAC_TEST_TYPE_DELAY=3 NPPMAC_TEST_FILE_PANEL="$work/plugin.txt" \
+		&& expect_file plugin "$work/plugin.txt" 'Hello from a plugin on macOS'
+	rm -rf "$pluginFolder"
+fi
 
 # Dark mode, following the system.
 files=()
