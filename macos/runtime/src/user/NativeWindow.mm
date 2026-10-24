@@ -789,6 +789,10 @@ namespace nppmac::ui
 		scheduleSnapshot();
 		scheduleTyping();
 		scheduleCommand();
+		[NSDistributedNotificationCenter.defaultCenter addObserverForName:@"AppleInterfaceThemeChangedNotification" object:nil queue:NSOperationQueue.mainQueue
+			usingBlock:^(NSNotification*) {
+				windowManagerAppearanceChanged();
+			}];
 	}
 
 	// The NSWindow of a top-level or popup view; its content is a new surface view, or the given one.
