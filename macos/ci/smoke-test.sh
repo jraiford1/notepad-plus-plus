@@ -21,6 +21,8 @@
 #     smoke-test.sh <path to Notepad++.app/Contents/MacOS/Notepad++> [<path to the HelloMac plugin>]
 #
 # With the plugin, it is installed in the app's plugins folder for the test and removed after.
+# NPPMAC_TEST_ARCH=x86_64 runs that slice of a universal app (on Apple silicon, through Rosetta); the
+# test is skipped (exit status 77) where it cannot run.
 
 set -u
 
@@ -28,6 +30,14 @@ app="${1:?usage: smoke-test.sh <Notepad++ executable> [<HelloMac plugin>]}"
 plugin="${2:-}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/npp-smoke.XXXXXX")"
 pluginFolder="$(dirname "$app")/../Resources/plugins/HelloMac"
+launcher=()
+if [ -n "${NPPMAC_TEST_ARCH:-}" ]; then
+	if ! /usr/bin/arch "-$NPPMAC_TEST_ARCH" /usr/bin/true 2> /dev/null; then
+		echo "skipped: this Mac cannot run $NPPMAC_TEST_ARCH"
+		exit 77
+	fi
+	launcher=(/usr/bin/arch "-$NPPMAC_TEST_ARCH")
+fi
 cleanup()
 {
 	rm -rf "$work"
@@ -48,7 +58,7 @@ run()
 	local log="$work/$name.log"
 	# perl's alarm is the timeout macOS has without coreutils.
 	env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
-		perl -e 'alarm 60; exec @ARGV' "$app" -settingsDir="$settings" ${files[@]+"${files[@]}"} > "$log" 2>&1
+		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$settings" ${files[@]+"${files[@]}"} > "$log" 2>&1
 	local status=$?
 	if [ $status -ne 0 ]; then
 		echo "FAIL $name: exit status $status"

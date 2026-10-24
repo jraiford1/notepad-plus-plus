@@ -57,6 +57,10 @@ ctest --test-dir macos/build
 
 The first configure downloads the Wine source release once (about 45 MB) into the build directory.
 
+The app is universal (Apple silicon and Intel, macOS 13.3 and later). For a quicker local build of one
+slice, configure with `-DCMAKE_OSX_ARCHITECTURES=arm64`. On Apple silicon with Rosetta, `ctest` runs the
+smoke test on both slices.
+
 To see how much of upstream compiles, build every upstream source file:
 
 ```bash

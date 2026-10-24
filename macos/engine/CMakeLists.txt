@@ -14,3 +14,6 @@ target_link_libraries(npp-migrate PRIVATE nppMigrationRules)
 add_executable(nppMigrationRulesTest MigrationRulesTest.cpp)
 target_link_libraries(nppMigrationRulesTest PRIVATE nppMigrationRules)
 add_test(NAME migrationRules COMMAND nppMigrationRulesTest)
+
+# The engine runs on the build machine only, and Homebrew's LLVM has the build machine's architecture.
+set_target_properties(nppMigrationRules npp-migrate nppMigrationRulesTest PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")

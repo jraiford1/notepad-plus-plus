@@ -11,6 +11,9 @@ cmake_minimum_required(VERSION 3.24)
 # The oldest macOS the app runs on (also the bundle's LSMinimumSystemVersion). Without it the SDK's own
 # version is the target, and the app would need the newest macOS.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
+# The app is universal: Apple silicon and Intel Macs. -DCMAKE_OSX_ARCHITECTURES=arm64 (or x86_64) builds
+# one slice only, for quicker local builds.
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Architectures the app is built for")
 project(NotepadPlusPlusMac LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
