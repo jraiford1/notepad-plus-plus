@@ -50,5 +50,5 @@ fi
 if [ "${NPPMAC_SKIP_GUI_TESTS:-0}" = "1" ]; then
 	ctest --test-dir "$build" --output-on-failure -LE gui
 else
-	ctest --test-dir "$build" --output-on-failure
+	ctest --test-dir "$build" --output-on-failure --verbose
 fi
