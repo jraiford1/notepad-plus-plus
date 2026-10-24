@@ -55,7 +55,23 @@ nppAddResources("" "${NPP_ROOT}/PowerEditor/src/langs.model.xml" "${NPP_ROOT}/Po
 	"${NPP_ROOT}/PowerEditor/src/tabContextMenu_example.xml" "${NPP_ROOT}/PowerEditor/src/toolbarButtonsConf_example.xml"
 	"${NPP_ROOT}/PowerEditor/bin/readme.txt" "${NPP_ROOT}/PowerEditor/bin/change.log"
 	"${nppInstaller}/xml4Config/disableNppAutoUpdate.xml" ${scintillaResources})
-nppAddResources("localization" ${nppLocalization})
+# The translations go through the engine for its text rules (where they name Windows the OS).
+set(nppGeneratedLocalization "")
+foreach(languageFile IN LISTS nppLocalization)
+	get_filename_component(languageName "${languageFile}" NAME)
+	list(APPEND nppGeneratedLocalization "${NPPMAC_GENERATED_DIR}/nativeLang/${languageName}")
+endforeach()
+add_custom_command(
+	OUTPUT ${nppGeneratedLocalization}
+	COMMAND npp-migrate "${nppInstaller}/nativeLang" "${NPPMAC_GENERATED_DIR}/nativeLang"
+		--text-rules "${CMAKE_CURRENT_SOURCE_DIR}/../text-rules.txt" --text-base installer/nativeLang
+	# The engine writes only what changed; the outputs are touched so the step is not rerun.
+	COMMAND "${CMAKE_COMMAND}" -E touch ${nppGeneratedLocalization}
+	DEPENDS npp-migrate ${nppLocalization} "${CMAKE_CURRENT_SOURCE_DIR}/../text-rules.txt"
+	COMMENT "Applying the text rules to the translations"
+	VERBATIM
+)
+nppAddResources("localization" ${nppGeneratedLocalization})
 nppAddResources("autoCompletion" ${nppAutoCompletion})
 nppAddResources("functionList" ${nppFunctionList})
 nppAddResources("themes" ${nppThemes})
@@ -90,9 +106,10 @@ target_link_libraries(NotepadPlusPlus PRIVATE
 )
 
 # --- Resources ---------------------------------------------------------------------------------------
-# Upstream's .rc files (rcFiles in PowerEditor/src/CMakeLists.txt), compiled with llvm-rc from the
-# original sources, in upstream's directory and with upstream's include list, as on Windows. The
-# .res files go into Contents/Resources/res, where the runtime's resource loader reads them.
+# Upstream's .rc files (rcFiles in PowerEditor/src/CMakeLists.txt), compiled with llvm-rc in
+# upstream's directory and with upstream's include list and headers, as on Windows; the .rc text
+# itself is the engine's copy, with its text rules applied (copied apart from the migrated headers).
+# The .res files go into Contents/Resources/res, where the runtime's resource loader reads them.
 find_program(NPPMAC_LLVM_RC llvm-rc HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
 string(REGEX MATCH "SET\\(rcFiles([^)]*)\\)" nppRcMatch "${nppUpstreamCMake}")
 string(REGEX REPLACE "[ \t\r\n]+" ";" nppRcFiles "${CMAKE_MATCH_1}")
@@ -117,13 +134,17 @@ foreach(rcFile IN LISTS nppRcFiles)
 	set(resFile "${CMAKE_CURRENT_BINARY_DIR}/res/${rcName}.res")
 	get_filename_component(rcDirectory "${NPP_UPSTREAM_SRC}/${rcRelative}" DIRECTORY)
 	file(GLOB rcDependencies "${rcDirectory}/*.h" "${rcDirectory}/*.rc")
+	set(rcText "${CMAKE_CURRENT_BINARY_DIR}/rc/${rcRelative}")
+	# Relative: llvm-rc reads an argument starting with '/' as an option.
+	file(RELATIVE_PATH rcTextRelative "${NPP_UPSTREAM_SRC}" "${rcText}")
 	add_custom_command(
 		OUTPUT "${resFile}"
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/res"
-		COMMAND "${NPPMAC_LLVM_RC}" ${nppRcFlags} -c 65001 -D_WIN64 -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0601 -DNTDDI_VERSION=0x06010000
-			-fo "${resFile}" "${rcRelative}"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${NPPMAC_GENERATED_SRC}/${rcRelative}" "${rcText}"
+		COMMAND "${NPPMAC_LLVM_RC}" -I "${rcDirectory}" ${nppRcFlags} -c 65001 -D_WIN64 -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0601 -DNTDDI_VERSION=0x06010000
+			-fo "${resFile}" "${rcTextRelative}"
 		WORKING_DIRECTORY "${NPP_UPSTREAM_SRC}"
-		DEPENDS "${NPP_UPSTREAM_SRC}/${rcRelative}" ${rcDependencies}
+		DEPENDS "${NPPMAC_GENERATED_DIR}/migration-report.tsv" "${NPP_UPSTREAM_SRC}/${rcRelative}" ${rcDependencies}
 		COMMENT "Compiling resources ${rcRelative}"
 		VERBATIM
 	)

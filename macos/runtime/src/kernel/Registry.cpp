@@ -129,11 +129,13 @@ namespace
 
 		Key* hklm = root(HKEY_LOCAL_MACHINE);
 		Key* currentVersion = walk(hklm, u"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", true);
-		currentVersion->_values[u"ProductName"] = stringValue(u"Windows 10 Pro");
-		currentVersion->_values[u"CurrentBuild"] = stringValue(u"19045");
-		currentVersion->_values[u"CurrentBuildNumber"] = stringValue(u"19045");
-		currentVersion->_values[u"DisplayVersion"] = stringValue(u"22H2");
-		currentVersion->_values[u"ReleaseId"] = stringValue(u"2009");
+		// What Help > Debug Info reports as the OS: macOS, its version and its build. (Version checks
+		// go through RtlGetNtVersionNumbers, which still answers Windows 10.)
+		const std::u16string build = nppmac::toUtf16(nppmac::platform::systemBuild());
+		currentVersion->_values[u"ProductName"] = stringValue(u"macOS");
+		currentVersion->_values[u"CurrentBuild"] = stringValue(build);
+		currentVersion->_values[u"CurrentBuildNumber"] = stringValue(build);
+		currentVersion->_values[u"DisplayVersion"] = stringValue(nppmac::toUtf16(nppmac::platform::systemVersion()));
 		currentVersion->_values[u"InstallationType"] = stringValue(u"Client");
 		currentVersion->_values[u"EditionID"] = stringValue(u"Professional");
 		currentVersion->_values[u"CurrentMajorVersionNumber"] = dwordValue(10);

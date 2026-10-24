@@ -1,0 +1,50 @@
+# Text rules: where upstream's words name Windows the operating system, they name macOS here.
+# npp-migrate applies them to upstream's sources (src/: the menus and dialogs of the .rc files, and
+# the texts the C++ code falls back on) and to the translations (installer/nativeLang/), and stops
+# if a rule no longer changes anything, so a change upstream is noticed.
+#
+# Keep them to the operating system. "Windows" is also the list of open windows (the Windows
+# dialog, Window > Windows...), a line ending ("Windows (CR LF)"), code pages ("Windows-1252") and
+# names ("Windows PowerShell"): those stay. Each rule names the item it changes, so a translation
+# that keeps the word "Windows" (most do) follows too.
+
+# Preferences > Dark Mode: "Follow Windows" follows the macOS appearance.
+files: src/WinControls/Preference/preference.rc
+line: IDC_RADIO_DARKMODE_FOLLOWWINDOWS
+replace: "Follow Windows" => "Follow macOS"
+
+files: installer/nativeLang/*.xml
+line: id="7133"
+replace: Windows => macOS
+
+# Edit menu and tab menu: the read-only attribute is the file's write permission here.
+files: src/Notepad_plus.rc
+line: IDM_EDIT_TOGGLESYSTEMREADONLY
+replace: Attribute in Windows => Attribute in macOS
+
+files: src/NppNotification.cpp
+line: IDM_EDIT_TOGGLESYSTEMREADONLY
+replace: Attribute in Windows => Attribute in macOS
+
+files: installer/nativeLang/*.xml
+line: 42033"
+replace: Windows => macOS
+
+# Logging out with unsaved documents.
+files: src/NppBigSwitch.cpp
+line: Windows session
+replace: Windows session => macOS session
+
+files: installer/nativeLang/*.xml
+line: <WindowsSessionExit
+regex: Windows(?!SessionExit) => macOS
+
+# Preferences > Dark Mode, the toolbar's accent color: the macOS accent color, and where to change
+# it. The translations describe Windows' settings, so they give way to the English text.
+files: src/WinControls/Preference/preferenceDlg.cpp
+line: toolbar-accent-tip
+regex: L"This option[^"]*" => L"This option makes your toolbar icons follow the macOS accent color, the color of buttons, selections and other highlights. To change it, go to System Settings > Appearance and choose an accent color."
+
+files: installer/nativeLang/*.xml
+line: toolbar-accent-tip
+regex: value="[^"]*" => value="This option makes your toolbar icons follow the macOS accent color, the color of buttons, selections and other highlights. To change it, go to System Settings &gt; Appearance and choose an accent color."

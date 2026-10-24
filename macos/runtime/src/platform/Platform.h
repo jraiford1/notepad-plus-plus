@@ -31,6 +31,13 @@ namespace nppmac::platform
 	// Whether the system appearance is dark.
 	bool isDarkAppearance();
 
+	// The accent color chosen in System Settings > Appearance, as 0xRRGGBB.
+	unsigned accentColor();
+
+	// The macOS version ("26.0.1") and build ("25A362").
+	std::string systemVersion();
+	std::string systemBuild();
+
 	// UTF-8 POSIX paths.
 	std::string executablePath();
 	std::string resourcesDirectory();     // Contents/Resources: the program directory Notepad++ sees
