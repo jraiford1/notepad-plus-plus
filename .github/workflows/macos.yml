@@ -34,7 +34,7 @@ jobs:
         run: macos/ci/build-and-test.sh macos/build
 
       - name: Package the app
-        run: ditto -c -k --keepParent "macos/build/app/Notepad++.app" Notepad++-macOS.zip
+        run: ditto -c -k --keepParent macos/build/app/*.app Notepad++-macOS.zip
 
       - name: Upload the app
         uses: actions/upload-artifact@v4
