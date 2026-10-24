@@ -21,6 +21,7 @@
 #include "user/Window.h"
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <unordered_set>
 
@@ -262,6 +263,16 @@ BOOL WINAPI EndPaint(HWND hwnd, const PAINTSTRUCT* paint)
 	if (dc)
 		destroyDC(dc);
 	return TRUE;
+}
+
+HDC nppmac::gdi::createPrinterDC(const platform::PrintSetup& setup)
+{
+	DC* dc = createDC(DCKind::printer);
+	dc->_print = std::make_shared<PrintDocument>();
+	dc->_print->_setup = setup;
+	dc->_width = static_cast<int>(std::lround(setup._printableWidth * printerUnitsPerPoint));
+	dc->_height = static_cast<int>(std::lround(setup._printableHeight * printerUnitsPerPoint));
+	return fromDC(dc);
 }
 
 // --- Memory DCs -----------------------------------------------------------------------------------
@@ -849,16 +860,19 @@ int WINAPI GetDeviceCaps(HDC hdc, int index)
 		case RASTERCAPS:
 			return RC_BITBLT | RC_STRETCHBLT | RC_DI_BITMAP | RC_DIBTODEV | RC_STRETCHDIB;
 		case TECHNOLOGY:
-			return DT_RASDISPLAY;
+			return dc && dc->_kind == DCKind::printer ? DT_RASPRINTER : DT_RASDISPLAY;
 		case VREFRESH:
 			return 60;
 		case SHADEBLENDCAPS:
 			return SB_CONST_ALPHA | SB_PIXEL_ALPHA;
 		case PHYSICALWIDTH:
+			return dc && dc->_print ? static_cast<int>(std::lround(dc->_print->_setup._paperWidth * printerUnitsPerPoint)) : 0;
 		case PHYSICALHEIGHT:
+			return dc && dc->_print ? static_cast<int>(std::lround(dc->_print->_setup._paperHeight * printerUnitsPerPoint)) : 0;
 		case PHYSICALOFFSETX:
+			return dc && dc->_print ? static_cast<int>(std::lround(dc->_print->_setup._printableLeft * printerUnitsPerPoint)) : 0;
 		case PHYSICALOFFSETY:
-			return 0;
+			return dc && dc->_print ? static_cast<int>(std::lround(dc->_print->_setup._printableTop * printerUnitsPerPoint)) : 0;
 		default:
 			return 0;
 	}

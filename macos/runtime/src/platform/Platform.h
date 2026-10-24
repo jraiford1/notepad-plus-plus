@@ -97,6 +97,30 @@ namespace nppmac::platform
 	// cancelled. NPPMAC_TEST_COLOR=RRGGBB answers without showing it, for tests.
 	bool chooseColor(unsigned& rgb);
 
+	// Printing: the paper and its printable area in points (top-left origin), and what to print.
+	struct PrintSetup
+	{
+		double _paperWidth = 612;
+		double _paperHeight = 792;
+		double _printableLeft = 18;
+		double _printableTop = 18;
+		double _printableWidth = 576;
+		double _printableHeight = 756;
+		bool _offerSelection = false; // in: there is a selection to print
+		bool _selectionOnly = false;  // out: the user chose to print it
+		bool _pageRange = false;      // out: only pages _firstPage to _lastPage (from 1)
+		int _firstPage = 1;
+		int _lastPage = 1;
+	};
+
+	// Runs the print panel (showPanel), or takes the current printer's settings without it; false
+	// when cancelled. The choice is kept for printPdf. Copies are the printer's business, as with
+	// PD_USEDEVMODECOPIES. NPPMAC_TEST_PRINT_PDF=<path> answers without the panel, for tests.
+	bool choosePrinter(PrintSetup& setup, bool showPanel);
+	// Prints every page of a PDF with the settings choosePrinter kept, without another panel; with
+	// NPPMAC_TEST_PRINT_PDF it is copied there instead.
+	bool printPdf(const std::string& pdfPath, const std::string& jobName);
+
 	// Shows a modal alert; returns the index of the chosen button (buttons are listed left to right
 	// as on Windows; on the Mac the first is the rightmost). escapeButton is chosen by Escape.
 	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,

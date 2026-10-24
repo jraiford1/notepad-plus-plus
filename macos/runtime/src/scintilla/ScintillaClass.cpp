@@ -23,6 +23,7 @@
 // Scintilla's Cocoa layer sizes fonts in. Without this, text would be a quarter smaller than on
 // Windows.
 
+#include "gdi/Gdi.h"
 #include "user/Window.h"
 #include "ScintillaBridge.h"
 
@@ -54,10 +55,37 @@ namespace
 		return (size * windowsPointsPerInch + windowsPixelsPerInch / 2) / windowsPixelsPerInch;
 	}
 
+	// Printing: Notepad++ gives SCI_FORMATRANGEFULL the printer's HDC, and Scintilla's Cocoa layer draws
+	// into a CGContext: the DC's, ready for drawing. Pages it only measures (no page is open) get a
+	// scratch context.
+	template <typename Range>
+	sptr_t formatRange(const ScintillaData& data, unsigned int message, uptr_t draw, sptr_t lParam)
+	{
+		if (!lParam)
+			return data._direct(data._directPointer, message, draw, lParam);
+		static CGContextRef scratch = []
+		{
+			CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+			CGContextRef context = CGBitmapContextCreate(nullptr, 1, 1, 8, 4, colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst));
+			CGColorSpaceRelease(colorSpace);
+			return context;
+		}();
+		Range range = *reinterpret_cast<const Range*>(lParam);
+		nppmac::gdi::DC* dc = nppmac::gdi::toDC(static_cast<HDC>(range.hdc));
+		CGContextRef context = dc ? dc->begin() : nullptr;
+		range.hdc = range.hdcTarget = context ? context : scratch;
+		const sptr_t result = data._direct(data._directPointer, message, context ? draw : 0, reinterpret_cast<sptr_t>(&range));
+		if (context)
+			dc->end();
+		return result;
+	}
+
 	sptr_t sendToScintilla(const ScintillaData& data, unsigned int message, uptr_t wParam, sptr_t lParam)
 	{
 		switch (message)
 		{
+			case SCI_FORMATRANGEFULL:
+				return formatRange<Sci_RangeToFormatFull>(data, message, wParam, lParam);
 			case SCI_STYLESETSIZE:
 				return data._direct(data._directPointer, SCI_STYLESETSIZEFRACTIONAL, wParam, toScintillaFontSize(lParam * SC_FONT_SIZE_MULTIPLIER));
 			case SCI_STYLESETSIZEFRACTIONAL:

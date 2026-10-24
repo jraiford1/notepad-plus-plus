@@ -91,10 +91,11 @@ Tracked as job J1 in the work tracker. Today:
   `ReadDirectoryChangesW` on FSEvents;
 * input methods (Japanese, Chinese, Korean…), dead keys and Option characters work in Notepad++'s own
   text boxes (Find, Preferences…) through the macOS text input system, as the editor's do;
-* not yet: printing.
+* printing goes through the macOS print panel (printer, copies, pages, selection, paper): upstream's
+  printer code draws the pages, header and footer included, into a PDF that is then printed.
 
-The few Win32 functions not implemented yet are weak stubs (printing; the `Imm*` functions, which
-only upstream's Windows file dialog uses); the build lists them as
+The only Win32 functions not implemented are three `Imm*` functions, which only upstream's Windows
+file dialog uses; they are weak stubs, and the build lists them as
 `Win32 functions still stubbed`.
 
 ## The app's name and icon
@@ -131,6 +132,7 @@ Environment variables read by the runtime:
 | `NPPMAC_SNAPSHOT=<file.png>` | renders the front window to a PNG after `NPPMAC_SNAPSHOT_DELAY` seconds (default 5); `NPPMAC_SNAPSHOT_EXIT=1` then quits |
 | `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
 | `NPPMAC_TEST_IME=<composing>[\|<committed>]` | after the typing, plays an input method on the focus window: composes the first text, a second later commits the second |
+| `NPPMAC_TEST_PRINT_PDF=<path>` | printing takes the default printer's settings without the print panel and writes the job's PDF there instead of printing it |
 | `NPPMAC_TEST_COMMAND=<id>` | sends a menu command (`IDM_*` value) after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
 | `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
 | `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |

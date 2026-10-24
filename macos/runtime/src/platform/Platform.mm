@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #import <Cocoa/Cocoa.h>
+#import <PDFKit/PDFKit.h>
 
 #include <algorithm>
 #include <cmath>
@@ -390,5 +391,76 @@ namespace nppmac::platform
 		const auto channel = [](CGFloat value) { return static_cast<unsigned>(std::lround(std::clamp(value, 0.0, 1.0) * 255)); };
 		rgb = (channel(color.redComponent) << 16) | (channel(color.greenComponent) << 8) | channel(color.blueComponent);
 		return true;
+	}
+
+	namespace
+	{
+		NSPrintInfo* g_printInfo = nil; // the settings the last print panel chose
+	}
+
+	bool choosePrinter(PrintSetup& setup, bool showPanel)
+	{
+		NSPrintInfo* info = [NSPrintInfo.sharedPrintInfo copy];
+		info.horizontalPagination = NSPrintingPaginationModeClip;
+		info.verticalPagination = NSPrintingPaginationModeClip;
+		if (showPanel && !std::getenv("NPPMAC_TEST_PRINT_PDF"))
+		{
+			NSPrintPanel* panel = [NSPrintPanel printPanel];
+			NSPrintPanelOptions options = NSPrintPanelShowsCopies | NSPrintPanelShowsPageRange | NSPrintPanelShowsPaperSize
+				| NSPrintPanelShowsOrientation | NSPrintPanelShowsScaling | NSPrintPanelShowsPreview;
+			// As on Windows, a selection is what is printed unless the user says otherwise.
+			if (setup._offerSelection)
+			{
+				options |= NSPrintPanelShowsPrintSelection;
+				info.dictionary[NSPrintSelectionOnly] = @YES;
+			}
+			panel.options = options;
+			[NSApp activateIgnoringOtherApps:YES];
+			if ([panel runModalWithPrintInfo:info] != NSModalResponseOK)
+				return false;
+		}
+		g_printInfo = info;
+
+		const NSSize paper = info.paperSize;
+		const NSRect printable = info.imageablePageBounds; // bottom-left origin
+		setup._paperWidth = paper.width;
+		setup._paperHeight = paper.height;
+		setup._printableLeft = printable.origin.x;
+		setup._printableTop = paper.height - NSMaxY(printable);
+		setup._printableWidth = printable.size.width;
+		setup._printableHeight = printable.size.height;
+		NSMutableDictionary<NSPrintInfoAttributeKey, id>* settings = info.dictionary;
+		setup._selectionOnly = setup._offerSelection && [settings[NSPrintSelectionOnly] boolValue];
+		setup._pageRange = !setup._selectionOnly && settings[NSPrintAllPages] && ![settings[NSPrintAllPages] boolValue];
+		if (setup._pageRange)
+		{
+			setup._firstPage = std::max(1, [settings[NSPrintFirstPage] intValue]);
+			setup._lastPage = std::max(setup._firstPage, [settings[NSPrintLastPage] intValue]);
+		}
+		return true;
+	}
+
+	bool printPdf(const std::string& pdfPath, const std::string& jobName)
+	{
+		NSString* path = [NSString stringWithUTF8String:pdfPath.c_str()];
+		if (const char* testPath = std::getenv("NPPMAC_TEST_PRINT_PDF"))
+		{
+			NSString* target = [NSString stringWithUTF8String:testPath];
+			[NSFileManager.defaultManager removeItemAtPath:target error:nil];
+			return [NSFileManager.defaultManager copyItemAtPath:path toPath:target error:nil];
+		}
+		PDFDocument* document = [[PDFDocument alloc] initWithURL:[NSURL fileURLWithPath:path]];
+		if (!document)
+			return false;
+		// The document already holds only the pages chosen, each laid out for the paper chosen.
+		NSPrintInfo* info = [g_printInfo ?: NSPrintInfo.sharedPrintInfo copy];
+		info.dictionary[NSPrintAllPages] = @YES;
+		info.dictionary[NSPrintSelectionOnly] = @NO;
+		info.topMargin = info.bottomMargin = info.leftMargin = info.rightMargin = 0;
+		NSPrintOperation* operation = [document printOperationForPrintInfo:info scalingMode:kPDFPrintPageScaleNone autoRotate:NO];
+		operation.jobTitle = [NSString stringWithUTF8String:jobName.c_str()];
+		operation.showsPrintPanel = NO;
+		operation.showsProgressPanel = YES;
+		return [operation runOperation];
 	}
 }
