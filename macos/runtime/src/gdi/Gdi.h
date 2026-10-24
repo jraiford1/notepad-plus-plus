@@ -27,6 +27,8 @@
 
 #include <windows.h>
 
+#include "platform/Platform.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -136,8 +138,25 @@ namespace nppmac::gdi
 	{
 		window,  // a window's surface (GetDC, BeginPaint)
 		memory,  // CreateCompatibleDC: draws into the selected bitmap
-		info,    // a screen or printer DC used for measurement only
+		info,    // a screen DC used for measurement only
+		printer, // PrintDlg's DC: draws into the print job's current page
 	};
+
+	// A print job, StartDoc to EndDoc: a PDF of the pages, printed when it ends.
+	struct PrintDocument
+	{
+		platform::PrintSetup _setup;
+		std::string _path;   // the PDF
+		std::string _name;
+		CGContextRef _pdf = nullptr;
+		bool _inPage = false;
+
+		~PrintDocument();
+	};
+
+	// Printer device units are 1/96 inch, as the screen's are here, so text measures the same on
+	// paper as on screen; Core Graphics works in points.
+	constexpr double printerUnitsPerPoint = 96.0 / 72.0;
 
 	struct DCState
 	{
@@ -173,6 +192,7 @@ namespace nppmac::gdi
 		bool _gstateSaved = false;   // a CGContextSaveGState wraps the current clip and transform
 		RECT _paintClip{};           // BeginPaint's update rectangle, intersected with every clip
 		bool _hasPaintClip = false;
+		std::shared_ptr<PrintDocument> _print; // printer DCs
 
 		// Prepares the context for drawing: clip and logical-to-device offset applied. The caller
 		// must call end() afterwards.
@@ -195,6 +215,8 @@ namespace nppmac::gdi
 	}
 
 	HDC createWindowDC(user::Window* window);
+	// A printer DC for the paper and printable area chosen; its size is the printable area.
+	HDC createPrinterDC(const platform::PrintSetup& setup);
 	void releaseWindowDC(HDC hdc);
 
 	// --- Colors and conversions ---------------------------------------------------------------------

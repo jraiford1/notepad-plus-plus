@@ -121,6 +121,20 @@ run find NPPMAC_TEST_TYPE=$'^ftwo\n\n\x1b' && expect_file find "$work/find.txt" 
 files=()
 run ime NPPMAC_TEST_TYPE='^fab' NPPMAC_TEST_IME='かな|仮名' NPPMAC_DUMP_TREE=1 && expect_log ime 'Edit id=1001 .* text="ab仮名"'
 
+# Printing (File > Print, IDM_FILE_PRINT): the print job's PDF, taken instead of printing, has the
+# document's 90 lines on two pages.
+for i in $(seq 1 90); do echo "Line $i: the quick brown fox"; done > "$work/print.txt"
+files=("$work/print.txt")
+if run print NPPMAC_TEST_COMMAND=41010 NPPMAC_TEST_PRINT_PDF="$work/print.pdf"; then
+	pages="$(osascript -l JavaScript -e "ObjC.import('PDFKit'); var d = \$.PDFDocument.alloc.initWithURL(\$.NSURL.fileURLWithPath('$work/print.pdf')); d ? d.pageCount + ' ' + d.pageAtIndex(0).string.js.indexOf('Line 1: the quick brown fox') : 'none'" 2>&1)"
+	if [ "${pages%% *}" = "2" ] && [ "${pages##* }" != "-1" ]; then
+		echo "ok   print"
+	else
+		echo "FAIL print: the PDF reads $pages"
+		failures=$((failures + 1))
+	fi
+fi
+
 # Dialogs and panels open without crashing: About, Preferences, Shortcut Mapper, Function List.
 files=("$work/find.txt")
 for command in 47000 48011 48009 44084; do
