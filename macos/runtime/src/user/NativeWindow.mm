@@ -46,6 +46,9 @@ namespace nppmac::ui
 		int _surfaceHeight = 0;
 		CGFloat _surfaceScale = 1;
 		bool _acceptsFiles = false;
+		bool _seeThrough = false;
+		NSScroller* _scrollers[2] = {};    // horizontal, vertical
+		ScrollBarState _scrollStates[2];
 	};
 
 	double primaryScreenHeight()
@@ -94,9 +97,64 @@ namespace nppmac::ui
 
 	NativeView* g_captureView = nullptr;
 	bool g_cursorHidden = false;
+
+	void layoutScrollers(NativeView* native);
 }
 
 // --- Views ------------------------------------------------------------------------------------------
+
+// A standard scroll bar. It reports clicks and drags to the window manager; a knob drag ends with
+// a thumb position and an end, as Windows' scroll bars do.
+@interface NppMacScroller : NSScroller
+{
+@public
+	NativeView* _native;
+	bool _vertical;
+	bool _draggedKnob;
+}
+@end
+
+@implementation NppMacScroller
+
+- (void)scrolled:(id)sender
+{
+	if (!_native || !_native->_owner)
+		return;
+	switch (self.hitPart)
+	{
+		case NSScrollerKnob:
+			_draggedKnob = true;
+			_native->_owner->nativeScroll(_vertical, ScrollPart::thumbTrack, self.doubleValue);
+			break;
+		case NSScrollerDecrementPage:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::pageUp, self.doubleValue);
+			break;
+		case NSScrollerIncrementPage:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::pageDown, self.doubleValue);
+			break;
+		case NSScrollerDecrementLine:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::lineUp, self.doubleValue);
+			break;
+		case NSScrollerIncrementLine:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::lineDown, self.doubleValue);
+			break;
+		default:
+			break;
+	}
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+	_draggedKnob = false;
+	[super mouseDown:event]; // tracks the mouse until it comes up
+	if (!_native || !_native->_owner)
+		return;
+	if (_draggedKnob)
+		_native->_owner->nativeScroll(_vertical, ScrollPart::thumbPosition, self.doubleValue);
+	_native->_owner->nativeScroll(_vertical, ScrollPart::end, self.doubleValue);
+}
+
+@end
 
 @interface NppMacView : NSView
 {
@@ -113,6 +171,13 @@ namespace nppmac::ui
 	return YES;
 }
 
+- (void)setFrameSize:(NSSize)size
+{
+	[super setFrameSize:size];
+	if (_native && (_native->_scrollers[0] || _native->_scrollers[1]))
+		layoutScrollers(_native);
+}
+
 - (BOOL)acceptsFirstResponder
 {
 	return YES;
@@ -125,7 +190,13 @@ namespace nppmac::ui
 
 - (BOOL)isOpaque
 {
-	return YES;
+	return !(_native && _native->_seeThrough);
+}
+
+- (NSView*)hitTest:(NSPoint)point
+{
+	NSView* hit = [super hitTest:point];
+	return hit == self && _native && _native->_seeThrough ? nil : hit;
 }
 
 - (void)updateTrackingAreas
@@ -397,11 +468,13 @@ namespace nppmac::ui
 		case NSEventTypeKeyDown:
 		case NSEventTypeKeyUp:
 		{
-			// Command-Q quits and Command-Tab style system keys stay the system's; every other key
-			// goes to the window manager, so that TranslateAccelerator sees it first, as on Windows.
+			// The application menu's own keys (Command-Q, Command-H, Command-, for Settings) stay the
+			// menu's; every other key goes to the window manager, so that TranslateAccelerator sees it
+			// first, as on Windows.
 			const NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
 			NSString* plain = event.charactersIgnoringModifiers.lowercaseString;
-			if (event.type == NSEventTypeKeyDown && flags == NSEventModifierFlagCommand && ([plain isEqualToString:@"q"] || [plain isEqualToString:@"h"]))
+			if (event.type == NSEventTypeKeyDown && flags == NSEventModifierFlagCommand
+				&& ([plain isEqualToString:@"q"] || [plain isEqualToString:@"h"] || [plain isEqualToString:@","]))
 			{
 				[super sendEvent:event];
 				return;
@@ -551,7 +624,7 @@ namespace
 			}
 			CGContextRelease(native->_surface);
 		}
-		else
+		else if (!native->_seeThrough)
 		{
 			CGContextSetRGBFillColor(surface, 0.94, 0.94, 0.94, 1);
 			CGContextFillRect(surface, CGRectMake(0, 0, width * scale, height * scale));
@@ -603,6 +676,11 @@ namespace nppmac::ui
 			if (std::getenv("NPPMAC_DUMP_TREE"))
 			{
 				windowManagerDumpTree();
+				for (NSWindow* window in NSApp.orderedWindows)
+				{
+					std::fprintf(stderr, "NSWindow %s visible=%d frame=%s\n", NSStringFromClass(window.class).UTF8String, window.isVisible ? 1 : 0,
+						NSStringFromRect(window.frame).UTF8String);
+				}
 				dumpMenuBar(NSApp.mainMenu, 0);
 			}
 			for (NSWindow* window in NSApp.orderedWindows)
@@ -624,7 +702,7 @@ namespace nppmac::ui
 
 	// Debugging aid: NPPMAC_TEST_TYPE=<text> types the text into the key window after NPPMAC_TEST_TYPE_DELAY
 	// seconds (default 2), as key events going through the application like the user's; '\n' is Return
-	// and '^' makes the next character a Command shortcut ("^s" is ⌘S).
+	// and ESC is Escape, and '^' makes the next character a Command shortcut ("^s" is ⌘S).
 	void scheduleTyping()
 	{
 		const char* text = std::getenv("NPPMAC_TEST_TYPE");
@@ -633,28 +711,49 @@ namespace nppmac::ui
 		const char* delayText = std::getenv("NPPMAC_TEST_TYPE_DELAY");
 		const double delay = delayText ? std::atof(delayText) : 2.0;
 		NSString* characters = [NSString stringWithUTF8String:text];
-		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
-			NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
-			for (NSUInteger i = 0; i < characters.length; ++i)
+		// One key every 50 ms, each to the key window of its moment, as a person types: a key that
+		// opens a dialog is followed by keys for the dialog.
+		constexpr double keyInterval = 0.05;
+		int keyIndex = 0;
+		for (NSUInteger i = 0; i < characters.length; ++i)
+		{
+			NSEventModifierFlags modifiers = 0;
+			if ([characters characterAtIndex:i] == '^' && i + 1 < characters.length)
 			{
-				NSEventModifierFlags modifiers = 0;
-				if ([characters characterAtIndex:i] == '^' && i + 1 < characters.length)
-				{
-					modifiers = NSEventModifierFlagCommand;
-					++i;
-				}
-				NSString* character = [characters substringWithRange:NSMakeRange(i, 1)];
-				const bool isReturn = [character isEqualToString:@"\n"];
-				if (isReturn)
-					character = @"\r";
-				const unsigned short keyCode = isReturn ? 36 : 0;
+				modifiers = NSEventModifierFlagCommand;
+				++i;
+			}
+			NSString* character = [characters substringWithRange:NSMakeRange(i, 1)];
+			const bool isReturn = [character isEqualToString:@"\n"];
+			const bool isEscape = [character isEqualToString:@"\x1b"];
+			if (isReturn)
+				character = @"\r";
+			const unsigned short keyCode = isReturn ? 36 : (isEscape ? 53 : 0);
+			NSTimer* timer = [NSTimer timerWithTimeInterval:delay + keyIndex++ * keyInterval repeats:NO block:^(NSTimer*) {
+				NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
 				for (NSEventType type : {NSEventTypeKeyDown, NSEventTypeKeyUp})
 				{
 					NSEvent* event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers timestamp:NSProcessInfo.processInfo.systemUptime
 						windowNumber:window.windowNumber context:nil characters:character charactersIgnoringModifiers:character isARepeat:NO keyCode:keyCode];
 					[NSApp sendEvent:event];
 				}
-			}
+			}];
+			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+		}
+	}
+
+	// Debugging aid: NPPMAC_TEST_COMMAND=<id> sends that menu command after NPPMAC_TEST_COMMAND_DELAY
+	// seconds (default 2), for dialogs without a shortcut.
+	void scheduleCommand()
+	{
+		const char* command = std::getenv("NPPMAC_TEST_COMMAND");
+		if (!command || !*command)
+			return;
+		const char* delayText = std::getenv("NPPMAC_TEST_COMMAND_DELAY");
+		const double delay = delayText ? std::atof(delayText) : 2.0;
+		const int id = std::atoi(command);
+		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
+			windowManagerTestCommand(id);
 		}];
 		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 	}
@@ -682,6 +781,32 @@ namespace nppmac::ui
 		g_windowDelegate = [[NppMacWindowDelegate alloc] init];
 		scheduleSnapshot();
 		scheduleTyping();
+		scheduleCommand();
+	}
+
+	// The NSWindow of a top-level or popup view; its content is a new surface view, or the given one.
+	void createWindow(NativeView* native, ViewKind kind, const UiRect& frame, const TopLevelStyle& style, NppMacView* content)
+	{
+		const NSUInteger mask = styleMask(kind, style);
+		const NSRect contentRect = [NSWindow contentRectForFrameRect:toCocoaScreenRect(frame) styleMask:mask];
+		NppMacWindow* window = [[NppMacWindow alloc] initWithContentRect:contentRect styleMask:mask backing:NSBackingStoreBuffered defer:NO];
+		window->_native = native;
+		window->_borderless = (mask == NSWindowStyleMaskBorderless);
+		window.releasedWhenClosed = NO;
+		window.delegate = g_windowDelegate;
+		window.acceptsMouseMovedEvents = YES;
+		window.tabbingMode = NSWindowTabbingModeDisallowed;
+		if (style._topMost || kind == ViewKind::popup)
+			window.level = kind == ViewKind::popup ? NSPopUpMenuWindowLevel : NSFloatingWindowLevel;
+		if (style._toolWindow)
+			window.hidesOnDeactivate = NO;
+		if (!content)
+			content = createSurfaceView(native, NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height));
+		window.contentView = content;
+		content.hidden = NO;
+		native->_kind = kind;
+		native->_window = window;
+		native->_view = content;
 	}
 
 	NativeView* createView(ViewOwner* owner, ViewKind kind, NativeView* parent, const UiRect& frame, const TopLevelStyle& style)
@@ -700,23 +825,7 @@ namespace nppmac::ui
 			return native;
 		}
 
-		const NSUInteger mask = styleMask(kind, style);
-		const NSRect contentRect = [NSWindow contentRectForFrameRect:toCocoaScreenRect(frame) styleMask:mask];
-		NppMacWindow* window = [[NppMacWindow alloc] initWithContentRect:contentRect styleMask:mask backing:NSBackingStoreBuffered defer:NO];
-		window->_native = native;
-		window->_borderless = (mask == NSWindowStyleMaskBorderless);
-		window.releasedWhenClosed = NO;
-		window.delegate = g_windowDelegate;
-		window.acceptsMouseMovedEvents = YES;
-		window.tabbingMode = NSWindowTabbingModeDisallowed;
-		if (style._topMost || kind == ViewKind::popup)
-			window.level = kind == ViewKind::popup ? NSPopUpMenuWindowLevel : NSFloatingWindowLevel;
-		if (style._toolWindow)
-			window.hidesOnDeactivate = NO;
-		NppMacView* content = createSurfaceView(native, NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height));
-		window.contentView = content;
-		native->_window = window;
-		native->_view = content;
+		createWindow(native, kind, frame, style, nil);
 		return native;
 	}
 
@@ -748,6 +857,11 @@ namespace nppmac::ui
 			g_captureView = nullptr;
 		if ([native->_view isKindOfClass:NppMacView.class])
 			static_cast<NppMacView*>(native->_view)->_native = nullptr;
+		for (NSScroller* scroller : native->_scrollers)
+		{
+			if (scroller)
+				static_cast<NppMacScroller*>(scroller)->_native = nullptr;
+		}
 		if (native->_window)
 		{
 			static_cast<NppMacWindow*>(native->_window)->_native = nullptr;
@@ -814,13 +928,41 @@ namespace nppmac::ui
 			static_cast<NSControl*>(native->_view).enabled = enabled;
 	}
 
-	void setParent(NativeView* native, NativeView* newParent)
+	void setParent(NativeView* native, NativeView* newParent, const UiRect& frame, const TopLevelStyle& style, bool visible)
 	{
-		if (!native || native->_window)
+		if (!native)
 			return;
-		[native->_view removeFromSuperview];
+		NSView* view = native->_view;
+		if (native->_window)
+		{
+			if (!newParent)
+				return;
+			// A top-level window becomes a child: its content view moves, its NSWindow goes.
+			NppMacWindow* window = static_cast<NppMacWindow*>(native->_window);
+			window->_native = nullptr;
+			window.delegate = nil;
+			window.contentView = [[NSView alloc] initWithFrame:NSZeroRect];
+			[window orderOut:nil];
+			[window close];
+			native->_window = nil;
+			native->_kind = ViewKind::child;
+		}
+		[view removeFromSuperview];
 		if (newParent && newParent->_view)
-			[newParent->_view addSubview:native->_view positioned:NSWindowAbove relativeTo:nil];
+		{
+			// A content view resizes with its window; a child is placed by the window manager.
+			view.autoresizingMask = NSViewNotSizable;
+			view.hidden = !visible;
+			[newParent->_view addSubview:view positioned:NSWindowAbove relativeTo:nil];
+			return;
+		}
+		// A child becomes a top-level window.
+		if (!native->_adopted && [view isKindOfClass:NppMacView.class])
+		{
+			createWindow(native, ViewKind::topLevel, frame, style, static_cast<NppMacView*>(view));
+			if (visible)
+				[native->_window orderFront:nil];
+		}
 	}
 
 	void orderView(NativeView* native, bool front, NativeView* above)
@@ -972,6 +1114,79 @@ namespace nppmac::ui
 			[native->_window deminiaturize:nil];
 		else if (native->_window.isZoomed)
 			[native->_window zoom:nil];
+	}
+
+	int scrollBarThickness()
+	{
+		return static_cast<int>(std::lround([NSScroller scrollerWidthForControlSize:NSControlSizeRegular scrollerStyle:NSScrollerStyleLegacy]));
+	}
+
+	// The scroll bars sit at the right and bottom edges, above the view's children.
+	void layoutScrollers(NativeView* native)
+	{
+		if (!native || !native->_view)
+			return;
+		const NSRect bounds = native->_view.bounds;
+		const CGFloat thickness = scrollBarThickness();
+		const bool horizontal = native->_scrollStates[0]._visible;
+		const bool vertical = native->_scrollStates[1]._visible;
+		if (NSScroller* scroller = native->_scrollers[1])
+		{
+			scroller.frame = NSMakeRect(bounds.size.width - thickness, 0, thickness, std::max<CGFloat>(0, bounds.size.height - (horizontal ? thickness : 0)));
+			scroller.hidden = !vertical;
+			[native->_view addSubview:scroller positioned:NSWindowAbove relativeTo:nil];
+		}
+		if (NSScroller* scroller = native->_scrollers[0])
+		{
+			scroller.frame = NSMakeRect(0, bounds.size.height - thickness, std::max<CGFloat>(0, bounds.size.width - (vertical ? thickness : 0)), thickness);
+			scroller.hidden = !horizontal;
+			[native->_view addSubview:scroller positioned:NSWindowAbove relativeTo:nil];
+		}
+	}
+
+	void setScrollBar(NativeView* native, bool vertical, const ScrollBarState& state)
+	{
+		if (!native || native->_adopted || !native->_view)
+			return;
+		const int index = vertical ? 1 : 0;
+		native->_scrollStates[index] = state;
+		NSScroller* scroller = native->_scrollers[index];
+		if (!scroller && state._visible)
+		{
+			// The frame's shape tells NSScroller which way it scrolls.
+			NppMacScroller* created = [[NppMacScroller alloc] initWithFrame:vertical ? NSMakeRect(0, 0, 15, 100) : NSMakeRect(0, 0, 100, 15)];
+			created->_native = native;
+			created->_vertical = vertical;
+			created.scrollerStyle = NSScrollerStyleLegacy;
+			created.target = created;
+			created.action = @selector(scrolled:);
+			native->_scrollers[index] = created;
+			scroller = created;
+		}
+		if (!scroller)
+			return;
+		scroller.enabled = state._enabled && state._proportion < 1;
+		scroller.doubleValue = std::clamp(state._value, 0.0, 1.0);
+		scroller.knobProportion = std::clamp(state._proportion, 0.0, 1.0);
+		layoutScrollers(native);
+	}
+
+	void setSeeThrough(NativeView* native, bool seeThrough)
+	{
+		if (!native || native->_adopted || native->_seeThrough == seeThrough)
+			return;
+		native->_seeThrough = seeThrough;
+		native->_view.needsDisplay = YES;
+	}
+
+	void clearSurface(NativeView* native, const UiRect& rect)
+	{
+		if (!native)
+			return;
+		ensureSurface(native);
+		if (!native->_surface)
+			return;
+		CGContextClearRect(native->_surface, CGRectMake(rect._left, rect._top, rect.width(), rect.height()));
 	}
 
 	void* surfaceContext(NativeView* native)

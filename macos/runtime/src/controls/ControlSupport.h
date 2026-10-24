@@ -86,5 +86,36 @@ namespace nppmac::controls
 		return size.cx;
 	}
 
-	void registerControl(const char16_t* name, WNDPROC proc, UINT style = CS_DBLCLKS);
+	// A ComboLBox tells its combo box which item was clicked (wParam: the index).
+	constexpr UINT comboListChosen = WM_APP + 0x3F01;
+	// A list view tells its header how far it is scrolled sideways (wParam: pixels).
+	constexpr UINT headerScrolled = WM_APP + 0x3F02;
+
+	// Asks the parent for the control's colors with a WM_CTLCOLOR* message, as Windows controls do:
+	// the parent sets the DC's text and background colors and returns the background brush.
+	inline HBRUSH controlColors(HWND hwnd, HDC hdc, UINT message)
+	{
+		HWND parent = GetParent(hwnd);
+		const WPARAM dc = reinterpret_cast<WPARAM>(hdc);
+		const LPARAM control = reinterpret_cast<LPARAM>(hwnd);
+		auto brush = reinterpret_cast<HBRUSH>(parent ? SendMessageW(parent, message, dc, control) : 0);
+		return brush ? brush : reinterpret_cast<HBRUSH>(DefWindowProcW(hwnd, message, dc, control));
+	}
+
+	// WM_COMMAND to the parent with the control's id and a notification code.
+	inline void sendCommand(HWND hwnd, WORD code)
+	{
+		if (HWND parent = GetParent(hwnd))
+			SendMessageW(parent, WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(hwnd), code), reinterpret_cast<LPARAM>(hwnd));
+	}
+
+	inline std::u16string windowText(HWND hwnd)
+	{
+		std::u16string text(static_cast<size_t>(GetWindowTextLengthW(hwnd)), u'\0');
+		if (!text.empty())
+			GetWindowTextW(hwnd, text.data(), static_cast<int>(text.size()) + 1);
+		return text;
+	}
+
+	void registerControl(const char16_t* name, WNDPROC proc, UINT style = CS_DBLCLKS, LPCWSTR cursor = IDC_ARROW);
 }

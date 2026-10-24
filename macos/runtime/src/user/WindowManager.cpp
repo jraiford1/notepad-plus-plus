@@ -205,6 +205,7 @@ namespace nppmac::user
 		const ui::Rect client = ui::clientRectOnScreen(window->_view);
 		window->_clientWidth = client.width();
 		window->_clientHeight = client.height();
+		fitClientToScrollBars(window);
 	}
 
 	void applyGeometry(Window* window, const RECT& rect)
@@ -226,12 +227,14 @@ namespace nppmac::user
 			{
 				window->_clientWidth = rect.right - rect.left;
 				window->_clientHeight = rect.bottom - rect.top;
+				fitClientToScrollBars(window);
 			}
 		}
 		else
 		{
 			window->_clientWidth = std::max<LONG>(0, rect.right - rect.left);
 			window->_clientHeight = std::max<LONG>(0, rect.bottom - rect.top);
+			fitClientToScrollBars(window);
 			if (window->_view)
 				ui::setFrame(window->_view, toUiRect(rect));
 		}
@@ -244,6 +247,15 @@ namespace nppmac::user
 	Window* focusWindow()
 	{
 		return g_focus;
+	}
+
+	void setSeeThrough(HWND hwnd, bool seeThrough)
+	{
+		Window* window = fromHandle(hwnd);
+		if (!window || window->_nativeControl)
+			return;
+		window->_seeThrough = seeThrough;
+		nppmac::ui::setSeeThrough(window->_view, seeThrough);
 	}
 
 	void setFocusWindow(Window* window)
@@ -369,6 +381,16 @@ namespace nppmac::user
 		}
 		return false;
 	}
+}
+
+void nppmac::ui::windowManagerTestCommand(int id)
+{
+	using namespace nppmac::user;
+	Window* target = activeWindow();
+	if (!target && !topLevels().empty())
+		target = topLevels().front();
+	if (target)
+		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }
 
 void nppmac::ui::windowManagerDumpTree()
@@ -707,6 +729,17 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 		SetMenu(window->_hwnd, menu);
 	if (exStyle & WS_EX_ACCEPTFILES)
 		nppmac::ui::setAcceptsFiles(window->_view, true);
+	if (exStyle & WS_EX_TRANSPARENT)
+		setSeeThrough(window->_hwnd, true);
+	// Standard scroll bars start with Windows' default range, 0 to 100.
+	for (SCROLLINFO& scrollBar : window->_scrollBars)
+		scrollBar = {sizeof(SCROLLINFO), 0, 0, 100, 0, 0, 0};
+	if (style & (WS_VSCROLL | WS_HSCROLL))
+		updateScrollBars(window);
+	// Dialog controls do not clip their siblings, so where they overlap, the one Windows paints last,
+	// the later one, is what shows: it is stacked on top of the others on screen (z-order is unchanged).
+	if ((style & WS_CHILD) && !(style & WS_CLIPSIBLINGS) && parent && parent->_class && parent->_class->_name == u"#32770")
+		nppmac::ui::orderView(window->_view, true);
 
 	if (!window->send(WM_NCCREATE, 0, reinterpret_cast<LPARAM>(&create)))
 	{
@@ -846,7 +879,10 @@ HWND WINAPI SetParent(HWND hwnd, HWND newParentHandle)
 		topLevels().insert(topLevels().begin(), window);
 	}
 	if (window->_view)
-		nppmac::ui::setParent(window->_view, newParent ? newParent->_view : nullptr);
+	{
+		nppmac::ui::setParent(window->_view, newParent ? newParent->_view : nullptr, {window->_rect.left, window->_rect.top, window->_rect.right, window->_rect.bottom},
+			topLevelStyle(window->_style, window->_exStyle), window->_visible);
+	}
 	applyGeometry(window, window->_rect);
 	return previous;
 }
@@ -1105,6 +1141,8 @@ LONG_PTR WINAPI SetWindowLongPtrW(HWND hwnd, int index, LONG_PTR value)
 				nppmac::ui::setVisible(window->_view, window->_visible, false);
 			}
 			nppmac::ui::setEnabled(window->_view, !(window->_style & WS_DISABLED));
+			if ((styles.styleOld ^ styles.styleNew) & (WS_VSCROLL | WS_HSCROLL))
+				updateScrollBars(window);
 			window->send(WM_STYLECHANGED, GWL_STYLE, reinterpret_cast<LPARAM>(&styles));
 			break;
 		}

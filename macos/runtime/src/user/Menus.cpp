@@ -734,8 +734,10 @@ BOOL WINAPI SetMenuInfo(HMENU handle, LPCMENUINFO info)
 
 HMENU WINAPI GetMenu(HWND hwnd)
 {
+	// A child window's id and a top-level window's menu are the same field, as on Windows, where
+	// GetMenu on a child returns its id (BabyGrid finds its grids this way).
 	Window* window = fromHandle(hwnd);
-	return window && window->isTopLevel() ? reinterpret_cast<HMENU>(window->_id) : nullptr;
+	return window ? reinterpret_cast<HMENU>(window->_id) : nullptr;
 }
 
 BOOL WINAPI SetMenu(HWND hwnd, HMENU handle)

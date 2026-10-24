@@ -16,6 +16,9 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <unistd.h>
 
 #include "Platform.h"
@@ -195,5 +198,195 @@ namespace nppmac::platform
 		const NSModalResponse response = [alert runModal];
 		const int position = static_cast<int>(response - NSAlertFirstButtonReturn);
 		return position >= 0 && position < static_cast<int>(order.size()) ? order[static_cast<size_t>(position)] : escapeButton;
+	}
+}
+
+
+@interface NppMacFilePanelAccessory : NSObject
+{
+@public
+	NSPopUpButton* _fileTypes;
+	std::vector<NSButton*> _checkBoxes;
+}
+@end
+
+@implementation NppMacFilePanelAccessory
+@end
+
+namespace nppmac::platform
+{
+	namespace
+	{
+		NSString* toNSString(const std::string& text)
+		{
+			return [NSString stringWithUTF8String:text.c_str()] ?: @"";
+		}
+
+		// The file type menu and the program's check boxes, stacked under each other.
+		NSView* createAccessory(const FilePanelRequest& request, NppMacFilePanelAccessory* accessory)
+		{
+			NSStackView* stack = [[NSStackView alloc] init];
+			stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+			stack.alignment = NSLayoutAttributeLeading;
+			stack.edgeInsets = NSEdgeInsetsMake(8, 16, 8, 16);
+			stack.spacing = 6;
+			if (request._save && request._fileTypeNames.size() > 1)
+			{
+				NSStackView* row = [[NSStackView alloc] init];
+				row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+				[row addView:[NSTextField labelWithString:@"Save as type:"] inGravity:NSStackViewGravityLeading];
+				NSPopUpButton* fileTypes = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+				for (const std::string& name : request._fileTypeNames)
+					[fileTypes addItemWithTitle:toNSString(name)];
+				// Titles must be unique in a pop-up button; repeated names are added as menu items.
+				if (fileTypes.numberOfItems != static_cast<NSInteger>(request._fileTypeNames.size()))
+				{
+					[fileTypes removeAllItems];
+					for (const std::string& name : request._fileTypeNames)
+						[fileTypes.menu addItemWithTitle:toNSString(name) action:nil keyEquivalent:@""];
+				}
+				if (request._fileTypeIndex >= 0 && request._fileTypeIndex < fileTypes.numberOfItems)
+					[fileTypes selectItemAtIndex:request._fileTypeIndex];
+				[row addView:fileTypes inGravity:NSStackViewGravityLeading];
+				[stack addView:row inGravity:NSStackViewGravityLeading];
+				accessory->_fileTypes = fileTypes;
+			}
+			for (const FilePanelCheckBox& checkBox : request._checkBoxes)
+			{
+				NSButton* button = [NSButton checkboxWithTitle:toNSString(checkBox._label) target:nil action:nil];
+				button.state = checkBox._checked ? NSControlStateValueOn : NSControlStateValueOff;
+				button.enabled = checkBox._enabled;
+				[stack addView:button inGravity:NSStackViewGravityLeading];
+				accessory->_checkBoxes.push_back(button);
+			}
+			if (stack.views.count == 0)
+				return nil;
+			stack.frame = NSMakeRect(0, 0, 400, stack.fittingSize.height);
+			return stack;
+		}
+	}
+
+	FilePanelResult runFilePanel(const FilePanelRequest& request)
+	{
+		FilePanelResult result;
+		result._fileTypeIndex = request._fileTypeIndex;
+		result._checkBoxes = request._checkBoxes;
+		if (const char* testPath = std::getenv("NPPMAC_TEST_FILE_PANEL"))
+		{
+			result._ok = *testPath != '\0';
+			if (result._ok)
+				result._paths.push_back(testPath);
+			return result;
+		}
+
+		NSSavePanel* panel = nil;
+		if (request._save)
+		{
+			panel = [NSSavePanel savePanel];
+			panel.allowsOtherFileTypes = YES;
+			panel.extensionHidden = NO;
+			panel.nameFieldStringValue = toNSString(request._fileName);
+		}
+		else
+		{
+			NSOpenPanel* openPanel = [NSOpenPanel openPanel];
+			openPanel.allowsMultipleSelection = request._multipleSelection;
+			openPanel.canChooseDirectories = request._pickFolders;
+			openPanel.canChooseFiles = !request._pickFolders;
+			openPanel.canCreateDirectories = request._pickFolders;
+			openPanel.resolvesAliases = YES;
+			panel = openPanel;
+		}
+		panel.showsHiddenFiles = YES;
+		if (!request._title.empty())
+			panel.message = toNSString(request._title);
+		if (!request._directory.empty())
+			panel.directoryURL = [NSURL fileURLWithPath:toNSString(request._directory) isDirectory:YES];
+
+		NppMacFilePanelAccessory* accessory = [[NppMacFilePanelAccessory alloc] init];
+		if (NSView* view = createAccessory(request, accessory))
+		{
+			panel.accessoryView = view;
+			if ([panel isKindOfClass:NSOpenPanel.class])
+				static_cast<NSOpenPanel*>(panel).accessoryViewDisclosed = YES;
+		}
+
+		[NSApp activateIgnoringOtherApps:YES];
+		if ([panel runModal] != NSModalResponseOK)
+			return result;
+
+		result._ok = true;
+		if ([panel isKindOfClass:NSOpenPanel.class])
+		{
+			for (NSURL* url in static_cast<NSOpenPanel*>(panel).URLs)
+				result._paths.push_back(url.path.UTF8String);
+		}
+		else if (panel.URL)
+		{
+			result._paths.push_back(panel.URL.path.UTF8String);
+		}
+		if (accessory->_fileTypes)
+			result._fileTypeIndex = static_cast<int>(accessory->_fileTypes.indexOfSelectedItem);
+		for (size_t i = 0; i < accessory->_checkBoxes.size(); ++i)
+			result._checkBoxes[i]._checked = accessory->_checkBoxes[i].state == NSControlStateValueOn;
+		return result;
+	}
+}
+
+@interface NppMacColorPanelButtons : NSObject
+@end
+
+@implementation NppMacColorPanelButtons
+
+- (void)ok:(id)sender
+{
+	[NSApp stopModalWithCode:NSModalResponseOK];
+}
+
+- (void)cancel:(id)sender
+{
+	[NSApp stopModalWithCode:NSModalResponseCancel];
+}
+
+@end
+
+namespace nppmac::platform
+{
+	bool chooseColor(unsigned& rgb)
+	{
+		if (const char* testColor = std::getenv("NPPMAC_TEST_COLOR"))
+		{
+			rgb = static_cast<unsigned>(std::strtoul(testColor, nullptr, 16)) & 0xFFFFFF;
+			return true;
+		}
+
+		NSColorPanel* panel = NSColorPanel.sharedColorPanel;
+		panel.showsAlpha = NO;
+		panel.color = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:1];
+
+		// The panel has no buttons of its own; a modal run needs OK and Cancel.
+		NppMacColorPanelButtons* target = [[NppMacColorPanelButtons alloc] init];
+		NSButton* cancel = [NSButton buttonWithTitle:@"Cancel" target:target action:@selector(cancel:)];
+		cancel.keyEquivalent = @"\033";
+		NSButton* ok = [NSButton buttonWithTitle:@"OK" target:target action:@selector(ok:)];
+		ok.keyEquivalent = @"\r";
+		NSStackView* buttons = [NSStackView stackViewWithViews:@[cancel, ok]];
+		buttons.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
+		buttons.frame = NSMakeRect(0, 0, 220, buttons.fittingSize.height);
+		NSView* previousAccessory = panel.accessoryView;
+		panel.accessoryView = buttons;
+
+		[NSApp activateIgnoringOtherApps:YES];
+		const NSModalResponse response = [NSApp runModalForWindow:panel];
+		[panel orderOut:nil];
+		panel.accessoryView = previousAccessory;
+		if (response != NSModalResponseOK)
+			return false;
+		NSColor* color = [panel.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+		if (!color)
+			return false;
+		const auto channel = [](CGFloat value) { return static_cast<unsigned>(std::lround(std::clamp(value, 0.0, 1.0) * 255)); };
+		rgb = (channel(color.redComponent) << 16) | (channel(color.greenComponent) << 8) | channel(color.blueComponent);
+		return true;
 	}
 }

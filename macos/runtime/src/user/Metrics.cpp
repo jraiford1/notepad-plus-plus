@@ -375,7 +375,7 @@ BOOL WINAPI GetMonitorInfoW(HMONITOR, LPMONITORINFO info)
 	return TRUE;
 }
 
-BOOL WINAPI EnumDisplayMonitors(HDC, LPCRECT, MONITORENUMPROC callback, LPARAM parameter)
+BOOL WINAPI EnumDisplayMonitors(HDC, LPRECT, MONITORENUMPROC callback, LPARAM parameter)
 {
 	const ui::Rect screen = ui::mainScreenRect();
 	RECT rect{screen._left, screen._top, screen._right, screen._bottom};

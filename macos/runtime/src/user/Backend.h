@@ -78,6 +78,28 @@ namespace nppmac::ui
 	};
 
 	// Implemented by the window manager for each window; called by the native side.
+	// What the user did on a standard scroll bar.
+	enum class ScrollPart
+	{
+		lineUp,
+		lineDown,
+		pageUp,
+		pageDown,
+		thumbTrack,
+		thumbPosition,
+		end,
+	};
+
+	// A standard scroll bar (WS_VSCROLL / WS_HSCROLL): value is where the thumb is (0 to 1) and
+	// proportion how much of the content shows (0 to 1).
+	struct ScrollBarState
+	{
+		bool _visible = false;
+		bool _enabled = true;
+		double _value = 0;
+		double _proportion = 1;
+	};
+
 	class ViewOwner
 	{
 	public:
@@ -103,6 +125,9 @@ namespace nppmac::ui
 
 		// The view accepts dropped files.
 		virtual bool nativeAcceptsFiles() const = 0;
+
+		// The user worked a standard scroll bar; value is the thumb's place (0 to 1) when dragging.
+		virtual void nativeScroll(bool vertical, ScrollPart part, double value) = 0;
 	};
 
 	// Creates the application object (an NSApplication subclass that routes keys to the window
@@ -137,7 +162,9 @@ namespace nppmac::ui
 	void setVisible(NativeView* view, bool visible, bool activate);
 	void setTitle(NativeView* view, const std::u16string& title);
 	void setEnabled(NativeView* view, bool enabled);
-	void setParent(NativeView* view, NativeView* newParent);
+	// Moves a view under a new parent. A top-level window becoming a child gives up its NSWindow; a
+	// child becoming top-level (no parent) gets one, with the frame (screen) and style given.
+	void setParent(NativeView* view, NativeView* newParent, const Rect& frame, const TopLevelStyle& style, bool visible);
 	// Moves the view above (front == true) or below its siblings, or right above another sibling.
 	void orderView(NativeView* view, bool front, NativeView* above = nullptr);
 
@@ -160,7 +187,17 @@ namespace nppmac::ui
 	// The surface a custom-drawn view paints into: a CGContextRef with a top-left origin in points,
 	// already scaled for the display. Valid until the view is resized or destroyed.
 	void* surfaceContext(NativeView* view);
-	// Clears the parts of the surface that the next paint will redraw is the owner's job (WM_ERASEBKGND).
+
+	// A see-through view (a group box, WS_EX_TRANSPARENT): what it does not paint shows the views
+	// under it, and the mouse goes through it to them, as HTTRANSPARENT does on Windows. Its surface
+	// is cleared before each paint.
+	void setSeeThrough(NativeView* view, bool seeThrough);
+
+	// Standard scroll bars, shown at the right and bottom edges of the view, over its content: the
+	// window manager makes the client area smaller by their thickness, as Windows' non-client area.
+	void setScrollBar(NativeView* view, bool vertical, const ScrollBarState& state);
+	int scrollBarThickness();
+	void clearSurface(NativeView* view, const Rect& rect);
 
 	// For built-in classes backed by a native control (Scintilla, buttons, edits...): the window
 	// manager hands over an NSView created elsewhere (as an opaque pointer) to place in the hierarchy.
@@ -224,6 +261,8 @@ namespace nppmac::ui
 	void windowManagerKeyEvent(const KeyEvent& event);
 	// Debugging aid: prints the window tree (class, id, rectangle, visibility) to stderr.
 	void windowManagerDumpTree();
+	// Test aid: sends WM_COMMAND with the id to the active top-level window.
+	void windowManagerTestCommand(int id);
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);
 	// Text committed by an input method or a character picker, outside key events.
 	void windowManagerInsertText(const std::u16string& text);

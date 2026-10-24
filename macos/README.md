@@ -73,11 +73,15 @@ Tracked as job J1 in the work tracker. Today:
   bar as on Windows, and Notepad++'s menus are in the macOS menu bar;
 * files given on the command line open; typing, shortcuts (⌘ acts as Ctrl) and saving work, and
   ANSI code pages decode through iconv;
-* not yet: the Open/Save As dialogs and Notepad++'s own dialogs (W5), visual styles and dark mode
-  (W6), printing.
+* Notepad++'s dialogs and panels work: the Open and Save As dialogs are the macOS panels, and
+  upstream's own dialogs (Find, Preferences, Style Configurator, Shortcut Mapper, Go To, About,
+  Windows…) and docking panels (Function List, Document List…) run on the runtime's controls:
+  button, static, edit, list box, combo box, tree view, list view and header, trackbar, progress,
+  up-down, link, tooltip and standard scroll bars, drawn as Windows 10 draws them;
+* not yet: dark mode and visual styles (W6), printing, IME, plugins (W8).
 
-About 20 Win32 functions are still weak stubs (scroll bars, printing, IME, color/print dialogs); the
-build lists them as `Win32 functions still stubbed`.
+About ten Win32 functions are still weak stubs (printing, IME, plugin loading, directory change
+notifications); the build lists them as `Win32 functions still stubbed`.
 
 ## Debugging
 
@@ -87,8 +91,10 @@ Environment variables read by the runtime:
 |---|---|
 | `NPPMAC_TEST_RUN=1` | a crash prints a backtrace and exits, without the macOS crash report dialog |
 | `NPPMAC_SNAPSHOT=<file.png>` | renders the front window to a PNG after `NPPMAC_SNAPSHOT_DELAY` seconds (default 5); `NPPMAC_SNAPSHOT_EXIT=1` then quits |
-| `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S |
-| `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree and the menu bar |
+| `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
+| `NPPMAC_TEST_COMMAND=<id>` | sends a menu command (`IDM_*` value) after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
+| `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
+| `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree, the native windows and the menu bar |
 | `NPPMAC_TRACE_PAINT=1`, `NPPMAC_TRACE_MESSAGEBOX=1`, `NPPMAC_TRACE_WINDOWS=1` | trace painting, message boxes, window creation |
 | `NPPMAC_QUIET_STUBS=1` | do not log calls to stubbed functions |
 

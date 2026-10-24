@@ -17,6 +17,11 @@
 // The "Scintilla" window class (Scintilla_RegisterClasses), over Scintilla's own Cocoa view.
 // SCI_* messages go to Scintilla, as does the direct function upstream fetches with
 // SCI_GETDIRECTFUNCTION; Scintilla's notifications reach the parent as WM_NOTIFY and WM_COMMAND.
+//
+// Both paths go through sendToScintilla, which converts font sizes: Notepad++ gives them in
+// Windows points, which are 96/72 of a pixel, and the runtime's pixel is a macOS point, the unit
+// Scintilla's Cocoa layer sizes fonts in. Without this, text would be a quarter smaller than on
+// Windows.
 
 #include "user/Window.h"
 #include "ScintillaBridge.h"
@@ -31,8 +36,49 @@ namespace
 	struct ScintillaData
 	{
 		void* _view = nullptr;
+		SciFnDirect _direct = nullptr;  // Scintilla's own direct function and pointer
+		sptr_t _directPointer = 0;
 		bool _swallowCharacters = false; // the key's characters already went to Scintilla with the key
 	};
+
+	constexpr intptr_t windowsPointsPerInch = 72;
+	constexpr intptr_t windowsPixelsPerInch = 96;
+
+	intptr_t toScintillaFontSize(intptr_t size)
+	{
+		return size * windowsPixelsPerInch / windowsPointsPerInch;
+	}
+
+	intptr_t fromScintillaFontSize(intptr_t size)
+	{
+		return (size * windowsPointsPerInch + windowsPixelsPerInch / 2) / windowsPixelsPerInch;
+	}
+
+	sptr_t sendToScintilla(const ScintillaData& data, unsigned int message, uptr_t wParam, sptr_t lParam)
+	{
+		switch (message)
+		{
+			case SCI_STYLESETSIZE:
+				return data._direct(data._directPointer, SCI_STYLESETSIZEFRACTIONAL, wParam, toScintillaFontSize(lParam * SC_FONT_SIZE_MULTIPLIER));
+			case SCI_STYLESETSIZEFRACTIONAL:
+				return data._direct(data._directPointer, message, wParam, toScintillaFontSize(lParam));
+			case SCI_STYLEGETSIZE:
+			{
+				const intptr_t size = fromScintillaFontSize(data._direct(data._directPointer, SCI_STYLEGETSIZEFRACTIONAL, wParam, 0));
+				return (size + SC_FONT_SIZE_MULTIPLIER / 2) / SC_FONT_SIZE_MULTIPLIER;
+			}
+			case SCI_STYLEGETSIZEFRACTIONAL:
+				return fromScintillaFontSize(data._direct(data._directPointer, message, wParam, lParam));
+			default:
+				return data._direct(data._directPointer, message, wParam, lParam);
+		}
+	}
+
+	// What SCI_GETDIRECTFUNCTION hands out; the pointer is the window's ScintillaData.
+	sptr_t directFunction(sptr_t pointer, unsigned int message, uptr_t wParam, sptr_t lParam)
+	{
+		return sendToScintilla(*reinterpret_cast<const ScintillaData*>(pointer), message, wParam, lParam);
+	}
 
 	ScintillaData* dataOf(Window* window)
 	{
@@ -72,8 +118,12 @@ namespace
 		if (!data || !data->_view)
 			return DefWindowProcW(hwnd, message, wParam, lParam);
 
+		if (message == SCI_GETDIRECTFUNCTION)
+			return reinterpret_cast<LRESULT>(&directFunction);
+		if (message == SCI_GETDIRECTPOINTER)
+			return reinterpret_cast<LRESULT>(data);
 		if (message >= SCI_START && message < 5000)
-			return nppmac::scintilla::message(data->_view, message, wParam, lParam);
+			return sendToScintilla(*data, message, wParam, lParam);
 
 		switch (message)
 		{
@@ -135,6 +185,8 @@ namespace nppmac::user
 			auto data = std::make_shared<ScintillaData>();
 			data->_view = nppmac::scintilla::createView(reinterpret_cast<intptr_t>(window._hwnd), notify, contextMenu);
 			window._controlData = data;
+			data->_direct = reinterpret_cast<SciFnDirect>(nppmac::scintilla::message(data->_view, SCI_GETDIRECTFUNCTION, 0, 0));
+			data->_directPointer = nppmac::scintilla::message(data->_view, SCI_GETDIRECTPOINTER, 0, 0);
 			nppmac::scintilla::message(data->_view, SCI_SETIDENTIFIER, window._id, 0);
 			return data->_view;
 		};

@@ -482,9 +482,9 @@ int WINAPI SHCreateDirectoryExW(HWND, LPCWSTR path, LPSECURITY_ATTRIBUTES)
 	return ERROR_SUCCESS;
 }
 
-int WINAPI SHCreateDirectory(HWND window, LPCWSTR path)
+DWORD WINAPI SHCreateDirectory(HWND window, LPCVOID path)
 {
-	return SHCreateDirectoryExW(window, path, nullptr);
+	return static_cast<DWORD>(SHCreateDirectoryExW(window, static_cast<LPCWSTR>(path), nullptr));
 }
 
 int WINAPI SHFileOperationW(LPSHFILEOPSTRUCTW operation)
@@ -670,21 +670,6 @@ HRESULT WINAPI CoInitialize(LPVOID reserved)
 
 void WINAPI CoUninitialize()
 {
-}
-
-// No COM classes are registered yet: callers take their fallback paths, as on a Windows without them.
-HRESULT WINAPI CoCreateInstance(REFCLSID, LPUNKNOWN, DWORD, REFIID, LPVOID* object)
-{
-	if (object)
-		*object = nullptr;
-	return REGDB_E_CLASSNOTREG;
-}
-
-HRESULT WINAPI SHCreateItemFromParsingName(PCWSTR, IBindCtx*, REFIID, void** item)
-{
-	if (item)
-		*item = nullptr;
-	return E_NOTIMPL;
 }
 
 HRESULT WINAPI OleInitialize(LPVOID)

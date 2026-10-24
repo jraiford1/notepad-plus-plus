@@ -43,6 +43,7 @@ namespace nppmac::user
 		{
 			KeyboardState _keys{};
 			std::u16string _characters;
+			bool _toFocus = false; // keyboard input: for the window that has the focus when it is read
 		};
 
 		struct QueuedMessage
@@ -224,6 +225,13 @@ namespace nppmac::user
 			auto& messages = queue();
 			for (auto it = messages.begin(); it != messages.end(); ++it)
 			{
+				// As on Windows, keyboard input goes to the window that has the focus when it is read,
+				// so keys typed ahead of a dialog reach the dialog.
+				if (it->_input && it->_input->_toFocus)
+				{
+					Window* focus = focusWindow() ? focusWindow() : activeWindow();
+					it->_msg.hwnd = focus ? focus->_hwnd : nullptr;
+				}
 				if (!matches(it->_msg, hwnd, filterMin, filterMax))
 					continue;
 				*msg = it->_msg;
@@ -429,6 +437,23 @@ namespace nppmac::user
 		return window->_windowProc ? window->_windowProc(window->_hwnd, message, wParam, lParam) : 0;
 	}
 
+	// Keyboard input, addressed when it is read (see takeMessage).
+	void postKeyboardInput(UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent = nullptr, const std::u16string& characters = {})
+	{
+		MSG msg{};
+		msg.message = message;
+		msg.wParam = wParam;
+		msg.lParam = lParam;
+		msg.time = GetTickCount();
+		const ui::Point cursor = ui::cursorPosition();
+		msg.pt = {cursor._x, cursor._y};
+		auto input = std::make_shared<InputState>(InputState{g_asyncKeyState, characters, true});
+		{
+			std::lock_guard lock{g_queueMutex};
+			queue().push_back({msg, nativeEvent, input});
+		}
+	}
+
 	void postMessage(Window* window, UINT message, WPARAM wParam, LPARAM lParam, void* nativeEvent, const std::u16string& characters)
 	{
 		MSG msg{};
@@ -541,6 +566,8 @@ namespace nppmac::user
 		if (IsRectEmpty(&_invalid))
 			return;
 		(void)area;
+		if (_seeThrough)
+			ui::clearSurface(_view, {_invalid.left, _invalid.top, _invalid.right, _invalid.bottom});
 		HWND hwnd = _hwnd;
 		static const bool trace = std::getenv("NPPMAC_TRACE_PAINT") != nullptr;
 		if (trace)
@@ -619,6 +646,22 @@ namespace nppmac::user
 				ScreenToClient(capture, &p);
 				position = {p.x, p.y};
 				target = fromHandle(capture);
+			}
+		}
+		else
+		{
+			// A window that answers WM_NCHITTEST with HTTRANSPARENT (a plain label) passes the mouse
+			// on to its parent.
+			while (target->isChild() && target->_parent)
+			{
+				POINT screen{position._x, position._y};
+				ClientToScreen(target->_hwnd, &screen);
+				if (target->send(WM_NCHITTEST, 0, MAKELPARAM(static_cast<short>(screen.x), static_cast<short>(screen.y))) != HTTRANSPARENT)
+					break;
+				Window* parent = target->_parent;
+				ScreenToClient(parent->_hwnd, &screen);
+				position = {screen.x, screen.y};
+				target = parent;
 			}
 		}
 
@@ -726,7 +769,7 @@ namespace nppmac::ui
 		// Alt (Option) without Ctrl makes system keys, as on Windows.
 		const bool system = (event._modifiers & modifierAlt) && !(event._modifiers & modifierControl);
 		const UINT message = event._down ? (system ? WM_SYSKEYDOWN : WM_KEYDOWN) : (system ? WM_SYSKEYUP : WM_KEYUP);
-		postMessage(target, message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent, event._down ? event._characters : std::u16string{});
+		postKeyboardInput(message, virtualKey, keyLParam(virtualKey, event._down, event._repeat), event._nsEvent, event._down ? event._characters : std::u16string{});
 	}
 
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down)
@@ -739,7 +782,7 @@ namespace nppmac::ui
 			return;
 		const bool system = virtualKey == VK_MENU || ((modifiers & modifierAlt) && !(modifiers & modifierControl));
 		const UINT message = down ? (system ? WM_SYSKEYDOWN : WM_KEYDOWN) : (system ? WM_SYSKEYUP : WM_KEYUP);
-		postMessage(target, message, virtualKey, keyLParam(virtualKey, down, false));
+		postKeyboardInput(message, virtualKey, keyLParam(virtualKey, down, false));
 	}
 
 	void windowManagerInsertText(const std::u16string& text)
@@ -749,7 +792,7 @@ namespace nppmac::ui
 		if (!target)
 			return;
 		for (const char16_t ch : text)
-			postMessage(target, WM_CHAR, ch, 1);
+			postKeyboardInput(WM_CHAR, ch, 1);
 	}
 }
 

@@ -26,10 +26,19 @@ namespace nppmac::controls
 	void registerRebar();
 	void registerTabControl();
 	void registerTooltip();
+	void registerButton();
+	void registerStatic();
+	void registerEdit();
+	void registerListBox();
+	void registerComboBox();
+	void registerSmallControls();
+	void registerTreeView();
+	void registerListView();
 
-	void registerControl(const char16_t* name, WNDPROC proc, UINT style)
+	void registerControl(const char16_t* name, WNDPROC proc, UINT style, LPCWSTR cursor)
 	{
-		user::registerBuiltInClass(name, proc, style, sizeof(LONG_PTR) * 2, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
+		user::registerBuiltInClass(name, proc, style, sizeof(LONG_PTR) * 2, LoadCursorW(nullptr, cursor), nullptr, nullptr);
+		user::setClassDrawsOwnScrollBars(name);
 	}
 }
 
@@ -62,6 +71,14 @@ namespace nppmac::user
 		controls::registerRebar();
 		controls::registerTabControl();
 		controls::registerTooltip();
+		controls::registerButton();
+		controls::registerStatic();
+		controls::registerEdit();
+		controls::registerListBox();
+		controls::registerComboBox();
+		controls::registerSmallControls();
+		controls::registerTreeView();
+		controls::registerListView();
 
 		static const char16_t* const classes[] = {
 			WC_BUTTONW, WC_STATICW, WC_EDITW, WC_COMBOBOXW, WC_COMBOBOXEXW, WC_LISTBOXW, WC_SCROLLBARW,
