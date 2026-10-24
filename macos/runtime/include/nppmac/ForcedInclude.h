@@ -32,6 +32,12 @@
 #define __WINE_WINSOCKAPI_STDLIB_H
 #endif
 
+// The Win32 functions are defined in the app, not imported from DLLs: Wine's headers would declare
+// them hidden, and plugins could not bind to them.
+#ifndef DECLSPEC_IMPORT
+#define DECLSPEC_IMPORT __attribute__((visibility("default")))
+#endif
+
 #include "nppmac/PlatformDecls.h"
 
 #ifdef __cplusplus

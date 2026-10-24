@@ -28,10 +28,14 @@
 #include <tlhelp32.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <chrono>
 #include <cstring>
 #include <dlfcn.h>
+#include <libkern/OSByteOrder.h>
 #include <libproc.h>
+#include <mach-o/fat.h>
+#include <mach-o/loader.h>
 #include <mach/mach_time.h>
 #include <signal.h>
 #include <sys/sysctl.h>
@@ -132,6 +136,39 @@ namespace
 		}
 		// The runtime's own implementation of a function the module exports, if there is one.
 		return byOrdinal ? nullptr : reinterpret_cast<FARPROC>(::dlsym(RTLD_DEFAULT, procName));
+	}
+
+	// A Mach-O image for this processor, or a universal one with a slice for it.
+	bool isLoadableMachO(const void* base)
+	{
+#if defined(__arm64__)
+		constexpr cpu_type_t hostCpu = CPU_TYPE_ARM64;
+#else
+		constexpr cpu_type_t hostCpu = CPU_TYPE_X86_64;
+#endif
+		const auto* bytes = static_cast<const uint8_t*>(base);
+		uint32_t magic = 0;
+		std::memcpy(&magic, bytes, sizeof(magic));
+		if (magic == MH_MAGIC_64)
+		{
+			mach_header_64 header{};
+			std::memcpy(&header, bytes, sizeof(header));
+			return header.cputype == hostCpu;
+		}
+		if (OSSwapBigToHostInt32(magic) == FAT_MAGIC)
+		{
+			fat_header fat{};
+			std::memcpy(&fat, bytes, sizeof(fat));
+			const uint32_t count = OSSwapBigToHostInt32(fat.nfat_arch);
+			for (uint32_t i = 0; i < count && i < 16; ++i)
+			{
+				fat_arch slice{};
+				std::memcpy(&slice, bytes + sizeof(fat) + i * sizeof(slice), sizeof(slice));
+				if (static_cast<cpu_type_t>(OSSwapBigToHostInt32(static_cast<uint32_t>(slice.cputype))) == hostCpu)
+					return true;
+			}
+		}
+		return false;
 	}
 
 	HMODULE mainModule()
@@ -712,13 +749,18 @@ DWORD WINAPI GetModuleFileNameA(HMODULE module, LPSTR buffer, DWORD size)
 
 HMODULE WINAPI LoadLibraryExW(LPCWSTR fileName, HANDLE, DWORD)
 {
-	// Plugins are macOS dynamic libraries (W8); of the Windows system DLLs, the runtime's stand-ins.
+	// Of the Windows system DLLs, the runtime's stand-ins; anything else is a macOS library, whatever
+	// its name: a plugin keeps upstream's file name, plugins/<Name>/<Name>.dll.
 	if (HMODULE system = findSystemModule(fileName))
 		return system;
 	const std::string path = toPosixPath(fileName);
-	void* library = path.ends_with(".dylib") ? ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL) : nullptr;
+	void* library = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
 	if (!library)
+	{
+		if (const char* error = ::dlerror())
+			std::fprintf(stderr, "nppmac: LoadLibrary %s: %s\n", path.c_str(), error);
 		SetLastError(ERROR_MOD_NOT_FOUND);
+	}
 	return static_cast<HMODULE>(library);
 }
 
@@ -755,10 +797,26 @@ FARPROC WINAPI GetProcAddress(HMODULE module, LPCSTR procName)
 	return reinterpret_cast<FARPROC>(symbol);
 }
 
-PIMAGE_NT_HEADERS WINAPI ImageNtHeader(PVOID)
+PIMAGE_NT_HEADERS WINAPI ImageNtHeader(PVOID base)
 {
-	// There are no PE images; upstream's dark-mode import-table patching does nothing without one.
-	return nullptr;
+	// A Mach-O image this Mac can load (a plugin is one) reads as a PE image for the machine Notepad++
+	// was built for, with no data directories, so upstream's plugin architecture check passes. Nothing
+	// else is a PE image: upstream's dark-mode import-table patching finds none and does nothing.
+	if (!base || !isLoadableMachO(base))
+		return nullptr;
+	static IMAGE_NT_HEADERS header = []
+	{
+		IMAGE_NT_HEADERS result{};
+		result.Signature = IMAGE_NT_SIGNATURE;
+#ifdef _M_ARM64
+		result.FileHeader.Machine = IMAGE_FILE_MACHINE_ARM64;
+#else
+		result.FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64;
+#endif
+		result.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+		return result;
+	}();
+	return &header;
 }
 
 // --- Messages -------------------------------------------------------------------------------------
