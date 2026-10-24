@@ -28,6 +28,7 @@
 #include <tlhelp32.h>
 
 #include <cerrno>
+#include <cstddef>
 #include <cstdio>
 #include <chrono>
 #include <cstring>
@@ -64,20 +65,47 @@ namespace
 	};
 
 	const char16_t* const g_systemModuleNames[] = {u"ntdll", u"kernel32", u"user32", u"uxtheme", u"comctl32"};
-	char g_systemModuleTags[static_cast<int>(SystemModule::count)]{};
+
+	// A module handle is its image's base address, and programs read the PE headers there: Notepad++'s
+	// dark mode walks comctl32's delay-import table. Each stand-in is a valid, empty PE header (no data
+	// directories), so such walks find nothing instead of reading stray memory.
+	struct SystemModuleImage
+	{
+		IMAGE_DOS_HEADER _dos;
+		IMAGE_NT_HEADERS64 _nt;
+	};
+
+	SystemModuleImage* systemModuleImages()
+	{
+		static auto* images = []
+		{
+			auto* created = new SystemModuleImage[static_cast<int>(SystemModule::count)]{};
+			for (int i = 0; i < static_cast<int>(SystemModule::count); ++i)
+			{
+				created[i]._dos.e_magic = IMAGE_DOS_SIGNATURE;
+				created[i]._dos.e_lfanew = offsetof(SystemModuleImage, _nt);
+				created[i]._nt.Signature = IMAGE_NT_SIGNATURE;
+				created[i]._nt.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+				created[i]._nt.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+			}
+			return created;
+		}();
+		return images;
+	}
 
 	HMODULE systemModuleHandle(SystemModule module)
 	{
-		return reinterpret_cast<HMODULE>(&g_systemModuleTags[static_cast<int>(module)]);
+		return reinterpret_cast<HMODULE>(&systemModuleImages()[static_cast<int>(module)]);
 	}
 
 	bool isSystemModule(HMODULE module, SystemModule* which = nullptr)
 	{
-		const auto* tag = reinterpret_cast<const char*>(module);
-		if (tag < g_systemModuleTags || tag >= g_systemModuleTags + static_cast<int>(SystemModule::count))
+		const auto* image = reinterpret_cast<const SystemModuleImage*>(module);
+		const SystemModuleImage* first = systemModuleImages();
+		if (image < first || image >= first + static_cast<int>(SystemModule::count))
 			return false;
 		if (which)
-			*which = static_cast<SystemModule>(tag - g_systemModuleTags);
+			*which = static_cast<SystemModule>(image - first);
 		return true;
 	}
 
