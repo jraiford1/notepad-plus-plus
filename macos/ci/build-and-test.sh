@@ -36,11 +36,13 @@ done
 cmake -S "$root/macos" -B "$build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build" --parallel "$(sysctl -n hw.ncpu)"
 
-# Upstream's sources must be as upstream has them: the port lives in macos/ only.
+# Upstream's sources must be as upstream has them: the port lives in macos/ only. What this branch
+# changed in them since its last merge of upstream must be nothing (upstream itself may have moved on).
 if git -C "$root" rev-parse --verify --quiet upstream/master > /dev/null; then
-	if ! git -C "$root" diff --quiet upstream/master -- PowerEditor scintilla lexilla boostregex; then
-		echo "Upstream sources differ from upstream/master:"
-		git -C "$root" diff --stat upstream/master -- PowerEditor scintilla lexilla boostregex
+	base="$(git -C "$root" merge-base HEAD upstream/master)"
+	if ! git -C "$root" diff --quiet "$base" HEAD -- PowerEditor scintilla lexilla boostregex; then
+		echo "This branch changed upstream's sources:"
+		git -C "$root" diff --stat "$base" HEAD -- PowerEditor scintilla lexilla boostregex
 		exit 1
 	fi
 fi
