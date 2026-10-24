@@ -29,6 +29,8 @@
 
 #include "Scintilla.h"
 
+#include <richedit.h>
+
 namespace
 {
 	using nppmac::user::Window;
@@ -80,10 +82,127 @@ namespace
 		return result;
 	}
 
-	sptr_t sendToScintilla(const ScintillaData& data, unsigned int message, uptr_t wParam, sptr_t lParam)
+	// The Windows Edit control's messages, which Scintilla's Windows layer translates (SciMessageFromEM
+	// and EditMessage in ScintillaWin.cxx) and its Cocoa layer does not know. Notepad++ sends some:
+	// Edit > Undo is WM_UNDO, Cut, Copy and Paste are WM_CUT, WM_COPY and WM_PASTE. Messages whose
+	// structures differ from Scintilla's (EM_FINDTEXTEX, EM_FORMATRANGE, EM_GETTEXTRANGE) are left out:
+	// Notepad++ uses the SCI_ ones.
+	bool editMessage(const ScintillaData& data, unsigned int message, uptr_t wParam, sptr_t lParam, sptr_t& result)
 	{
+		auto sci = [&data](unsigned int sciMessage, uptr_t w = 0, sptr_t l = 0)
+		{
+			return data._direct(data._directPointer, sciMessage, w, l);
+		};
+		unsigned int simple = 0;
 		switch (message)
 		{
+			case WM_UNDO: simple = SCI_UNDO; break;
+			case WM_CUT: simple = SCI_CUT; break;
+			case WM_COPY: simple = SCI_COPY; break;
+			case WM_PASTE: simple = SCI_PASTE; break;
+			case WM_CLEAR: simple = SCI_CLEAR; break;
+			case EM_CANPASTE: simple = SCI_CANPASTE; break;
+			case EM_CANUNDO: simple = SCI_CANUNDO; break;
+			case EM_EMPTYUNDOBUFFER: simple = SCI_EMPTYUNDOBUFFER; break;
+			case EM_GETFIRSTVISIBLELINE: simple = SCI_GETFIRSTVISIBLELINE; break;
+			case EM_GETLINECOUNT: simple = SCI_GETLINECOUNT; break;
+			case EM_GETSELTEXT: simple = SCI_GETSELTEXT; break;
+			case EM_HIDESELECTION: simple = SCI_HIDESELECTION; break;
+			case EM_LINEINDEX: simple = SCI_POSITIONFROMLINE; break;
+			case EM_LINESCROLL: simple = SCI_LINESCROLL; break;
+			case EM_REPLACESEL: simple = SCI_REPLACESEL; break;
+			case EM_SCROLLCARET: simple = SCI_SCROLLCARET; break;
+			case EM_SETREADONLY: simple = SCI_SETREADONLY; break;
+			default: break;
+		}
+		if (simple != 0)
+		{
+			result = sci(simple, wParam, lParam);
+			return true;
+		}
+
+		auto start = [&sci] { return sci(SCI_GETSELECTIONSTART); };
+		auto end = [&sci] { return sci(SCI_GETSELECTIONEND); };
+		switch (message)
+		{
+			case EM_LINEFROMCHAR:
+				result = sci(SCI_LINEFROMPOSITION, static_cast<sptr_t>(wParam) < 0 ? static_cast<uptr_t>(start()) : wParam);
+				return true;
+			case EM_EXLINEFROMCHAR:
+				result = sci(SCI_LINEFROMPOSITION, static_cast<uptr_t>(lParam));
+				return true;
+			case EM_GETSEL:
+			{
+				const sptr_t first = start();
+				const sptr_t last = end();
+				if (wParam)
+					*reinterpret_cast<DWORD*>(wParam) = static_cast<DWORD>(first);
+				if (lParam)
+					*reinterpret_cast<DWORD*>(lParam) = static_cast<DWORD>(last);
+				result = MAKELRESULT(first, last);
+				return true;
+			}
+			case EM_EXGETSEL:
+				if (lParam)
+				{
+					auto* range = reinterpret_cast<CHARRANGE*>(lParam);
+					range->cpMin = static_cast<LONG>(start());
+					range->cpMax = static_cast<LONG>(end());
+				}
+				result = 0;
+				return true;
+			case EM_SETSEL:
+			{
+				sptr_t anchor = static_cast<sptr_t>(wParam);
+				sptr_t caret = lParam;
+				if (anchor == 0 && caret == -1)
+					caret = sci(SCI_GETLENGTH);
+				if (anchor == -1)
+					anchor = caret; // removes the selection
+				sci(SCI_SETSEL, static_cast<uptr_t>(anchor), caret);
+				sci(SCI_SCROLLCARET);
+				result = 0;
+				return true;
+			}
+			case EM_EXSETSEL:
+			{
+				result = 0;
+				if (!lParam)
+					return true;
+				const auto* range = reinterpret_cast<const CHARRANGE*>(lParam);
+				sci(SCI_SETSELECTIONMODE, SC_SEL_STREAM);
+				if (range->cpMin == 0 && range->cpMax == -1)
+					sci(SCI_SETSEL, 0, sci(SCI_GETLENGTH));
+				else
+					sci(SCI_SETSEL, static_cast<uptr_t>(range->cpMin), range->cpMax);
+				sci(SCI_SCROLLCARET);
+				result = sci(SCI_LINEFROMPOSITION, static_cast<uptr_t>(sci(SCI_GETSELECTIONSTART)));
+				return true;
+			}
+			default:
+				return false;
+		}
+	}
+
+	sptr_t sendToScintilla(const ScintillaData& data, unsigned int message, uptr_t wParam, sptr_t lParam)
+	{
+		if (sptr_t result = 0; editMessage(data, message, wParam, lParam, result))
+			return result;
+		switch (message)
+		{
+			case SCI_ASSIGNCMDKEY:
+			case SCI_CLEARCMDKEY:
+			{
+				// Notepad++ names letter keys by their Windows virtual-key code, the capital letter
+				// ('Z' for Ctrl+Z). Scintilla's Cocoa layer looks keys up by the character typed,
+				// which without Shift is the small letter: the key is assigned for that one too.
+				const uptr_t key = wParam & 0xFFFF;
+				const uptr_t modifiers = wParam >> 16;
+				const sptr_t result = data._direct(data._directPointer, message, wParam, lParam);
+				if (key >= 'A' && key <= 'Z' && !(modifiers & SCMOD_SHIFT))
+					data._direct(data._directPointer, message, (key - 'A' + 'a') | (modifiers << 16), lParam);
+				return result;
+			}
 			case SCI_FORMATRANGEFULL:
 				return formatRange<Sci_RangeToFormatFull>(data, message, wParam, lParam);
 			case SCI_STYLESETSIZE:
@@ -152,6 +271,8 @@ namespace
 			return reinterpret_cast<LRESULT>(data);
 		if (message >= SCI_START && message < 5000)
 			return sendToScintilla(*data, message, wParam, lParam);
+		if (sptr_t result = 0; editMessage(*data, message, wParam, lParam, result))
+			return result;
 
 		switch (message)
 		{

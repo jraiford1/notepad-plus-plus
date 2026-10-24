@@ -17,6 +17,7 @@
 #import <Cocoa/Cocoa.h>
 
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <execinfo.h>
 #include <string>
@@ -24,6 +25,7 @@
 #include <vector>
 
 #include "nppmac/Startup.h"
+#include "platform/Platform.h"
 #include "user/Backend.h"
 
 namespace
@@ -111,6 +113,16 @@ namespace nppmac
 				continue;
 			g_wideArguments.push_back(toUtf16(argv[i]));
 		}
+		nppmac::ui::createApplication();
+		// A test run can never become the active program: no Dock icon, no menu bar, and the keyboard
+		// stays with whoever is using the Mac. Its windows are never on screen; snapshots draw them.
+		[NSApp setActivationPolicy:std::getenv("NPPMAC_TEST_RUN") ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
+		// Files Finder opens the program with (Open With, a double-click) arrive while it finishes
+		// launching; they are arguments, as for notepad++.exe.
+		[NSApp finishLaunching];
+		nppmac::ui::setLaunched();
+		for (const std::string& path : nppmac::ui::takeLaunchFiles())
+			g_wideArguments.push_back(toUtf16(path));
 		for (std::u16string& argument : g_wideArguments)
 			g_wideArgv.push_back(argument.data());
 		g_wideArgv.push_back(nullptr);
@@ -129,11 +141,7 @@ namespace nppmac
 			}
 			g_commandLine += quoted;
 		}
-
-		nppmac::ui::createApplication();
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		[NSApp finishLaunching];
-		[NSApp activateIgnoringOtherApps:YES];
+		nppmac::platform::activateApplication();
 	}
 
 	char16_t* commandLineArguments()

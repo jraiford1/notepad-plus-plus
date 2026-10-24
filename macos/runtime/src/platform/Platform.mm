@@ -57,6 +57,13 @@ namespace nppmac::platform
 		return languages.count > 0 ? toString(languages.firstObject) : std::string{"en-US"};
 	}
 
+	void activateApplication()
+	{
+		if (std::getenv("NPPMAC_TEST_RUN"))
+			return;
+		[NSApp activateIgnoringOtherApps:YES];
+	}
+
 	bool isDarkAppearance()
 	{
 		// The system's choice, not the application's: the program may have forced its own appearance.
@@ -202,6 +209,13 @@ namespace nppmac::platform
 	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,
 		AlertStyle style, int defaultButton, int escapeButton)
 	{
+		// Test runs say what they ask, so a test can tell which alert came up, and take the default
+		// answer without showing it (nothing of a test run appears on screen).
+		if (std::getenv("NPPMAC_TEST_RUN"))
+		{
+			std::fprintf(stderr, "NPPMAC alert: %s | %s\n", title.c_str(), message.c_str());
+			return defaultButton;
+		}
 		NSAlert* alert = [[NSAlert alloc] init];
 		alert.messageText = [NSString stringWithUTF8String:title.c_str()];
 		alert.informativeText = [NSString stringWithUTF8String:message.c_str()];
@@ -223,7 +237,7 @@ namespace nppmac::platform
 				button.keyEquivalent = @"\033";
 		}
 
-		[NSApp activateIgnoringOtherApps:YES];
+		activateApplication();
 		const NSModalResponse response = [alert runModal];
 		const int position = static_cast<int>(response - NSAlertFirstButtonReturn);
 		return position >= 0 && position < static_cast<int>(order.size()) ? order[static_cast<size_t>(position)] : escapeButton;
@@ -340,7 +354,7 @@ namespace nppmac::platform
 				static_cast<NSOpenPanel*>(panel).accessoryViewDisclosed = YES;
 		}
 
-		[NSApp activateIgnoringOtherApps:YES];
+		activateApplication();
 		if ([panel runModal] != NSModalResponseOK)
 			return result;
 
@@ -405,7 +419,7 @@ namespace nppmac::platform
 		NSView* previousAccessory = panel.accessoryView;
 		panel.accessoryView = buttons;
 
-		[NSApp activateIgnoringOtherApps:YES];
+		activateApplication();
 		const NSModalResponse response = [NSApp runModalForWindow:panel];
 		[panel orderOut:nil];
 		panel.accessoryView = previousAccessory;
@@ -441,7 +455,7 @@ namespace nppmac::platform
 				info.dictionary[NSPrintSelectionOnly] = @YES;
 			}
 			panel.options = options;
-			[NSApp activateIgnoringOtherApps:YES];
+			activateApplication();
 			if ([panel runModalWithPrintInfo:info] != NSModalResponseOK)
 				return false;
 		}
