@@ -18,6 +18,7 @@
 
 #include "gdi/Gdi.h"
 #include "Window.h"
+#include "platform/Platform.h"
 
 #include <dwmapi.h>
 
@@ -456,7 +457,8 @@ BOOL WINAPI SetLayeredWindowAttributes(HWND, COLORREF, BYTE, DWORD)
 
 HRESULT WINAPI DwmGetColorizationColor(DWORD* color, BOOL* opaque)
 {
-	*color = 0xFF0078D7;
+	// 0xAARRGGBB: the macOS accent color, which Notepad++'s toolbar icons can follow.
+	*color = 0xFF000000 | nppmac::platform::accentColor();
 	*opaque = TRUE;
 	return S_OK;
 }

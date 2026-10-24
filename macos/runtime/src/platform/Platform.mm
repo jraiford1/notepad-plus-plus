@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 #include "Platform.h"
@@ -62,6 +63,31 @@ namespace nppmac::platform
 		if (const char* test = std::getenv("NPPMAC_TEST_APPEARANCE"))
 			return std::strcmp(test, "dark") == 0;
 		return [[NSUserDefaults.standardUserDefaults stringForKey:@"AppleInterfaceStyle"] isEqualToString:@"Dark"];
+	}
+
+	unsigned accentColor()
+	{
+		NSColor* color = [NSColor.controlAccentColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+		if (!color)
+			return 0x0078D7;
+		const auto channel = [](CGFloat value) { return static_cast<unsigned>(std::lround(std::clamp(value, 0.0, 1.0) * 255)); };
+		return (channel(color.redComponent) << 16) | (channel(color.greenComponent) << 8) | channel(color.blueComponent);
+	}
+
+	std::string systemVersion()
+	{
+		const NSOperatingSystemVersion version = NSProcessInfo.processInfo.operatingSystemVersion;
+		std::string text = std::to_string(version.majorVersion) + "." + std::to_string(version.minorVersion);
+		if (version.patchVersion != 0)
+			text += "." + std::to_string(version.patchVersion);
+		return text;
+	}
+
+	std::string systemBuild()
+	{
+		char build[32]{};
+		size_t size = sizeof(build);
+		return sysctlbyname("kern.osversion", build, &size, nullptr, 0) == 0 ? std::string{build} : std::string{};
 	}
 
 	std::string executablePath()
