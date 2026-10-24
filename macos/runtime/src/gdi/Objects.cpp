@@ -16,6 +16,7 @@
 
 // GDI objects: pens, brushes, fonts, bitmaps, regions; stock objects; selection and deletion.
 
+#include "Immortal.h"
 #include "Gdi.h"
 
 #include <algorithm>
@@ -27,7 +28,8 @@ namespace nppmac::gdi
 	namespace
 	{
 		// Live objects, so that a stale handle is ignored instead of dereferenced.
-		std::mutex g_objectsMutex;
+		nppmac::Immortal<std::mutex> g_objectsMutexStorage;
+		std::mutex& g_objectsMutex = g_objectsMutexStorage._value;
 
 		std::unordered_set<const GdiObject*>& liveObjects()
 		{

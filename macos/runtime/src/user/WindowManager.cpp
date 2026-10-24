@@ -1472,13 +1472,24 @@ BOOL WINAPI SetWindowPlacement(HWND hwnd, const WINDOWPLACEMENT* placement)
 		return FALSE;
 	window->_normalRect = placement->rcNormalPosition;
 	const RECT& r = placement->rcNormalPosition;
-	SetWindowPos(hwnd, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
-	if (placement->showCmd == SW_SHOWMAXIMIZED || placement->showCmd == SW_MAXIMIZE)
+	const UINT command = placement->showCmd;
+	const bool maximize = command == SW_SHOWMAXIMIZED || command == SW_MAXIMIZE;
+	const bool minimize = command == SW_SHOWMINIMIZED || command == SW_MINIMIZE || command == SW_SHOWMINNOACTIVE;
+	// As on Windows, the window is placed and shown (or hidden) in one step: it is already visible
+	// when WM_SIZE arrives, so a layout that measures its visible children (Notepad++ counts its
+	// toolbar and status bar only when visible) sees them.
+	UINT flags = SWP_NOZORDER;
+	if (command == SW_HIDE)
+		flags |= SWP_HIDEWINDOW;
+	else if (!maximize && !minimize)
+		flags |= SWP_SHOWWINDOW;
+	if (command == SW_SHOWNA || command == SW_SHOWNOACTIVATE || command == SW_HIDE)
+		flags |= SWP_NOACTIVATE;
+	SetWindowPos(hwnd, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, flags);
+	if (maximize)
 		ShowWindow(hwnd, SW_MAXIMIZE);
-	else if (placement->showCmd == SW_SHOWMINIMIZED || placement->showCmd == SW_MINIMIZE)
+	else if (minimize)
 		ShowWindow(hwnd, SW_MINIMIZE);
-	else if (window->_visible)
-		ShowWindow(hwnd, placement->showCmd);
 	return TRUE;
 }
 

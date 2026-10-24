@@ -16,6 +16,7 @@
 
 // kernel32 and user32 string functions: lstr*, code page conversions, case mapping, comparisons.
 
+#include "Immortal.h"
 #include "Internal.h"
 #include "platform/Platform.h"
 
@@ -119,7 +120,8 @@ namespace
 	}
 
 	// iconv descriptors are cached per (from, to) pair and used under one lock.
-	std::mutex g_iconvMutex;
+	nppmac::Immortal<std::mutex> g_iconvMutexStorage;
+	std::mutex& g_iconvMutex = g_iconvMutexStorage._value;
 
 	iconv_t descriptor(const std::string& to, const std::string& from)
 	{

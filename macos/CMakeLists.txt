@@ -5,7 +5,7 @@
 #   2. runs it over PowerEditor/src into ${NPPMAC_GENERATED_DIR} (regenerated when upstream changes),
 #   3. compiles the generated source against the Win32 runtime (runtime/).
 #
-#     cmake -S macos -B build/macos && cmake --build build/macos && ctest --test-dir build/macos
+#     cmake -S macos -B macos/build && cmake --build macos/build && ctest --test-dir macos/build
 
 cmake_minimum_required(VERSION 3.24)
 # The oldest macOS the app runs on (also the bundle's LSMinimumSystemVersion). Without it the SDK's own
