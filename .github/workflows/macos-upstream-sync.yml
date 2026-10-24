@@ -1,0 +1,73 @@
+# Nightly upstream merge for the macOS build: merges upstream Notepad++ into the
+# macos-upstream-sync branch, builds and tests the result, and opens (or updates) a pull request
+# to master. Upstream's sources are never edited here, so the merge itself does not conflict; what
+# can fail is the build (an engine rule gap, a migration fixup whose upstream text changed, a Win32
+# function the runtime lacks) or a test, and the failing step says which.
+name: macOS upstream sync
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: macos-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Merge upstream
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/notepad-plus-plus/notepad-plus-plus.git
+          git fetch --no-tags upstream master
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Already up to date with upstream."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git checkout -B macos-upstream-sync
+          git merge --no-edit -m "Merge upstream Notepad++ ($(git rev-parse --short upstream/master))" upstream/master
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse --short upstream/master)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Wine headers download
+        if: steps.merge.outputs.changed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: macos/build/wine/*.tar.xz
+          key: wine-${{ hashFiles('macos/runtime/wine/WineHeaders.cmake') }}
+
+      - name: Build and test
+        if: steps.merge.outputs.changed == 'true'
+        run: macos/ci/build-and-test.sh macos/build
+
+      - name: Push and open the pull request
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git push --force origin macos-upstream-sync
+          title="Merge upstream Notepad++ (${{ steps.merge.outputs.upstream }})"
+          body=$(printf 'Upstream Notepad++ merged into the macOS build by the nightly sync.\n\nThe macOS build and its tests passed on this merge.\n\nUpstream changes: https://github.com/notepad-plus-plus/notepad-plus-plus/compare/%s...%s\n' \
+            "$(git merge-base origin/master upstream/master | cut -c1-12)" "${{ steps.merge.outputs.upstream }}")
+          if gh pr view macos-upstream-sync --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit macos-upstream-sync --title "$title" --body "$body"
+          else
+            gh pr create --base master --head macos-upstream-sync --title "$title" --body "$body"
+          fi

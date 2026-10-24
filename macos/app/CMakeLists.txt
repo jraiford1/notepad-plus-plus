@@ -115,3 +115,9 @@ foreach(rcFile IN LISTS nppRcFiles)
 	list(APPEND nppResFiles "${resFile}")
 endforeach()
 target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
+
+# --- Tests -------------------------------------------------------------------------------------------
+# The end-to-end smoke test needs a window server (a logged-in macOS session); its label lets it be
+# left out with ctest -LE gui.
+add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>")
+set_tests_properties(nppSmokeTest PROPERTIES LABELS gui TIMEOUT 600)

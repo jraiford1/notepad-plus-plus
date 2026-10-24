@@ -1,0 +1,43 @@
+# The macOS build (macos/): builds the app and runs its tests on every push and pull request.
+name: macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream (to check upstream's sources are untouched)
+        run: |
+          git remote add upstream https://github.com/notepad-plus-plus/notepad-plus-plus.git
+          git fetch --no-tags upstream master
+
+      - name: Cache the Wine headers download
+        uses: actions/cache@v4
+        with:
+          path: macos/build/wine/*.tar.xz
+          key: wine-${{ hashFiles('macos/runtime/wine/WineHeaders.cmake') }}
+
+      - name: Build and test
+        run: macos/ci/build-and-test.sh macos/build
+
+      - name: Package the app
+        run: ditto -c -k --keepParent "macos/build/app/Notepad++.app" Notepad++-macOS.zip
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Notepad++-macOS
+          path: Notepad++-macOS.zip
