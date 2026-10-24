@@ -68,6 +68,8 @@ jobs:
             "$(git merge-base origin/master upstream/master | cut -c1-12)" "${{ steps.merge.outputs.upstream }}")
           if gh pr view macos-upstream-sync --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr edit macos-upstream-sync --title "$title" --body "$body"
-          else
-            gh pr create --base master --head macos-upstream-sync --title "$title" --body "$body"
+          elif ! gh pr create --base master --head macos-upstream-sync --title "$title" --body "$body"; then
+            # GITHUB_TOKEN may open pull requests only where the repository allows it.
+            echo "::error::The merge is built, tested and pushed to macos-upstream-sync, but GitHub refused to open the pull request. Turn on Settings > Actions > General > Allow GitHub Actions to create and approve pull requests, or open it by hand: https://github.com/${{ github.repository }}/compare/master...macos-upstream-sync"
+            exit 1
           fi
