@@ -7,8 +7,9 @@ target_link_libraries(nppUuid PRIVATE nppRuntimeHeaders)
 target_compile_options(nppUuid PRIVATE -w)
 
 # --- Stubs for Win32 functions not implemented yet -----------------------------------------------
-set(nppSystemLibraries "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework Security" "-framework UniformTypeIdentifiers" "-liconv")
-string(REPLACE ";" "|" nppSystemLibrariesArgument "-lc++;${nppSystemLibraries}") # a list cannot pass through -D
+set(nppSystemLibraries "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework Security" "-framework UniformTypeIdentifiers")
+# The probe also gets what the runtime links itself (iconv).
+string(REPLACE ";" "|" nppSystemLibrariesArgument "-lc++;-liconv;${nppSystemLibraries}") # a list cannot pass through -D
 string(REPLACE " " "|" nppSystemLibrariesArgument "${nppSystemLibrariesArgument}")
 set(stubInputs "${CMAKE_CURRENT_BINARY_DIR}/stub-inputs.txt")
 set(stubProviders "${CMAKE_CURRENT_BINARY_DIR}/stub-providers.txt")

@@ -11,3 +11,14 @@ file: MISC/Common/Common.cpp
 ====
 		if (relativeFilePath[0] == '\\' && relativeFilePath[1] != '\\')
 >>>>
+
+# pugixml reads numbers with std::from_chars for floating point, which Apple's C++ library has only
+# from macOS 26 on; below that it falls back to its portable strtod path.
+file: pugixml/pugiconfig.hpp
+<<<<
+#define PUGIXML_CHARCONV_FLOAT
+====
+#ifndef __APPLE__
+#define PUGIXML_CHARCONV_FLOAT
+#endif
+>>>>

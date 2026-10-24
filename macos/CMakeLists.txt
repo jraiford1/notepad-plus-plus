@@ -8,6 +8,9 @@
 #     cmake -S macos -B build/macos && cmake --build build/macos && ctest --test-dir build/macos
 
 cmake_minimum_required(VERSION 3.24)
+# The oldest macOS the app runs on (also the bundle's LSMinimumSystemVersion). Without it the SDK's own
+# version is the target, and the app would need the newest macOS.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
 project(NotepadPlusPlusMac LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)

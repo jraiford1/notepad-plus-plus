@@ -164,7 +164,7 @@ namespace nppmac::gdi
 		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 		// A bottom-up DIB is drawn through a context whose rows run upward in memory.
 		_context = CGBitmapContextCreate(_pixels, static_cast<size_t>(_width), static_cast<size_t>(_height), 8,
-			static_cast<size_t>(_width) * 4, colorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+			static_cast<size_t>(_width) * 4, colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little));
 		CGColorSpaceRelease(colorSpace);
 		if (_context && !_bottomUp)
 		{
@@ -186,7 +186,7 @@ namespace nppmac::gdi
 		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 		CGDataProviderRef provider = CGDataProviderCreateWithData(nullptr, _pixels, static_cast<size_t>(_width) * static_cast<size_t>(_height) * 4, nullptr);
 		CGImageRef image = CGImageCreate(static_cast<size_t>(_width), static_cast<size_t>(_height), 8, 32, static_cast<size_t>(_width) * 4,
-			colorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little, provider, nullptr, false, kCGRenderingIntentDefault);
+			colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little), provider, nullptr, false, kCGRenderingIntentDefault);
 		CGDataProviderRelease(provider);
 		CGColorSpaceRelease(colorSpace);
 		return image;

@@ -133,12 +133,6 @@ namespace nppmac::ui
 		case NSScrollerIncrementPage:
 			_native->_owner->nativeScroll(_vertical, ScrollPart::pageDown, self.doubleValue);
 			break;
-		case NSScrollerDecrementLine:
-			_native->_owner->nativeScroll(_vertical, ScrollPart::lineUp, self.doubleValue);
-			break;
-		case NSScrollerIncrementLine:
-			_native->_owner->nativeScroll(_vertical, ScrollPart::lineDown, self.doubleValue);
-			break;
 		default:
 			break;
 	}
@@ -615,7 +609,7 @@ namespace
 
 		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 		CGContextRef surface = CGBitmapContextCreate(nullptr, static_cast<size_t>(width * scale), static_cast<size_t>(height * scale), 8, 0,
-			colorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+			colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little));
 		CGColorSpaceRelease(colorSpace);
 		// Keep what the old surface showed, so that a resize does not flash.
 		if (native->_surface)
