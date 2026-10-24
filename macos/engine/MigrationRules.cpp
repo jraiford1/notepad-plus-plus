@@ -186,6 +186,8 @@ namespace nppmigrate
 				return "wideStdCharClass";
 			case RuleId::wideStdFilesystem:
 				return "wideStdFilesystem";
+			case RuleId::includeSeparator:
+				return "includeSeparator";
 			case RuleId::ruleCount:
 				break;
 		}
@@ -219,7 +221,22 @@ namespace nppmigrate
 				inIncludeDirective = directive == "include" || directive == "include_next" || directive == "import";
 			}
 			if (inIncludeDirective)
+			{
+				// A Windows path separator in a quoted header name is a '/' everywhere else.
+				if (token._kind == clang::tok::string_literal && token._text.find('\\') != std::string_view::npos)
+				{
+					std::string name;
+					for (const char c : token._text)
+					{
+						if (c != '\\')
+							name += c;
+						else if (name.empty() || name.back() != '/')
+							name += '/';
+					}
+					edits.push_back({token._offset, token._length, name, RuleId::includeSeparator});
+				}
 				continue;
+			}
 
 			if (isWideLiteral(token))
 			{

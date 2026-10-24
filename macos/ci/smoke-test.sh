@@ -30,6 +30,10 @@ app="${1:?usage: smoke-test.sh <Notepad++ executable> [<HelloMac plugin>]}"
 plugin="${2:-}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/npp-smoke.XXXXXX")"
 pluginFolder="$(dirname "$app")/../Resources/plugins/HelloMac"
+# The third argument: the folder of the catalog's built plugins (<Name>/<Name>.dll), all loaded together.
+catalog="${3:-}"
+pluginsRoot="$(dirname "$app")/../Resources/plugins"
+catalogInstalled=()
 launcher=()
 if [ -n "${NPPMAC_TEST_ARCH:-}" ]; then
 	if ! /usr/bin/arch "-$NPPMAC_TEST_ARCH" /usr/bin/true 2> /dev/null; then
@@ -44,6 +48,9 @@ cleanup()
 	if [ -n "$plugin" ]; then
 		rm -rf "$pluginFolder"
 	fi
+	for name in ${catalogInstalled[@]+"${catalogInstalled[@]}"}; do
+		rm -rf "${pluginsRoot:?}/$name"
+	done
 }
 trap cleanup EXIT
 settings="$work/settings"
@@ -188,6 +195,41 @@ if [ -n "$plugin" ]; then
 		NPPMAC_TEST_FILE_PANEL="$work/plugin-resources.txt" \
 		&& expect_file plugin-resources "$work/plugin-resources.txt" 'Hello from a plugin resource in HelloMac'
 	rm -rf "$pluginFolder"
+fi
+
+# The catalog's plugins: installed together, each must appear in the Plugins menu (a submenu named by
+# the plugin), so each loaded and answered Notepad++'s calls.
+if [ -n "$catalog" ] && [ -d "$catalog" ]; then
+	for dll in "$catalog"/*/*.dll; do
+		name="$(basename "$(dirname "$dll")")"
+		if [ "$name" = HelloMac ] || [ "$(basename "$dll" .dll)" != "$name" ]; then
+			continue
+		fi
+		mkdir -p "$pluginsRoot/$name"
+		cp "$dll" "$pluginsRoot/$name/"
+		if [ -f "${dll%.dll}.res" ]; then
+			cp "${dll%.dll}.res" "$pluginsRoot/$name/"
+		fi
+		catalogInstalled+=("$name")
+	done
+	files=()
+	mkdir -p "$work/plugins-load-settings"
+	if runSettings="$work/plugins-load-settings" run plugins-load NPPMAC_DUMP_TREE=1; then
+		# The Plugins menu's submenus: its entries one level in, but its own commands.
+		loaded="$(awk '/^Plugins$/ {in_menu=1; next} /^[^ ]/ {in_menu=0} in_menu && /^  [^ ]/ {print}' "$work/plugins-load.log" \
+			| grep -v -e '^  Open Plugins Folder' -e '^  Plugins Admin' -e '^  -' | wc -l | tr -d ' ')"
+		if [ "$loaded" -ge "${#catalogInstalled[@]}" ]; then
+			echo "ok   plugins-load (${#catalogInstalled[@]} plugins)"
+		else
+			echo "FAIL plugins-load: $loaded of ${#catalogInstalled[@]} plugins in the Plugins menu"
+			awk '/^Plugins$/ {in_menu=1; print; next} /^[^ ]/ {in_menu=0} in_menu && /^  [^ ]/ {print}' "$work/plugins-load.log"
+			failures=$((failures + 1))
+		fi
+	fi
+	for name in "${catalogInstalled[@]}"; do
+		rm -rf "${pluginsRoot:?}/$name"
+	done
+	catalogInstalled=()
 fi
 
 # Dark mode, following the system.

@@ -203,18 +203,33 @@ HRESULT StringCchLengthW(STRSAFE_LPCWSTR str, size_t cchMax, size_t* length)
 	return n == cchMax ? STRSAFE_E_INVALID_PARAMETER : S_OK;
 }
 
-HRESULT StringCchPrintfW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR format, ...)
+HRESULT StringCchVPrintfW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR format, va_list args)
 {
 	if (!dest || cchDest == 0 || cchDest > STRSAFE_MAX_CCH)
 		return STRSAFE_E_INVALID_PARAMETER;
-	va_list args;
-	va_start(args, format);
 	const std::u16string text = nppmac::crt::formatWide(format, args);
-	va_end(args);
 	const size_t n = std::min(text.size(), cchDest - 1);
 	std::copy_n(text.data(), n, dest);
 	dest[n] = u'\0';
 	return n < text.size() ? STRSAFE_E_INSUFFICIENT_BUFFER : S_OK;
+}
+
+HRESULT StringCchPrintfW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const HRESULT result = StringCchVPrintfW(dest, cchDest, format, args);
+	va_end(args);
+	return result;
+}
+
+HRESULT StringCbPrintfW(STRSAFE_LPWSTR dest, size_t cbDest, STRSAFE_LPCWSTR format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const HRESULT result = StringCchVPrintfW(dest, cbDest / sizeof(char16_t), format, args);
+	va_end(args);
+	return result;
 }
 
 HRESULT StringCbCopyW(STRSAFE_LPWSTR dest, size_t cbDest, STRSAFE_LPCWSTR src)
@@ -255,4 +270,18 @@ const char16_t* _com_error::ErrorMessage() const noexcept
 	thread_local char16_t message[64]{};
 	swprintf(message, 64, u"Unknown error 0x%08lX", static_cast<unsigned int>(_result));
 	return message;
+}
+
+errno_t localtime_s(struct tm* result, const time_t* time)
+{
+	if (!result || !time)
+		return EINVAL;
+	return ::localtime_r(time, result) ? 0 : EINVAL;
+}
+
+errno_t gmtime_s(struct tm* result, const time_t* time)
+{
+	if (!result || !time)
+		return EINVAL;
+	return ::gmtime_r(time, result) ? 0 : EINVAL;
 }

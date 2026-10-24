@@ -1,0 +1,11 @@
+# Text rules for plugins: the places where code many plugins share (Notepad++'s plugin template and
+# its copies) relies on what Visual C++ allows and clang does not, once wide strings are char16_t.
+# npp-migrate applies them to every plugin (--plugin-text-rules): '*' matches across folders, and a
+# rule that changes nothing in a plugin is no error. The format is text-rules.txt's.
+
+# The template's setCommand takes the command's name as a TCHAR *, and is called with literals: Visual
+# C++ converts a wide literal to a pointer to non-const, clang does not for char16_t. It only copies
+# the name, so it takes a pointer to const.
+files: *PluginDefinition.*
+line: setCommand(
+regex: ([(,]\s*)(TCHAR|WCHAR|wchar_t)\s*\*\s*cmdName => $1const $2 *cmdName

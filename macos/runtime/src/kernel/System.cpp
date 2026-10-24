@@ -729,6 +729,61 @@ LPWSTR WINAPI GetCommandLineW()
 	return const_cast<LPWSTR>(nppmac::commandLine());
 }
 
+namespace
+{
+	// The libraries LoadLibrary loaded: their files and how many loads each still has.
+	struct Library
+	{
+		std::string _path;
+		int _loads = 0;
+	};
+
+	std::mutex& librariesMutex()
+	{
+		static auto* mutex = new std::mutex;
+		return *mutex;
+	}
+
+	std::unordered_map<HMODULE, Library>& libraries()
+	{
+		static auto* map = new std::unordered_map<HMODULE, Library>;
+		return *map;
+	}
+
+	using DllMainFunction = BOOL (*)(HMODULE, DWORD, LPVOID);
+
+	// A library's DllMain, which plugins declare as a C++ function with HANDLE, HINSTANCE or HMODULE
+	// (HINSTANCE and HMODULE are one type): looked up under each of those names, and as a C function.
+	DllMainFunction findDllMain(HMODULE module)
+	{
+		for (const char* name : {"DllMain", "_Z7DllMainPvjS_", "_Z7DllMainP11HINSTANCE__jPv"})
+		{
+			if (void* symbol = ::dlsym(module, name))
+				return reinterpret_cast<DllMainFunction>(symbol);
+		}
+		return nullptr;
+	}
+}
+
+namespace nppmac::kernel
+{
+	std::string libraryPath(HMODULE module)
+	{
+		{
+			std::lock_guard lock{librariesMutex()};
+			auto it = libraries().find(module);
+			if (it != libraries().end())
+				return it->second._path;
+		}
+		// An address in a plugin stands for it too, as on Windows: plugins pass &__ImageBase, the start
+		// of their own image there (each plugin defines one, see nppmac_add_plugin).
+		Dl_info info{};
+		if (module && module != mainModule() && ::dladdr(module, &info) && info.dli_fname && info.dli_fbase != mainModule())
+			return info.dli_fname;
+		return {};
+	}
+}
+
 // --- Modules --------------------------------------------------------------------------------------
 // The program's own module is "notepad++.exe" in Contents/Resources: that is where Notepad++ looks
 // for langs.model.xml, themes/, localization/ and the rest, as next to the .exe on Windows.
@@ -741,6 +796,52 @@ HMODULE WINAPI GetModuleHandleW(LPCWSTR moduleName)
 		return system;
 	SetLastError(ERROR_MOD_NOT_FOUND);
 	return nullptr;
+}
+
+BOOL WINAPI GetModuleHandleExW(DWORD flags, LPCWSTR moduleName, HMODULE* module)
+{
+	if (!module)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	if (!(flags & GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS))
+	{
+		*module = GetModuleHandleW(moduleName);
+		return *module ? TRUE : FALSE;
+	}
+	// The module an address is in: the program, a loaded plugin, or the image's start for others.
+	Dl_info info{};
+	if (!::dladdr(moduleName, &info) || !info.dli_fbase)
+	{
+		*module = nullptr;
+		SetLastError(ERROR_MOD_NOT_FOUND);
+		return FALSE;
+	}
+	if (info.dli_fbase == mainModule())
+	{
+		*module = mainModule();
+		return TRUE;
+	}
+	{
+		std::lock_guard lock{librariesMutex()};
+		for (const auto& [handle, library] : libraries())
+		{
+			if (info.dli_fname && library._path == info.dli_fname)
+			{
+				*module = handle;
+				return TRUE;
+			}
+		}
+	}
+	*module = static_cast<HMODULE>(info.dli_fbase);
+	return TRUE;
+}
+
+BOOL WINAPI DisableThreadLibraryCalls(HMODULE)
+{
+	// Thread attach and detach calls are never made here.
+	return TRUE;
 }
 
 HMODULE WINAPI GetModuleHandleA(LPCSTR moduleName)
@@ -786,52 +887,6 @@ DWORD WINAPI GetModuleFileNameA(HMODULE module, LPSTR buffer, DWORD size)
 	if (!GetModuleFileNameW(module, wide, MAX_PATH * 4))
 		return 0;
 	return copyToBuffer(nppmac::toUtf8(wide), buffer, size);
-}
-
-namespace
-{
-	// The libraries LoadLibrary loaded: their files and how many loads each still has.
-	struct Library
-	{
-		std::string _path;
-		int _loads = 0;
-	};
-
-	std::mutex& librariesMutex()
-	{
-		static auto* mutex = new std::mutex;
-		return *mutex;
-	}
-
-	std::unordered_map<HMODULE, Library>& libraries()
-	{
-		static auto* map = new std::unordered_map<HMODULE, Library>;
-		return *map;
-	}
-
-	using DllMainFunction = BOOL (*)(HMODULE, DWORD, LPVOID);
-
-	// A library's DllMain, which plugins declare as a C++ function with HANDLE, HINSTANCE or HMODULE
-	// (HINSTANCE and HMODULE are one type): looked up under each of those names, and as a C function.
-	DllMainFunction findDllMain(HMODULE module)
-	{
-		for (const char* name : {"DllMain", "_Z7DllMainPvjS_", "_Z7DllMainP11HINSTANCE__jPv"})
-		{
-			if (void* symbol = ::dlsym(module, name))
-				return reinterpret_cast<DllMainFunction>(symbol);
-		}
-		return nullptr;
-	}
-}
-
-namespace nppmac::kernel
-{
-	std::string libraryPath(HMODULE module)
-	{
-		std::lock_guard lock{librariesMutex()};
-		auto it = libraries().find(module);
-		return it == libraries().end() ? std::string{} : it->second._path;
-	}
 }
 
 HMODULE WINAPI LoadLibraryExW(LPCWSTR fileName, HANDLE, DWORD)

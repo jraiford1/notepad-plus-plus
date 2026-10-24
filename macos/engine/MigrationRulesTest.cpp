@@ -58,6 +58,7 @@ namespace
 		{"std::stoi", "int n = std::stoi(s); long m = stol(t);", "int n = nppmac::stoi(s); long m = nppmac::stol(t);"},
 		{"ifstream", "std::ifstream in(path); ofstream out;", "nppmac::ifstream in(path); nppmac::ofstream out;"},
 		{"std::format", "auto s = std::format(L\"{}\", n);", "auto s = nppmac::format(u\"{}\", n);"},
+		{"include with Windows separators", "#include \"Docking\\Dlg.h\"\n#include \"a\\\\b.h\"", "#include \"Docking/Dlg.h\"\n#include \"a/b.h\""},
 		{"include directive untouched", "#include <fstream>\n#include <format>\n#include \"wstring.h\"\nstd::wstring s;", "#include <fstream>\n#include <format>\n#include \"wstring.h\"\nstd::u16string s;"},
 		{"unqualified format untouched", "EolType format; format = f(format);", "EolType format; format = f(format);"},
 		{"unqualified fstream untouched", "fstream f;", "fstream f;"},

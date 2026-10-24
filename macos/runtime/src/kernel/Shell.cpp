@@ -22,6 +22,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <knownfolders.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
@@ -92,6 +94,23 @@ namespace
 }
 
 // --- shlwapi paths --------------------------------------------------------------------------------
+
+LPSTR WINAPI StrChrA(LPCSTR text, WORD ch)
+{
+	return text ? const_cast<LPSTR>(std::strchr(text, static_cast<char>(ch))) : nullptr;
+}
+
+LPWSTR WINAPI StrChrW(LPCWSTR text, WCHAR ch)
+{
+	if (!text)
+		return nullptr;
+	for (; *text; ++text)
+	{
+		if (*text == ch)
+			return const_cast<LPWSTR>(text);
+	}
+	return nullptr;
+}
 
 LPWSTR WINAPI PathFindFileNameW(LPCWSTR path)
 {
@@ -461,6 +480,47 @@ HRESULT WINAPI SHGetFolderPathW(HWND, int csidl, HANDLE, DWORD, LPWSTR path)
 	if (csidl & CSIDL_FLAG_CREATE)
 		::mkdir(folder.c_str(), 0755);
 	wcscpy_s(path, MAX_PATH, fromPosixPath(folder).c_str());
+	return S_OK;
+}
+
+HRESULT WINAPI SHGetKnownFolderPath(REFKNOWNFOLDERID id, DWORD flags, HANDLE, PWSTR* path)
+{
+	*path = nullptr;
+	// The known folders, as the CSIDL ones they replace (Downloads has none).
+	struct Known
+	{
+		const KNOWNFOLDERID* _id;
+		int _csidl;
+	};
+	static const Known knownFolders[] = {
+		{&FOLDERID_RoamingAppData, CSIDL_APPDATA},
+		{&FOLDERID_LocalAppData, CSIDL_LOCAL_APPDATA},
+		{&FOLDERID_ProgramData, CSIDL_COMMON_APPDATA},
+		{&FOLDERID_Documents, CSIDL_PERSONAL},
+		{&FOLDERID_Desktop, CSIDL_DESKTOP},
+		{&FOLDERID_Profile, CSIDL_PROFILE},
+		{&FOLDERID_ProgramFiles, CSIDL_PROGRAM_FILES},
+		{&FOLDERID_ProgramFilesX86, CSIDL_PROGRAM_FILESX86},
+		{&FOLDERID_Windows, CSIDL_WINDOWS},
+		{&FOLDERID_System, CSIDL_SYSTEM},
+	};
+	std::string folder;
+	if (IsEqualGUID(id, FOLDERID_Downloads))
+		folder = nppmac::platform::homeDirectory() + "/Downloads";
+	for (const Known& known : knownFolders)
+	{
+		if (IsEqualGUID(id, *known._id))
+			folder = folderForCsidl(known._csidl);
+	}
+	if (folder.empty())
+		return E_INVALIDARG;
+	if (flags & KF_FLAG_CREATE)
+		::mkdir(folder.c_str(), 0755);
+	const std::u16string wide = fromPosixPath(folder);
+	*path = static_cast<PWSTR>(CoTaskMemAlloc((wide.size() + 1) * sizeof(char16_t)));
+	if (!*path)
+		return E_OUTOFMEMORY;
+	std::copy_n(wide.c_str(), wide.size() + 1, *path);
 	return S_OK;
 }
 
