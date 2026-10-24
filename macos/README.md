@@ -81,10 +81,23 @@ Tracked as job J1 in the work tracker. Today:
 * Notepad++'s dark mode works, including "follow Windows", which follows the macOS appearance:
   the editor, panels, dialogs and the runtime's controls go dark, and so do the native menus and
   panels;
-* not yet: printing, IME, plugins (W8).
+* plugins load from `Notepad++.app/Contents/Resources/plugins/<Name>/<Name>.dll`, the place and name
+  they have next to `notepad++.exe` on Windows (see [Plugins](#plugins));
+* not yet: printing, IME.
 
 About ten Win32 functions are still weak stubs (printing, IME, plugin loading, directory change
 notifications); the build lists them as `Win32 functions still stubbed`.
+
+## Plugins
+
+A plugin for macOS is built from its Windows sources, with `nppmac_add_plugin` in
+[plugins/CMakeLists.txt](plugins/CMakeLists.txt): the sources go through the migration engine as
+Notepad++'s do (so `wchar_t` in the plugin interface becomes `char16_t`, as in the app), compile
+against the runtime's headers, and link as a Mach-O bundle whose Win32 calls bind to the runtime in
+the app. [HelloMac](plugins/HelloMac/HelloMac.cpp), written exactly as for Windows, is the example
+and is used by the smoke test.
+
+Plugins Admin shows no list: its list and downloads are Windows binaries.
 
 ## Debugging
 
