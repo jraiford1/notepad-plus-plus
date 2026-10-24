@@ -38,6 +38,7 @@ namespace nppmac::controls
 	void registerControl(const char16_t* name, WNDPROC proc, UINT style, LPCWSTR cursor)
 	{
 		user::registerBuiltInClass(name, proc, style, sizeof(LONG_PTR) * 2, LoadCursorW(nullptr, cursor), nullptr, nullptr);
+		user::setClassDrawsOwnScrollBars(name);
 	}
 }
 

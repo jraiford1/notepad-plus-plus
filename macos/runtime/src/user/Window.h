@@ -58,6 +58,7 @@ namespace nppmac::user
 		WORD _menuOrdinal = 0; // a menu named by MAKEINTRESOURCE
 		std::vector<BYTE> _extra;
 		std::shared_ptr<BuiltInClass> _builtIn;
+		bool _drawsOwnScrollBars = false; // the runtime's controls draw WS_VSCROLL / WS_HSCROLL themselves
 		ATOM _atom = 0;
 	};
 
@@ -100,6 +101,8 @@ namespace nppmac::user
 		ui::NativeView* _view = nullptr;
 		bool _nativeControl = false;        // backed by a native control (no surface, no WM_PAINT)
 		bool _seeThrough = false;           // see nppmac::ui::setSeeThrough
+		SCROLLINFO _scrollBars[2]{};        // SB_HORZ, SB_VERT; visible when the style has WS_HSCROLL / WS_VSCROLL
+		bool _scrollBarsDisabled[2]{};
 		bool _visible = false;
 		bool _created = false;              // WM_CREATE has been sent
 		bool _applyingGeometry = false;     // the window manager is moving the native window itself
@@ -135,6 +138,7 @@ namespace nppmac::user
 		void nativeMouse(ui::MouseAction action, ui::MouseButton button, ui::Point position, unsigned modifiers, int delta) override;
 		void nativeFilesDropped(const std::vector<std::string>& paths, ui::Point position) override;
 		bool nativeAcceptsFiles() const override;
+		void nativeScroll(bool vertical, ui::ScrollPart part, double value) override;
 	};
 
 	// --- Window table -----------------------------------------------------------------------------
@@ -172,6 +176,12 @@ namespace nppmac::user
 
 	// Makes a window see-through (nppmac::ui::setSeeThrough): group boxes and WS_EX_TRANSPARENT.
 	void setSeeThrough(HWND hwnd, bool seeThrough);
+
+	// Standard scroll bars: shows or hides them as the style says, and makes the client area fit.
+	void updateScrollBars(Window* window);
+	void setClassDrawsOwnScrollBars(const char16_t* className);
+	// The client size once the visible standard scroll bars take their room.
+	void fitClientToScrollBars(Window* window);
 	Window* activeWindow();
 	void setActiveWindow(Window* window);
 

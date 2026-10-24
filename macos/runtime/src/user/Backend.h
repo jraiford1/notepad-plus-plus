@@ -78,6 +78,28 @@ namespace nppmac::ui
 	};
 
 	// Implemented by the window manager for each window; called by the native side.
+	// What the user did on a standard scroll bar.
+	enum class ScrollPart
+	{
+		lineUp,
+		lineDown,
+		pageUp,
+		pageDown,
+		thumbTrack,
+		thumbPosition,
+		end,
+	};
+
+	// A standard scroll bar (WS_VSCROLL / WS_HSCROLL): value is where the thumb is (0 to 1) and
+	// proportion how much of the content shows (0 to 1).
+	struct ScrollBarState
+	{
+		bool _visible = false;
+		bool _enabled = true;
+		double _value = 0;
+		double _proportion = 1;
+	};
+
 	class ViewOwner
 	{
 	public:
@@ -103,6 +125,9 @@ namespace nppmac::ui
 
 		// The view accepts dropped files.
 		virtual bool nativeAcceptsFiles() const = 0;
+
+		// The user worked a standard scroll bar; value is the thumb's place (0 to 1) when dragging.
+		virtual void nativeScroll(bool vertical, ScrollPart part, double value) = 0;
 	};
 
 	// Creates the application object (an NSApplication subclass that routes keys to the window
@@ -167,6 +192,11 @@ namespace nppmac::ui
 	// under it, and the mouse goes through it to them, as HTTRANSPARENT does on Windows. Its surface
 	// is cleared before each paint.
 	void setSeeThrough(NativeView* view, bool seeThrough);
+
+	// Standard scroll bars, shown at the right and bottom edges of the view, over its content: the
+	// window manager makes the client area smaller by their thickness, as Windows' non-client area.
+	void setScrollBar(NativeView* view, bool vertical, const ScrollBarState& state);
+	int scrollBarThickness();
 	void clearSurface(NativeView* view, const Rect& rect);
 
 	// For built-in classes backed by a native control (Scintilla, buttons, edits...): the window

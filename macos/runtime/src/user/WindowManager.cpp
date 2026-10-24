@@ -205,6 +205,7 @@ namespace nppmac::user
 		const ui::Rect client = ui::clientRectOnScreen(window->_view);
 		window->_clientWidth = client.width();
 		window->_clientHeight = client.height();
+		fitClientToScrollBars(window);
 	}
 
 	void applyGeometry(Window* window, const RECT& rect)
@@ -226,12 +227,14 @@ namespace nppmac::user
 			{
 				window->_clientWidth = rect.right - rect.left;
 				window->_clientHeight = rect.bottom - rect.top;
+				fitClientToScrollBars(window);
 			}
 		}
 		else
 		{
 			window->_clientWidth = std::max<LONG>(0, rect.right - rect.left);
 			window->_clientHeight = std::max<LONG>(0, rect.bottom - rect.top);
+			fitClientToScrollBars(window);
 			if (window->_view)
 				ui::setFrame(window->_view, toUiRect(rect));
 		}
@@ -728,6 +731,11 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 		nppmac::ui::setAcceptsFiles(window->_view, true);
 	if (exStyle & WS_EX_TRANSPARENT)
 		setSeeThrough(window->_hwnd, true);
+	// Standard scroll bars start with Windows' default range, 0 to 100.
+	for (SCROLLINFO& scrollBar : window->_scrollBars)
+		scrollBar = {sizeof(SCROLLINFO), 0, 0, 100, 0, 0, 0};
+	if (style & (WS_VSCROLL | WS_HSCROLL))
+		updateScrollBars(window);
 	// Dialog controls do not clip their siblings, so where they overlap, the one Windows paints last,
 	// the later one, is what shows: it is stacked on top of the others on screen (z-order is unchanged).
 	if ((style & WS_CHILD) && !(style & WS_CLIPSIBLINGS) && parent && parent->_class && parent->_class->_name == u"#32770")
@@ -1133,6 +1141,8 @@ LONG_PTR WINAPI SetWindowLongPtrW(HWND hwnd, int index, LONG_PTR value)
 				nppmac::ui::setVisible(window->_view, window->_visible, false);
 			}
 			nppmac::ui::setEnabled(window->_view, !(window->_style & WS_DISABLED));
+			if ((styles.styleOld ^ styles.styleNew) & (WS_VSCROLL | WS_HSCROLL))
+				updateScrollBars(window);
 			window->send(WM_STYLECHANGED, GWL_STYLE, reinterpret_cast<LPARAM>(&styles));
 			break;
 		}

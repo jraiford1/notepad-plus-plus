@@ -47,6 +47,8 @@ namespace nppmac::ui
 		CGFloat _surfaceScale = 1;
 		bool _acceptsFiles = false;
 		bool _seeThrough = false;
+		NSScroller* _scrollers[2] = {};    // horizontal, vertical
+		ScrollBarState _scrollStates[2];
 	};
 
 	double primaryScreenHeight()
@@ -95,9 +97,64 @@ namespace nppmac::ui
 
 	NativeView* g_captureView = nullptr;
 	bool g_cursorHidden = false;
+
+	void layoutScrollers(NativeView* native);
 }
 
 // --- Views ------------------------------------------------------------------------------------------
+
+// A standard scroll bar. It reports clicks and drags to the window manager; a knob drag ends with
+// a thumb position and an end, as Windows' scroll bars do.
+@interface NppMacScroller : NSScroller
+{
+@public
+	NativeView* _native;
+	bool _vertical;
+	bool _draggedKnob;
+}
+@end
+
+@implementation NppMacScroller
+
+- (void)scrolled:(id)sender
+{
+	if (!_native || !_native->_owner)
+		return;
+	switch (self.hitPart)
+	{
+		case NSScrollerKnob:
+			_draggedKnob = true;
+			_native->_owner->nativeScroll(_vertical, ScrollPart::thumbTrack, self.doubleValue);
+			break;
+		case NSScrollerDecrementPage:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::pageUp, self.doubleValue);
+			break;
+		case NSScrollerIncrementPage:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::pageDown, self.doubleValue);
+			break;
+		case NSScrollerDecrementLine:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::lineUp, self.doubleValue);
+			break;
+		case NSScrollerIncrementLine:
+			_native->_owner->nativeScroll(_vertical, ScrollPart::lineDown, self.doubleValue);
+			break;
+		default:
+			break;
+	}
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+	_draggedKnob = false;
+	[super mouseDown:event]; // tracks the mouse until it comes up
+	if (!_native || !_native->_owner)
+		return;
+	if (_draggedKnob)
+		_native->_owner->nativeScroll(_vertical, ScrollPart::thumbPosition, self.doubleValue);
+	_native->_owner->nativeScroll(_vertical, ScrollPart::end, self.doubleValue);
+}
+
+@end
 
 @interface NppMacView : NSView
 {
@@ -112,6 +169,13 @@ namespace nppmac::ui
 - (BOOL)isFlipped
 {
 	return YES;
+}
+
+- (void)setFrameSize:(NSSize)size
+{
+	[super setFrameSize:size];
+	if (_native && (_native->_scrollers[0] || _native->_scrollers[1]))
+		layoutScrollers(_native);
 }
 
 - (BOOL)acceptsFirstResponder
@@ -793,6 +857,11 @@ namespace nppmac::ui
 			g_captureView = nullptr;
 		if ([native->_view isKindOfClass:NppMacView.class])
 			static_cast<NppMacView*>(native->_view)->_native = nullptr;
+		for (NSScroller* scroller : native->_scrollers)
+		{
+			if (scroller)
+				static_cast<NppMacScroller*>(scroller)->_native = nullptr;
+		}
 		if (native->_window)
 		{
 			static_cast<NppMacWindow*>(native->_window)->_native = nullptr;
@@ -1045,6 +1114,61 @@ namespace nppmac::ui
 			[native->_window deminiaturize:nil];
 		else if (native->_window.isZoomed)
 			[native->_window zoom:nil];
+	}
+
+	int scrollBarThickness()
+	{
+		return static_cast<int>(std::lround([NSScroller scrollerWidthForControlSize:NSControlSizeRegular scrollerStyle:NSScrollerStyleLegacy]));
+	}
+
+	// The scroll bars sit at the right and bottom edges, above the view's children.
+	void layoutScrollers(NativeView* native)
+	{
+		if (!native || !native->_view)
+			return;
+		const NSRect bounds = native->_view.bounds;
+		const CGFloat thickness = scrollBarThickness();
+		const bool horizontal = native->_scrollStates[0]._visible;
+		const bool vertical = native->_scrollStates[1]._visible;
+		if (NSScroller* scroller = native->_scrollers[1])
+		{
+			scroller.frame = NSMakeRect(bounds.size.width - thickness, 0, thickness, std::max<CGFloat>(0, bounds.size.height - (horizontal ? thickness : 0)));
+			scroller.hidden = !vertical;
+			[native->_view addSubview:scroller positioned:NSWindowAbove relativeTo:nil];
+		}
+		if (NSScroller* scroller = native->_scrollers[0])
+		{
+			scroller.frame = NSMakeRect(0, bounds.size.height - thickness, std::max<CGFloat>(0, bounds.size.width - (vertical ? thickness : 0)), thickness);
+			scroller.hidden = !horizontal;
+			[native->_view addSubview:scroller positioned:NSWindowAbove relativeTo:nil];
+		}
+	}
+
+	void setScrollBar(NativeView* native, bool vertical, const ScrollBarState& state)
+	{
+		if (!native || native->_adopted || !native->_view)
+			return;
+		const int index = vertical ? 1 : 0;
+		native->_scrollStates[index] = state;
+		NSScroller* scroller = native->_scrollers[index];
+		if (!scroller && state._visible)
+		{
+			// The frame's shape tells NSScroller which way it scrolls.
+			NppMacScroller* created = [[NppMacScroller alloc] initWithFrame:vertical ? NSMakeRect(0, 0, 15, 100) : NSMakeRect(0, 0, 100, 15)];
+			created->_native = native;
+			created->_vertical = vertical;
+			created.scrollerStyle = NSScrollerStyleLegacy;
+			created.target = created;
+			created.action = @selector(scrolled:);
+			native->_scrollers[index] = created;
+			scroller = created;
+		}
+		if (!scroller)
+			return;
+		scroller.enabled = state._enabled && state._proportion < 1;
+		scroller.doubleValue = std::clamp(state._value, 0.0, 1.0);
+		scroller.knobProportion = std::clamp(state._proportion, 0.0, 1.0);
+		layoutScrollers(native);
 	}
 
 	void setSeeThrough(NativeView* native, bool seeThrough)
