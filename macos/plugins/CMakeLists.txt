@@ -34,7 +34,7 @@ function(nppmac_add_plugin name)
 		OUTPUT "${migrationReport}"
 		BYPRODUCTS ${generatedSources}
 		COMMAND npp-migrate "${plugin_SOURCE_DIR}" "${generatedDir}" --report "${migrationReport}"
-			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt"
+			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt" --text-base "${name}"
 		DEPENDS npp-migrate ${pluginFiles} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt"
 		COMMENT "Migrating plugin ${name}"
 		VERBATIM
@@ -135,6 +135,25 @@ function(nppmac_add_external_plugin name)
 	endif()
 	nppmac_add_plugin(${name} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES})
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
+
+	# version_git.h, which some plugins make before building with their version_git.sh (from git
+	# describe): written in the same form, with the catalog's version and the script's copyright line.
+	if(EXISTS "${sourceDir}/version_git.sh" AND NOT EXISTS "${sourceDir}/version_git.h")
+		file(READ "${sourceDir}/version_git.sh" script)
+		string(REGEX MATCH "COPYRIGHT_STR \\\\\"([^\\\\]*)" copyrightMatch "${script}")
+		string(TIMESTAMP year "%Y")
+		string(REPLACE "$YEAR" "${year}" copyright "${CMAKE_MATCH_1}")
+		string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" version "${plugin_VERSION}")
+		string(REPLACE "." "," versionNumbers "${version}")
+		file(MAKE_DIRECTORY "${generatedDir}")
+		file(WRITE "${generatedDir}/version_git.h" "#pragma once\n"
+			"#define VERSION_NUMBER ${versionNumbers},0\n"
+			"#define VERSION_NUMBER_STR \"${version}\"\n"
+			"#define VERSION_NUMBER_WSTR L\"${version}\"\n"
+			"#define COPYRIGHT_STR \"${copyright}\"\n"
+			"#define VERSION_GIT_STR \"v${version}\"\n"
+			"#define VERSION_GIT_WSTR L\"v${version}\"\n")
+	endif()
 	foreach(include IN LISTS plugin_INCLUDES)
 		target_include_directories(${name} PRIVATE "${generatedDir}/${include}")
 	endforeach()
@@ -161,6 +180,22 @@ nppmac_add_plugin(HelloMac NPP_HEADERS SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/H
 
 if(NPPMAC_BUILD_PLUGINS)
 	include(catalog.cmake)
+	get_property(committedPlugins GLOBAL PROPERTY NPPMAC_CATALOG_PLUGINS)
 	# A maintainer's plugins being ported, not committed.
 	include(catalog-local.cmake OPTIONAL)
+
+	# The plugins Plugins Admin offers: packed into the app with their list (MakePluginList.cmake).
+	get_property(catalogPlugins GLOBAL PROPERTY NPPMAC_CATALOG_PLUGINS)
+	if(catalogPlugins)
+		string(REPLACE ";" "|" catalogNames "${catalogPlugins}")
+		add_custom_target(nppPluginCatalog ALL
+			COMMAND "${CMAKE_COMMAND}" "-DNAMES=${catalogNames}" "-DPLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+				"-DINFO=${CMAKE_CURRENT_SOURCE_DIR}/catalog-info.json" "-DRESOURCES=$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources"
+				-P "${CMAKE_CURRENT_SOURCE_DIR}/MakePluginList.cmake"
+			COMMENT "Packing the plugins for Plugins Admin"
+			VERBATIM
+		)
+		# Plugins being ported may not build: only the catalog's committed plugins are waited for.
+		add_dependencies(nppPluginCatalog NotepadPlusPlus ${committedPlugins})
+	endif()
 endif()

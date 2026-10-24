@@ -96,6 +96,34 @@ namespace
 
 // --- shlwapi paths --------------------------------------------------------------------------------
 
+LPWSTR WINAPI PathRemoveBackslashW(LPWSTR path)
+{
+	// A trailing separator goes, except a root's: the result is then the terminator, otherwise the last
+	// character.
+	if (!path)
+		return nullptr;
+	size_t length = std::char_traits<char16_t>::length(path);
+	if (length > 1 && (path[length - 1] == u'\\' || path[length - 1] == u'/') && !(length == 3 && path[1] == u':'))
+	{
+		path[--length] = u'\0';
+		return path + length;
+	}
+	return length > 0 ? path + length - 1 : path;
+}
+
+LPSTR WINAPI PathRemoveBackslashA(LPSTR path)
+{
+	if (!path)
+		return nullptr;
+	size_t length = std::strlen(path);
+	if (length > 1 && (path[length - 1] == '\\' || path[length - 1] == '/') && !(length == 3 && path[1] == ':'))
+	{
+		path[--length] = '\0';
+		return path + length;
+	}
+	return length > 0 ? path + length - 1 : path;
+}
+
 LPSTR WINAPI StrChrA(LPCSTR text, WORD ch)
 {
 	return text ? const_cast<LPSTR>(std::strchr(text, static_cast<char>(ch))) : nullptr;

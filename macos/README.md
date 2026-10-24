@@ -128,7 +128,31 @@ against the runtime's headers, and link as a Mach-O bundle whose Win32 calls bin
 the app. [HelloMac](plugins/HelloMac/HelloMac.cpp), written exactly as for Windows, is the example
 and is used by the smoke test.
 
-Plugins Admin shows no list: its list and downloads are Windows binaries.
+A plugin's resources (dialogs, icons, strings) are its `.rc` files compiled into `<Name>.res` beside
+`<Name>.dll`; the runtime finds them for the plugin's module handle, which `LoadLibrary` gives its
+`DllMain` as Windows does.
+
+**The catalog.** [plugins/catalog.cmake](plugins/catalog.cmake) lists plugins of Notepad++'s official
+plugin list built for macOS, each fetched at configure time at a pinned commit and built from its own
+Visual Studio project. [import-plugins.py](plugins/import-plugins.py) writes an entry from a
+checkout of the plugin; a plugin is listed once it builds, and work in progress can sit in an
+uncommitted `plugins/catalog-local.cmake`. Code that many plugins share (their template) and that
+clang reads differently from Visual C++ is adjusted by
+[plugins/plugin-text-rules.txt](plugins/plugin-text-rules.txt). Of the 220 plugins in the official
+list, 126 are C or C++ on GitHub (the others are .NET, Delphi and so on, which cannot be built here),
+and 90 of those need nothing exotic (no MFC, ATL, COM type libraries, WebView, Python, Boost, Qt or
+network libraries): they are the catalog's aim.
+
+**Plugins Admin** offers the catalog's plugins. The build packs each into
+`Resources/plugins-catalog/<Name>.zip` and writes the list Plugins Admin reads,
+`Resources/plugins/Config/nppPluginList.json` (the official list's entries, from
+[plugins/catalog-info.json](plugins/catalog-info.json), with each zip's SHA-256); a migration fixup
+makes Plugins Admin read that JSON list on macOS. Installing, updating, removing, disabling and
+enabling work as on Windows: Notepad++ quits and its updater, `Resources/updater/gup.exe`
+([gup/Gup.cpp](gup/Gup.cpp), WinGUp's command line on macOS), changes the plugin folders, checks each
+package against its SHA-256, and starts Notepad++ again. Plugins go where upstream puts them,
+`Resources/plugins/<Name>/`. Versions are the official list's; the plugin is built from the commit
+the catalog pins, which may be newer.
 
 ## Debugging
 

@@ -21,6 +21,7 @@
 #include "platform/Platform.h"
 
 #include <dwmapi.h>
+#include <shellscalingapi.h>
 
 using namespace nppmac;
 
@@ -495,4 +496,14 @@ BOOL WINAPI AdjustWindowRect(LPRECT rect, DWORD style, BOOL menu)
 BOOL WINAPI AdjustWindowRectExForDpi(LPRECT rect, DWORD style, BOOL menu, DWORD exStyle, UINT)
 {
 	return AdjustWindowRectEx(rect, style, menu, exStyle);
+}
+
+HRESULT WINAPI GetDpiForMonitor(HMONITOR, MONITOR_DPI_TYPE, UINT* x, UINT* y)
+{
+	// Every screen is 96 DPI to the program: macOS scales points to pixels itself.
+	if (x)
+		*x = 96;
+	if (y)
+		*y = 96;
+	return S_OK;
 }

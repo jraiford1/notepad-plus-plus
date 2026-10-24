@@ -38,3 +38,20 @@ file: NppIO.cpp
 						fn.replace(pos, 2, L"\\");
 					std::replace(fn.begin(), fn.end(), L'\\', L'/');
 >>>>
+
+# Plugins Admin reads its plugin list as JSON on macOS: the list the macOS build makes for the plugins
+# it carries (plugins/Config/nppPluginList.json), inside the app. A release build on Windows reads a
+# signed nppPluginList.dll and checks the signatures of it and of the updater, which macOS has no form of.
+file: WinControls/PluginsAdmin/pluginsAdmin.cpp
+<<<<
+#if !defined(NDEBUG)  // if not debug, then it's release
+====
+#if !defined(NDEBUG) || defined(__APPLE__) // if not debug, then it's release (macOS: always the JSON list)
+>>>>
+
+file: WinControls/PluginsAdmin/pluginsAdmin.cpp
+<<<<
+#if !defined(NDEBUG) // if not debug, then it's release
+====
+#if !defined(NDEBUG) || defined(__APPLE__) // if not debug, then it's release (macOS: always the JSON list)
+>>>>

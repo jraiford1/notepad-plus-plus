@@ -20,8 +20,10 @@
 # Visual Studio project that builds the plugin's DLL. A maintainer's tool, run by hand:
 #
 #     import-plugins.py <plugin list (pl.x64.json)> <folder of checkouts, one per plugin name> <name>...
+#     import-plugins.py --info <plugin list (pl.x64.json)> <name>...
 #
-# The entries are printed for catalog.cmake; each pins the checkout's current commit.
+# The first prints entries for catalog.cmake, each pinning the checkout's current commit; the second
+# prints catalog-info.json, the list's own entries for the plugins (name, author, description...).
 
 import glob
 import json
@@ -54,6 +56,10 @@ def read_project(path):
 			kind = group.find(MSBUILD + 'ConfigurationType')
 			if kind is not None:
 				project['type'] = kind.text
+			# VC++ Directories > Include Directories.
+			include_path = group.find(MSBUILD + 'IncludePath')
+			if include_path is not None and include_path.text:
+				project['includes'] += [i.replace('\\', '/') for i in include_path.text.split(';') if i and not i.startswith('$(IncludePath)') and 'VC_' not in i]
 	for group in root.iter(MSBUILD + 'ItemGroup'):
 		for item in group:
 			tag = item.tag.replace(MSBUILD, '')
@@ -104,7 +110,8 @@ def find_project(checkout, name):
 
 
 def solution_dir(checkout, project_path):
-	# The folder of the solution that lists the project ($(SolutionDir)); the repository if none does.
+	# The folder of the solution that lists the project ($(SolutionDir)); without one, the project's own,
+	# where Visual Studio puts a new solution.
 	name = os.path.basename(project_path)
 	for solution in glob.glob(os.path.join(checkout, '**', '*.sln'), recursive=True):
 		try:
@@ -112,7 +119,7 @@ def solution_dir(checkout, project_path):
 				return os.path.dirname(solution)
 		except OSError:
 			continue
-	return checkout
+	return os.path.dirname(project_path)
 
 
 def repository_path(checkout, project_dir, path, solution=None):
@@ -162,7 +169,18 @@ def entry(name, plugin, checkout):
 	return '\n'.join(lines), None
 
 
+def write_info(plugin_list, names):
+	# The official list's entries for the catalog's plugins (catalog-info.json), which the build turns into
+	# the plugin list Plugins Admin reads.
+	plugins = {p['folder-name']: p for p in json.load(open(plugin_list, encoding='utf-8-sig'))['npp-plugins']}
+	info = {name: {k: v for k, v in plugins[name].items() if k not in ('id', 'repository')} for name in sorted(names, key=str.lower)}
+	print(json.dumps(info, indent='\t', ensure_ascii=False))
+
+
 def main():
+	if len(sys.argv) >= 3 and sys.argv[1] == '--info':
+		write_info(sys.argv[2], sys.argv[3:])
+		return
 	if len(sys.argv) < 4:
 		sys.exit(__doc__ or 'usage: import-plugins.py <pl.x64.json> <checkouts> <name>...')
 	plugins = {p['folder-name']: p for p in json.load(open(sys.argv[1], encoding='utf-8-sig'))['npp-plugins']}

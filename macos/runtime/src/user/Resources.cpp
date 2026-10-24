@@ -21,6 +21,7 @@
 #include <ImageIO/ImageIO.h>
 
 #include "Resources.h"
+#include "kernel/Internal.h"
 #include "kernel/Modules.h"
 #include "Window.h"
 #include "platform/Platform.h"
@@ -160,15 +161,9 @@ namespace nppmac::user
 			return *resources;
 		}
 
-		// A plugin's resources: its compiled .rc beside it, <Name>.res for <Name>.dll. Null for the program
-		// and for modules without one.
-		const Store* moduleStore(HMODULE module)
+		// A library's resources: its compiled .rc beside it, <Name>.res for <Name>.dll. Null without one.
+		const Store* libraryStore(const std::string& library)
 		{
-			if (!module)
-				return nullptr;
-			const std::string library = kernel::libraryPath(module);
-			if (library.empty())
-				return nullptr;
 			static auto* mutex = new std::mutex;
 			static auto* stores = new std::unordered_map<std::string, std::unique_ptr<Store>>;
 			std::lock_guard lock{*mutex};
@@ -188,6 +183,34 @@ namespace nppmac::user
 				it = stores->emplace(library, std::move(store)).first;
 			}
 			return it->second.get();
+		}
+
+		// A plugin's resources. Null for the program and for modules without any.
+		const Store* moduleStore(HMODULE module)
+		{
+			if (!module)
+				return nullptr;
+			const std::string library = kernel::libraryPath(module);
+			return library.empty() ? nullptr : libraryStore(library);
+		}
+
+		// The version resource of a file: the program's, or a plugin's from its .res.
+		std::span<const BYTE> versionResource(LPCWSTR fileName)
+		{
+			const std::u16string name{fileName ? fileName : u""};
+			if (name.size() >= 13 && _wcsicmp(name.substr(name.size() - 13).c_str(), u"notepad++.exe") == 0)
+				return resourceBytes(MAKEINTRESOURCEW(VS_VERSION_INFO), RT_VERSION);
+			if (name.size() < 4 || _wcsicmp(name.substr(name.size() - 4).c_str(), u".dll") != 0)
+				return {};
+			const Store* store = libraryStore(kernel::toPosixPath(name));
+			if (!store)
+				return {};
+			for (const Entry& entry : store->_entries)
+			{
+				if (entry._type.matches(RT_VERSION) && entry._name.matches(MAKEINTRESOURCEW(VS_VERSION_INFO)))
+					return {entry._data, entry._size};
+			}
+			return {};
 		}
 
 #pragma pack(push, 2)
@@ -732,20 +755,20 @@ DWORD WINAPI GetFileVersionInfoSizeW(LPCWSTR fileName, LPDWORD handle)
 {
 	if (handle)
 		*handle = 0;
-	const std::u16string name{fileName ? fileName : u""};
-	if (name.size() < 13 || _wcsicmp(name.substr(name.size() - 13).c_str(), u"notepad++.exe") != 0)
-	{
+	std::span<const BYTE> bytes = versionResource(fileName);
+	if (bytes.empty())
 		SetLastError(ERROR_RESOURCE_TYPE_NOT_FOUND);
-		return 0;
-	}
-	return static_cast<DWORD>(resourceBytes(MAKEINTRESOURCEW(VS_VERSION_INFO), RT_VERSION).size());
+	return static_cast<DWORD>(bytes.size());
 }
 
 BOOL WINAPI GetFileVersionInfoW(LPCWSTR fileName, DWORD, DWORD size, LPVOID data)
 {
-	if (!GetFileVersionInfoSizeW(fileName, nullptr))
+	std::span<const BYTE> bytes = versionResource(fileName);
+	if (bytes.empty())
+	{
+		SetLastError(ERROR_RESOURCE_TYPE_NOT_FOUND);
 		return FALSE;
-	std::span<const BYTE> bytes = resourceBytes(MAKEINTRESOURCEW(VS_VERSION_INFO), RT_VERSION);
+	}
 	std::memcpy(data, bytes.data(), std::min<size_t>(size, bytes.size()));
 	return TRUE;
 }

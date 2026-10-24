@@ -154,6 +154,14 @@ foreach(rcFile IN LISTS nppRcFiles)
 endforeach()
 target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
 
+# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
+add_dependencies(NotepadPlusPlus nppGup)
+add_custom_command(TARGET NotepadPlusPlus POST_BUILD
+	COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater"
+	COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater/gup.exe"
+	VERBATIM
+)
+
 # --- Tests -------------------------------------------------------------------------------------------
 # The end-to-end smoke test needs a window server (a logged-in macOS session); its label lets it be
 # left out with ctest -LE gui.
