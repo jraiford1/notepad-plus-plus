@@ -27,7 +27,7 @@ target_include_directories(nppRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # AppKit code (.mm) and Win32 code (.cpp) never share a translation unit: Cocoa's headers and the
 # Windows headers both define BOOL, Polygon, GetCurrentProcess and more.
 set_source_files_properties(${nppRuntimeSources} PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
-target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework PDFKit" iconv)
+target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework PDFKit" "-framework Metal" iconv)
 # The Scintilla window class talks to Scintilla's Cocoa view.
 target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include" "${NPP_ROOT}/scintilla/cocoa")
 
@@ -38,3 +38,8 @@ add_test(NAME runtimeCrt COMMAND nppRuntimeCrtTest)
 add_executable(nppRuntimeDirectoryChangesTest test/DirectoryChangesTest.cpp)
 target_link_libraries(nppRuntimeDirectoryChangesTest PRIVATE nppRuntime nppRuntimeStubs)
 add_test(NAME runtimeDirectoryChanges COMMAND nppRuntimeDirectoryChangesTest)
+
+add_executable(nppRuntimeSystemInfoTest test/SystemInfoTest.cpp)
+# The user layer (DwmGetColorizationColor) brings in the Scintilla window class.
+target_link_libraries(nppRuntimeSystemInfoTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
+add_test(NAME runtimeSystemInfo COMMAND nppRuntimeSystemInfoTest)

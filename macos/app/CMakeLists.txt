@@ -7,7 +7,8 @@ target_link_libraries(nppUuid PRIVATE nppRuntimeHeaders)
 target_compile_options(nppUuid PRIVATE -w)
 
 # --- Stubs for Win32 functions not implemented yet -----------------------------------------------
-set(nppSystemLibraries "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework Security" "-framework UniformTypeIdentifiers")
+set(nppSystemLibraries "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework Security" "-framework UniformTypeIdentifiers"
+	"-framework PDFKit" "-framework Metal")
 # The probe also gets what the runtime links itself (iconv).
 string(REPLACE ";" "|" nppSystemLibrariesArgument "-lc++;-liconv;${nppSystemLibraries}") # a list cannot pass through -D
 string(REPLACE " " "|" nppSystemLibrariesArgument "${nppSystemLibrariesArgument}")

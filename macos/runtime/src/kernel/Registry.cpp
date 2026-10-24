@@ -137,6 +137,20 @@ namespace
 		currentVersion->_values[u"CurrentBuildNumber"] = stringValue(build);
 		currentVersion->_values[u"DisplayVersion"] = stringValue(nppmac::toUtf16(nppmac::platform::systemVersion()));
 		currentVersion->_values[u"InstallationType"] = stringValue(u"Client");
+
+		// The graphics processors, where Help > Debug Info lists display adapters.
+		const std::vector<std::string> adapters = nppmac::platform::graphicsAdapters();
+		for (size_t i = 0; i < adapters.size(); ++i)
+		{
+			char16_t number[8]{};
+			number[0] = u'0';
+			number[1] = u'0';
+			number[2] = static_cast<char16_t>(u'0' + i / 10 % 10);
+			number[3] = static_cast<char16_t>(u'0' + i % 10);
+			const std::u16string path = u"SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\" + std::u16string{number};
+			Key* adapter = walk(hklm, path.c_str(), true);
+			adapter->_values[u"DriverDesc"] = stringValue(nppmac::toUtf16(adapters[i]));
+		}
 		currentVersion->_values[u"EditionID"] = stringValue(u"Professional");
 		currentVersion->_values[u"CurrentMajorVersionNumber"] = dwordValue(10);
 		currentVersion->_values[u"CurrentMinorVersionNumber"] = dwordValue(0);

@@ -38,6 +38,9 @@ namespace nppmac::platform
 	// The accent color chosen in System Settings > Appearance, as 0xRRGGBB.
 	unsigned accentColor();
 
+	// The names of the Mac's graphics processors ("Apple M3 Max").
+	std::vector<std::string> graphicsAdapters();
+
 	// The macOS version ("26.0.1") and build ("25A362").
 	std::string systemVersion();
 	std::string systemBuild();

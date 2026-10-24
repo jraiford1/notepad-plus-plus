@@ -258,6 +258,23 @@ quit()
 quit quit-light "$settings"
 quit quit-dark "$darkSettings" NPPMAC_TEST_APPEARANCE=dark
 
+# The session: a file open when Notepad++ quits is open again when it starts.
+printf 'kept\n' > "$work/session.txt"
+mkdir -p "$work/session-settings"
+env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_TEST_COMMAND=41011 NPPMAC_TEST_COMMAND_DELAY=3 \
+	perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$work/session-settings" "$work/session.txt" \
+	> "$work/session-quit.log" 2>&1
+files=()
+if runSettings="$work/session-settings" run session NPPMAC_DUMP_TREE=1; then
+	if grep -q 'Notepad++ id=.* text=".*/session.txt - Notepad++"' "$work/session.log"; then
+		echo "ok   session"
+	else
+		echo "FAIL session: the file was not open again"
+		grep -m1 'Notepad++ id=' "$work/session.log"
+		failures=$((failures + 1))
+	fi
+fi
+
 # Starting again with the window position that quit saved: the editor's tabs sit below the toolbar,
 # not over it (the window must be visible when its saved placement lays it out).
 files=()

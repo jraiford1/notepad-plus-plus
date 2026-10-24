@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #import <Cocoa/Cocoa.h>
+#import <Metal/Metal.h>
 #import <PDFKit/PDFKit.h>
 
 #include <algorithm>
@@ -79,6 +80,14 @@ namespace nppmac::platform
 			return 0x0078D7;
 		const auto channel = [](CGFloat value) { return static_cast<unsigned>(std::lround(std::clamp(value, 0.0, 1.0) * 255)); };
 		return (channel(color.redComponent) << 16) | (channel(color.greenComponent) << 8) | channel(color.blueComponent);
+	}
+
+	std::vector<std::string> graphicsAdapters()
+	{
+		std::vector<std::string> names;
+		for (id<MTLDevice> device in MTLCopyAllDevices())
+			names.push_back(device.name.UTF8String);
+		return names;
 	}
 
 	std::string systemVersion()
