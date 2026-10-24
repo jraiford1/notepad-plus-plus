@@ -151,11 +151,20 @@ namespace nppmac::ui
 
 @end
 
-@interface NppMacView : NSView
+// What the text input system did with the key interpretKey is running through it.
+struct TextInputCollector
+{
+	bool _active = false;
+	std::u16string _committed;
+};
+static TextInputCollector g_textInput;
+
+@interface NppMacView : NSView <NSTextInputClient>
 {
 @public
 	NativeView* _native;
 	NSTrackingArea* _trackingArea;
+	NSString* _markedText; // the text an input method is composing, nil when none
 }
 @end
 
@@ -181,6 +190,104 @@ namespace nppmac::ui
 - (BOOL)acceptsFirstMouse:(NSEvent*)event
 {
 	return YES;
+}
+
+- (BOOL)resignFirstResponder
+{
+	// Focus moving away ends a composition, as on Windows: what was composed is dropped.
+	if (_markedText)
+	{
+		[self.inputContext discardMarkedText];
+		[self clearMarkedText];
+	}
+	return [super resignFirstResponder];
+}
+
+// --- NSTextInputClient: the window's text is the owner's; only the composition is kept here.
+
+- (void)clearMarkedText
+{
+	_markedText = nil;
+	if (_native)
+		_native->_owner->nativeComposition({}, 0);
+}
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange
+{
+	NSString* text = [string isKindOfClass:NSAttributedString.class] ? [static_cast<NSAttributedString*>(string) string] : static_cast<NSString*>(string);
+	if (_markedText)
+		[self clearMarkedText];
+	if (g_textInput._active)
+		g_textInput._committed += toU16(text);
+	else if (_native)
+		_native->_owner->nativeInsertText(toU16(text));
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
+{
+	NSString* text = [string isKindOfClass:NSAttributedString.class] ? [static_cast<NSAttributedString*>(string) string] : static_cast<NSString*>(string);
+	if (text.length == 0)
+	{
+		[self clearMarkedText];
+		return;
+	}
+	_markedText = [text copy];
+	if (_native)
+		_native->_owner->nativeComposition(toU16(text), std::min<NSUInteger>(selectedRange.location, text.length));
+}
+
+- (void)unmarkText
+{
+	// The input method asks for the composition to be kept as it is.
+	NSString* text = _markedText;
+	if (!text)
+		return;
+	[self clearMarkedText];
+	[self insertText:text replacementRange:NSMakeRange(NSNotFound, 0)];
+}
+
+- (BOOL)hasMarkedText
+{
+	return _markedText.length > 0;
+}
+
+- (NSRange)markedRange
+{
+	return _markedText ? NSMakeRange(0, _markedText.length) : NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRange)selectedRange
+{
+	return NSMakeRange(_markedText ? _markedText.length : 0, 0);
+}
+
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText
+{
+	return @[];
+}
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	return nil;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point
+{
+	return NSNotFound;
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	if (!_native || !self.window)
+		return NSZeroRect;
+	const UiRect caret = _native->_owner->nativeCaretRect();
+	const NSRect local = NSMakeRect(caret._left, caret._top, std::max(1, caret.width()), std::max(1, caret.height()));
+	return [self.window convertRectToScreen:[self convertRect:local toView:nil]];
+}
+
+- (void)doCommandBySelector:(SEL)selector
+{
+	// Return, Tab, arrows and the like: the window gets them as the usual WM_KEYDOWN.
 }
 
 - (BOOL)isOpaque
@@ -738,6 +845,24 @@ namespace nppmac::ui
 			}];
 			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 		}
+
+		// NPPMAC_TEST_IME=<composing>[|<committed>] then plays an input method on the focused view (the
+		// text input system serves only the active program, which a test cannot make itself): it
+		// composes the first text and, a second later, commits the second.
+		const char* ime = std::getenv("NPPMAC_TEST_IME");
+		if (!ime || !*ime)
+			return;
+		const std::u16string imeText = toU16([NSString stringWithUTF8String:ime]);
+		const size_t bar = imeText.find(u'|');
+		const std::u16string composing = imeText.substr(0, bar);
+		const std::u16string committed = bar == std::u16string::npos ? std::u16string{} : imeText.substr(bar + 1);
+		for (int step = 0; step < (committed.empty() ? 1 : 2); ++step)
+		{
+			NSTimer* timer = [NSTimer timerWithTimeInterval:delay + keyIndex * keyInterval + 0.3 + step repeats:NO block:^(NSTimer*) {
+				testComposition(windowManagerFocusView(), composing, step == 0 ? std::u16string{} : committed);
+			}];
+			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+		}
 	}
 
 	// Debugging aid: NPPMAC_TEST_COMMAND=<id> sends that menu command after NPPMAC_TEST_COMMAND_DELAY
@@ -1075,6 +1200,49 @@ namespace nppmac::ui
 			[target keyDown:event];
 		else if (event.type == NSEventTypeKeyUp)
 			[target keyUp:event];
+	}
+
+	TextInputResult interpretKey(NativeView* native, void* nsEvent)
+	{
+		TextInputResult result;
+		if (!native || !nsEvent || ![native->_view isKindOfClass:NppMacView.class])
+			return result;
+		NppMacView* view = static_cast<NppMacView*>(native->_view);
+		NSEvent* event = (__bridge NSEvent*)nsEvent;
+		// Input methods serve the active program's current input context only; otherwise the key is
+		// an ordinary one.
+		NSTextInputContext* context = view.inputContext;
+		if (!context || NSTextInputContext.currentInputContext != context)
+			return result;
+		// Return, Tab, Escape, Backspace, arrows and function keys stay ordinary keys, unless something
+		// is being composed: then the input method has them (Return commits, Escape cancels).
+		NSString* characters = event.characters ?: @"";
+		const unichar first = characters.length > 0 ? [characters characterAtIndex:0] : 0;
+		const bool commandKey = characters.length > 0 && (first < 0x20 || first == 0x7F || (first >= 0xF700 && first <= 0xF8FF));
+		if (commandKey && !view.hasMarkedText)
+			return result;
+		// Text it enters while handling the key is collected here; text it enters later (input methods
+		// may answer asynchronously) arrives through nativeInsertText.
+		g_textInput = TextInputCollector{true};
+		[context handleEvent:event];
+		result._consumed = true;
+		result._committed = std::move(g_textInput._committed);
+		g_textInput = TextInputCollector{};
+		return result;
+	}
+
+	void testComposition(NativeView* native, const std::u16string& composing, const std::u16string& committed)
+	{
+		if (!native || ![native->_view isKindOfClass:NppMacView.class])
+			return;
+		NppMacView* view = static_cast<NppMacView*>(native->_view);
+		NSString* marked = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(composing.data()) length:composing.size()];
+		[view setMarkedText:marked selectedRange:NSMakeRange(marked.length, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+		if (!committed.empty())
+		{
+			NSString* text = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(committed.data()) length:committed.size()];
+			[view insertText:text replacementRange:NSMakeRange(NSNotFound, 0)];
+		}
 	}
 
 	void retainNativeEvent(void* nsEvent)

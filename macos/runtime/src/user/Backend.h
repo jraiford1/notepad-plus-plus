@@ -128,6 +128,13 @@ namespace nppmac::ui
 
 		// The user worked a standard scroll bar; value is the thumb's place (0 to 1) when dragging.
 		virtual void nativeScroll(bool vertical, ScrollPart part, double value) = 0;
+
+		// Text input (input methods, dead keys). The text being composed changed (empty: composing
+		// ended), with the caret's place in it; text was entered outside a key (the character viewer,
+		// dictation); and where the caret is (client coordinates), for the input method's windows.
+		virtual void nativeComposition(const std::u16string& text, size_t caret) = 0;
+		virtual void nativeInsertText(const std::u16string& text) = 0;
+		virtual Rect nativeCaretRect() = 0;
 	};
 
 	// Creates the application object (an NSApplication subclass that routes keys to the window
@@ -274,6 +281,8 @@ namespace nppmac::ui
 	void windowManagerDumpTree();
 	// Test aid: sends WM_COMMAND with the id to the active top-level window.
 	void windowManagerTestCommand(int id);
+	// Test aid: the focus window's view, for NPPMAC_TEST_IME.
+	NativeView* windowManagerFocusView();
 	// The system's light or dark appearance changed: WM_SETTINGCHANGE "ImmersiveColorSet", as on Windows.
 	void windowManagerAppearanceChanged();
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);
@@ -284,6 +293,20 @@ namespace nppmac::ui
 	void releaseNativeEvent(void* nsEvent);
 	// Hands a key event to a native control's view (keyDown: / keyUp:).
 	void forwardKey(NativeView* view, void* nsEvent);
+
+	// Runs a key down through the macOS text input system, for a view that edits text and has the
+	// active input context. consumed: the key is the input method's (Windows' VK_PROCESSKEY): a key
+	// that types (Option keys and dead keys too), or any key while something is being composed;
+	// committed is the text it entered while handling the key (later text comes through the owner's
+	// nativeInsertText). Return, Tab, arrows and the like are left to the usual WM_KEYDOWN.
+	struct TextInputResult
+	{
+		bool _consumed = false;
+		std::u16string _committed;
+	};
+	TextInputResult interpretKey(NativeView* view, void* nsEvent);
+	// Test aid: the view's input method composes the text, then commits the other (if not empty).
+	void testComposition(NativeView* view, const std::u16string& composing, const std::u16string& committed);
 	// Gives keyboard focus to a native view (first responder) without activating its window.
 	void focusNativeView(NativeView* view);
 

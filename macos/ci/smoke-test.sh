@@ -86,6 +86,18 @@ expect_file()
 	echo "ok   $name"
 }
 
+expect_log()
+{
+	local name="$1" pattern="$2"
+	if ! grep -q -- "$pattern" "$work/$name.log"; then
+		echo "FAIL $name: the log has no line matching $pattern"
+		grep -- 'Edit id=' "$work/$name.log" | head -5
+		failures=$((failures + 1))
+		return 1
+	fi
+	echo "ok   $name"
+}
+
 # Starts, shows the main window.
 files=()
 run startup && echo "ok   startup"
@@ -104,6 +116,10 @@ run save-as NPPMAC_TEST_TYPE='new document^s' NPPMAC_TEST_FILE_PANEL="$work/save
 printf 'one two\ntwo three\n' > "$work/find.txt"
 files=("$work/find.txt")
 run find NPPMAC_TEST_TYPE=$'^ftwo\n\n\x1b' && expect_file find "$work/find.txt" $'one two\ntwo three'
+
+# An input method in the Find box: typed text, then a composition committed as other text.
+files=()
+run ime NPPMAC_TEST_TYPE='^fab' NPPMAC_TEST_IME='かな|仮名' NPPMAC_DUMP_TREE=1 && expect_log ime 'Edit id=1001 .* text="ab仮名"'
 
 # Dialogs and panels open without crashing: About, Preferences, Shortcut Mapper, Function List.
 files=("$work/find.txt")
