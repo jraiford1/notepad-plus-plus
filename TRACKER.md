@@ -20,15 +20,17 @@
 | **Change** (a `CHANGE` item) | A code change to the macOS build (or to shared files it uses), committed to `master` as `W<n>: ...` |
 | **Working copy / increment** | A branch per `W` item, merged to `master` |
 | **APPLIED** | Merged to `master`; the macOS build (`cmake -S macos`) succeeds and its tests (`ctest`) pass |
-| **Cut** (`C` item) | Proposed, see Q1: a `macos-v<version>` tag on `master` and a zipped `Notepad++.app` |
-| **Distribution** (`X` item) | Proposed, see Q1: publishing that zip as a GitHub release on the fork; the release tag identifies it |
+| **Cut** (`C` item) | A `macos-v<upstream version>[-<n>]` tag on `master`; its product is the zipped `Notepad++.app` CI builds for that tag (see Q1) |
+| **Distribution** (`X` item) | That CI artifact, for the owner's own use; nothing is published publicly (see Q1) |
 | **Change ID** | None |
 
 ## How release artifacts are produced
 
-No `cut_script` yet. Until there is one: configure and build `macos` in Release, run `ctest`, then
-`ditto -c -k --keepParent Notepad++.app Notepad++-macos-<version>.zip`. Code signing and notarization need the
-owner's Apple Developer identity and are a person's step; unsigned builds must be opened with right-click → Open.
+No `cut_script`: CI does it. Every push builds `macos` in Release, runs `ctest` and uploads
+`Notepad++-macOS.zip` (the app, ad-hoc signed) as the run's artifact; for a cut, that is the run of the tag's
+commit. Locally the same is `macos/ci/build-and-test.sh` then `ditto -c -k --keepParent Notepad++.app
+Notepad++-macOS.zip`. Signing with an Apple Developer identity is the owner's step if ever wanted; until then
+the app is opened the first time with right-click → Open.
 
 ## Verification checks and tooling
 
@@ -47,14 +49,15 @@ owner's Apple Developer identity and are a person's step; unsigned builds must b
 
 **What does a cut produce for this project, and what does distribution mean?**
 
-Proposed answer (awaiting the owner's confirmation; `Q1` stays `OPEN` until then): a cut tags `master` as
-`macos-v<version>` and produces an unsigned, zipped `Notepad++.app` (universal arm64 + x86_64). Distribution is
-publishing that zip as a GitHub release on `jraiford1/notepad-plus-plus`, identified by its tag.
+Answered (deduced from the owner's direction, "we are just a private branch"; easily changed): a cut tags
+`master` as `macos-v<upstream Notepad++ version>[-<n>]`, and its product is the zipped `Notepad++.app` CI
+builds for that commit. Distribution is that artifact, for the owner's own use; nothing is published publicly.
+Pushing a tag is the owner's step.
 
 ## Q2
 
-**What should the Mac app be called, with which bundle identifier and icon?** "Notepad++" and its icon
-are the Notepad++ project's name and trademark. They stay the defaults until this is answered; the
-answer goes into the `NPPMAC_APP_NAME`, `NPPMAC_BUNDLE_ID` and `NPPMAC_APP_ICON` defaults in
-`macos/CMakeLists.txt`. Related: whether user plugins should live in `~/Library/Application Support`
-rather than inside the app bundle (a signed bundle should not change).
+**What should the Mac app be called, with which bundle identifier and icon?**
+
+Answered (owner): it is Notepad++. This is the same project, and the fork is a private branch of it, so the app
+keeps upstream's name and icon. `NPPMAC_APP_NAME`, `NPPMAC_BUNDLE_ID` and `NPPMAC_APP_ICON` stay as optional
+CMake settings with those defaults. Plugins live where upstream puts them (`plugins/` next to the program).

@@ -67,7 +67,7 @@ cmake --build macos/build --target nppUpstream -- -k
 
 Tracked as job J1 in the work tracker. Today:
 
-* every upstream source file (123 of 123) compiles on macOS, and only one line of upstream logic is
+* every upstream source file (123 of 123) compiles on macOS, and only three places in upstream are
   adjusted (`migration-fixups.txt`);
 * the app links and runs: the main window shows the toolbar, tab bar, Scintilla editor and status
   bar as on Windows, and Notepad++'s menus are in the macOS menu bar;
@@ -83,10 +83,12 @@ Tracked as job J1 in the work tracker. Today:
   panels;
 * plugins load from `Notepad++.app/Contents/Resources/plugins/<Name>/<Name>.dll`, the place and name
   they have next to `notepad++.exe` on Windows (see [Plugins](#plugins));
+* changes made outside Notepad++ show up: Folder as Workspace follows its folders, through
+  `ReadDirectoryChangesW` on FSEvents;
 * not yet: printing, IME.
 
-About ten Win32 functions are still weak stubs (printing, IME, plugin loading, directory change
-notifications); the build lists them as `Win32 functions still stubbed`.
+The few Win32 functions not implemented yet are weak stubs (printing, IME); the build lists them as
+`Win32 functions still stubbed`.
 
 ## The app's name and icon
 
@@ -97,10 +99,9 @@ settings:
 cmake -S macos -B macos/build -DNPPMAC_APP_NAME="..." -DNPPMAC_BUNDLE_ID="..." -DNPPMAC_APP_ICON=path/to/icon.png
 ```
 
-They default to "Notepad++" and upstream's icon. Those are the Notepad++ project's name and
-trademark: a build published outside the project should set its own. Upstream's own texts (the Help
-menu's "About Notepad++", dialog titles) still name Notepad++; changing those means a localization
-file of the new name, not edits to upstream.
+This is Notepad++, so they default to "Notepad++" and upstream's icon, and nothing needs setting.
+They are settings only so that a build can differ; upstream's own texts (the Help menu's "About
+Notepad++", dialog titles) name Notepad++ whatever they are set to.
 
 ## Plugins
 

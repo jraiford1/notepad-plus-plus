@@ -72,9 +72,8 @@ include(runtime/wine/WineHeaders.cmake) # sets NPPMAC_WINE_INCLUDE_DIRS and NPPM
 add_subdirectory(runtime)
 add_subdirectory(core)
 add_subdirectory(thirdparty)
-# The app's identity: its name (bundle, menu bar, executable), bundle identifier and icon. "Notepad++"
-# and its icon are the Notepad++ project's name and trademark; a build published outside the project
-# should set its own (see TRACKER.md, Q2).
+# The app's identity: its name (bundle, menu bar, executable), bundle identifier and icon. This is
+# Notepad++, so they default to its name and icon; they are settings only so a build can differ.
 set(NPPMAC_APP_NAME "Notepad++" CACHE STRING "The app's name")
 set(NPPMAC_BUNDLE_ID "io.github.jraiford1.notepad-plus-plus-macos" CACHE STRING "The app's bundle identifier")
 set(NPPMAC_APP_ICON "${NPP_ROOT}/PowerEditor/src/icons/npp.ico" CACHE FILEPATH "The app's icon (.ico, .png or anything sips reads)")
