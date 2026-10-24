@@ -54,6 +54,8 @@ namespace nppmac::controls
 			bool _buttonSizeSet = false;
 			HWND _notify = nullptr;
 			HIMAGELIST _addedBitmaps = nullptr; // the toolbar's own list, filled by TB_ADDBITMAP
+			HWND _tooltip = nullptr;            // TBSTYLE_TOOLTIPS: one tool per button
+			std::vector<int> _tooltipTools;      // the command ids that have a tool
 
 			~Toolbar()
 			{
@@ -155,8 +157,44 @@ namespace nppmac::controls
 			return button;
 		}
 
+		// The tooltip's tools follow the buttons; their text comes from the toolbar's parent through
+		// TTN_GETDISPINFO, with the button's command id, as on Windows.
+		void syncTooltipTools(HWND hwnd, Toolbar& bar)
+		{
+			if (!bar._tooltip)
+				return;
+			std::vector<int> current;
+			for (size_t i = 0; i < bar._buttons.size(); ++i)
+			{
+				const Button& button = bar._buttons[i];
+				if (isSeparator(button) || (button._state & TBSTATE_HIDDEN))
+					continue;
+				TTTOOLINFOW tool{};
+				tool.cbSize = sizeof(tool);
+				tool.uFlags = TTF_SUBCLASS;
+				tool.hwnd = hwnd;
+				tool.uId = static_cast<UINT_PTR>(button._command);
+				tool.rect = itemRect(bar, i);
+				tool.lpszText = LPSTR_TEXTCALLBACKW;
+				SendMessageW(bar._tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+				current.push_back(button._command);
+			}
+			for (const int command : bar._tooltipTools)
+			{
+				if (std::find(current.begin(), current.end(), command) != current.end())
+					continue;
+				TTTOOLINFOW tool{};
+				tool.cbSize = sizeof(tool);
+				tool.hwnd = hwnd;
+				tool.uId = static_cast<UINT_PTR>(command);
+				SendMessageW(bar._tooltip, TTM_DELTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+			}
+			bar._tooltipTools = std::move(current);
+		}
+
 		void paint(HWND hwnd, Toolbar& bar, HDC hdc)
 		{
+			syncTooltipTools(hwnd, bar);
 			RECT client{};
 			GetClientRect(hwnd, &client);
 			HWND notify = notifyWindow(hwnd, bar._notify);
@@ -270,6 +308,29 @@ namespace nppmac::controls
 				{
 					createData<Toolbar>(hwnd);
 					return DefWindowProcW(hwnd, message, wParam, lParam);
+				}
+				case WM_CREATE:
+				{
+					if (GetWindowLongW(hwnd, GWL_STYLE) & TBSTYLE_TOOLTIPS)
+					{
+						const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
+						bar->_tooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+							0, 0, 0, 0, hwnd, nullptr, create->hInstance, nullptr);
+					}
+					return 0;
+				}
+				case WM_DESTROY:
+					if (bar->_tooltip)
+						DestroyWindow(bar->_tooltip);
+					bar->_tooltip = nullptr;
+					return 0;
+				case WM_NOTIFY:
+				{
+					// The tooltip's questions go on to the toolbar's parent.
+					const auto* header = reinterpret_cast<const NMHDR*>(lParam);
+					if (header->hwndFrom == bar->_tooltip)
+						return SendMessageW(notifyWindow(hwnd, bar->_notify), WM_NOTIFY, wParam, lParam);
+					return 0;
 				}
 				case WM_PAINT:
 				{
@@ -632,8 +693,11 @@ namespace nppmac::controls
 					return 0;
 				}
 				case TB_GETTOOLTIPS:
-					return 0;
+					return reinterpret_cast<LRESULT>(bar->_tooltip);
 				case TB_SETTOOLTIPS:
+					bar->_tooltip = reinterpret_cast<HWND>(wParam);
+					bar->_tooltipTools.clear();
+					InvalidateRect(hwnd, nullptr, FALSE);
 					return 0;
 				case TB_GETHOTITEM:
 					return bar->_hot;
