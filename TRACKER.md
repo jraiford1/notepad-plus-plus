@@ -32,12 +32,16 @@ owner's Apple Developer identity and are a person's step; unsigned builds must b
 
 ## Verification checks and tooling
 
-- `cmake -S macos -B macos/build && cmake --build macos/build` must succeed with no new warnings.
-- `ctest --test-dir macos/build` runs the engine's rule tests (and, as they arrive, the runtime's tests).
-- `cmake --build macos/build --target nppUpstream -- -k` must compile every upstream source file.
+- `macos/ci/build-and-test.sh` is the check: it configures and builds `macos` (Release, macOS 13.3 and
+  later), checks that this branch changed nothing in upstream's directories since the last upstream
+  merge, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
+  (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, dialogs and panels, a plugin, dark mode).
+  CI runs the same script on every push (`.github/workflows/macos.yml`).
+- `NPPMAC_SKIP_GUI_TESTS=1` leaves out the smoke test where there is no window server.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.
-- Manual smoke test: launch the app, open a source file, check highlighting, find/replace, save, reopen.
-- The Windows build is unaffected: `git diff upstream/master -- PowerEditor scintilla lexilla boostregex` is empty.
+- Upstream is merged nightly by `.github/workflows/macos-upstream-sync.yml`, which builds and tests the
+  merge and opens a pull request to `master`.
+- Test runs of the app use `-settingsDir=<folder>`, never the real settings.
 
 ## Q1
 
@@ -46,3 +50,11 @@ owner's Apple Developer identity and are a person's step; unsigned builds must b
 Proposed answer (awaiting the owner's confirmation; `Q1` stays `OPEN` until then): a cut tags `master` as
 `macos-v<version>` and produces an unsigned, zipped `Notepad++.app` (universal arm64 + x86_64). Distribution is
 publishing that zip as a GitHub release on `jraiford1/notepad-plus-plus`, identified by its tag.
+
+## Q2
+
+**What should the Mac app be called, with which bundle identifier and icon?** "Notepad++" and its icon
+are the Notepad++ project's name and trademark. They stay the defaults until this is answered; the
+answer goes into the `NPPMAC_APP_NAME`, `NPPMAC_BUNDLE_ID` and `NPPMAC_APP_ICON` defaults in
+`macos/CMakeLists.txt`. Related: whether user plugins should live in `~/Library/Application Support`
+rather than inside the app bundle (a signed bundle should not change).
