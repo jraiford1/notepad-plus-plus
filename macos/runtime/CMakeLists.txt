@@ -53,3 +53,8 @@ add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)
 add_executable(nppRuntimeProfileTest test/ProfileTest.cpp)
 target_link_libraries(nppRuntimeProfileTest PRIVATE nppRuntime nppRuntimeStubs)
 add_test(NAME runtimeProfile COMMAND nppRuntimeProfileTest)
+
+add_executable(nppRuntimeProcessTest test/ProcessTest.cpp)
+# ShellExecute's other paths are in the user layer, which brings in the Scintilla window class.
+target_link_libraries(nppRuntimeProcessTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
+add_test(NAME runtimeProcess COMMAND nppRuntimeProcessTest)

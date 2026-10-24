@@ -18,6 +18,7 @@
 
 #include "Immortal.h"
 #include "Handles.h"
+#include "Internal.h"
 
 #include <atomic>
 #include <cstring>
@@ -633,6 +634,8 @@ BOOL WINAPI TerminateProcess(HANDLE process, UINT exitCode)
 {
 	if (process == GetCurrentProcess())
 		std::_Exit(static_cast<int>(exitCode));
+	if (nppmac::kernel::terminateChild(process, exitCode))
+		return TRUE;
 	SetLastError(ERROR_ACCESS_DENIED);
 	return FALSE;
 }

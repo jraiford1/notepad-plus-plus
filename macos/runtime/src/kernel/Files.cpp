@@ -30,6 +30,8 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/time.h>
@@ -341,6 +343,8 @@ namespace
 
 		// Set by the first ReadDirectoryChangesW on a folder.
 		std::shared_ptr<DirectoryWatch> _watch;
+		// An end of a pipe (CreatePipe): reads return what is there, as on Windows.
+		bool _pipe = false;
 
 	private:
 		int _fd = -1;
@@ -525,7 +529,17 @@ BOOL WINAPI ReadFile(HANDLE handle, LPVOID buffer, DWORD toRead, LPDWORD read, L
 	size_t total = 0;
 	while (total < toRead)
 	{
+		// A pipe gives what it has; its writer gone, the read fails with ERROR_BROKEN_PIPE.
+		if (file->_pipe && total > 0)
+			break;
 		const ssize_t n = ::read(file->fd(), static_cast<char*>(buffer) + total, toRead - total);
+		if (n == 0 && file->_pipe)
+		{
+			if (read)
+				*read = 0;
+			SetLastError(ERROR_BROKEN_PIPE);
+			return FALSE;
+		}
 		if (n < 0)
 		{
 			if (errno == EINTR)
@@ -1270,4 +1284,74 @@ UINT WINAPI GetDriveTypeW(LPCWSTR rootPath)
 	if (::statfs(rootPath ? toPosixPath(rootPath).c_str() : "/", &info) != 0)
 		return DRIVE_NO_ROOT_DIR;
 	return (info.f_flags & MNT_LOCAL) ? DRIVE_FIXED : DRIVE_REMOTE;
+}
+
+// --- Pipes ----------------------------------------------------------------------------------------
+
+namespace nppmac::kernel
+{
+	int fileDescriptor(HANDLE handle)
+	{
+		std::shared_ptr<File> file = std::dynamic_pointer_cast<File>(lookupHandle(handle));
+		return file ? file->fd() : -1;
+	}
+}
+
+BOOL WINAPI CreatePipe(PHANDLE readPipe, PHANDLE writePipe, LPSECURITY_ATTRIBUTES, DWORD)
+{
+	int fds[2]{};
+	if (::pipe(fds) != 0)
+	{
+		setErrorFromErrno();
+		return FALSE;
+	}
+	// Kept from children: a child gets a pipe only as one of its standard handles (CreateProcess).
+	::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+	::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+	auto reader = std::make_shared<File>(fds[0], std::string{}, false);
+	auto writer = std::make_shared<File>(fds[1], std::string{}, false);
+	reader->_pipe = true;
+	writer->_pipe = true;
+	*readPipe = createHandle(reader);
+	*writePipe = createHandle(writer);
+	return TRUE;
+}
+
+BOOL WINAPI PeekNamedPipe(HANDLE handle, LPVOID buffer, DWORD size, LPDWORD read, LPDWORD available, LPDWORD leftInMessage)
+{
+	auto file = lookup<File>(handle);
+	if (!file)
+		return FALSE;
+	int count = 0;
+	if (::ioctl(file->fd(), FIONREAD, &count) != 0)
+	{
+		setErrorFromErrno();
+		return FALSE;
+	}
+	// A pipe cannot be read without taking the data: the bytes waiting are reported, none copied.
+	(void)buffer;
+	(void)size;
+	if (read)
+		*read = 0;
+	if (available)
+		*available = static_cast<DWORD>(count);
+	if (leftInMessage)
+		*leftInMessage = 0;
+	if (count == 0)
+	{
+		// No data, and no writer left: the pipe is broken, as Windows reports it.
+		pollfd poll{file->fd(), POLLIN, 0};
+		if (::poll(&poll, 1, 0) > 0 && (poll.revents & POLLHUP))
+		{
+			SetLastError(ERROR_BROKEN_PIPE);
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+BOOL WINAPI SetHandleInformation(HANDLE handle, DWORD, DWORD)
+{
+	// Inheritance is decided by CreateProcess's standard handles alone.
+	return lookupHandle(handle) ? TRUE : FALSE;
 }

@@ -50,4 +50,14 @@ namespace nppmac::kernel
 	// buffer is too small.
 	DWORD copyToBuffer(std::u16string_view text, LPWSTR buffer, DWORD size);
 	DWORD copyToBuffer(std::string_view text, LPSTR buffer, DWORD size);
+
+	// The descriptor of a file or pipe handle, or -1.
+	int fileDescriptor(HANDLE handle);
+
+	// Processes started by CreateProcess and ShellExecute: their exit code (STILL_ACTIVE while they run)
+	// and their end. False for other handles.
+	bool childExitCode(HANDLE handle, DWORD& exitCode);
+	bool terminateChild(HANDLE handle, UINT exitCode);
+	// Starts a program, as ShellExecute does an executable; its process handle, or null.
+	HANDLE startProcess(std::u16string_view program, std::u16string_view parameters, const char16_t* directory);
 }
