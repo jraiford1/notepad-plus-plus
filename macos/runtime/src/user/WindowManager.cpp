@@ -871,7 +871,10 @@ HWND WINAPI SetParent(HWND hwnd, HWND newParentHandle)
 		topLevels().insert(topLevels().begin(), window);
 	}
 	if (window->_view)
-		nppmac::ui::setParent(window->_view, newParent ? newParent->_view : nullptr);
+	{
+		nppmac::ui::setParent(window->_view, newParent ? newParent->_view : nullptr, {window->_rect.left, window->_rect.top, window->_rect.right, window->_rect.bottom},
+			topLevelStyle(window->_style, window->_exStyle), window->_visible);
+	}
 	applyGeometry(window, window->_rect);
 	return previous;
 }

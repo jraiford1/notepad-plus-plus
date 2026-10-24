@@ -612,6 +612,11 @@ namespace nppmac::ui
 			if (std::getenv("NPPMAC_DUMP_TREE"))
 			{
 				windowManagerDumpTree();
+				for (NSWindow* window in NSApp.orderedWindows)
+				{
+					std::fprintf(stderr, "NSWindow %s visible=%d frame=%s\n", NSStringFromClass(window.class).UTF8String, window.isVisible ? 1 : 0,
+						NSStringFromRect(window.frame).UTF8String);
+				}
 				dumpMenuBar(NSApp.mainMenu, 0);
 			}
 			for (NSWindow* window in NSApp.orderedWindows)
@@ -715,6 +720,31 @@ namespace nppmac::ui
 		scheduleCommand();
 	}
 
+	// The NSWindow of a top-level or popup view; its content is a new surface view, or the given one.
+	void createWindow(NativeView* native, ViewKind kind, const UiRect& frame, const TopLevelStyle& style, NppMacView* content)
+	{
+		const NSUInteger mask = styleMask(kind, style);
+		const NSRect contentRect = [NSWindow contentRectForFrameRect:toCocoaScreenRect(frame) styleMask:mask];
+		NppMacWindow* window = [[NppMacWindow alloc] initWithContentRect:contentRect styleMask:mask backing:NSBackingStoreBuffered defer:NO];
+		window->_native = native;
+		window->_borderless = (mask == NSWindowStyleMaskBorderless);
+		window.releasedWhenClosed = NO;
+		window.delegate = g_windowDelegate;
+		window.acceptsMouseMovedEvents = YES;
+		window.tabbingMode = NSWindowTabbingModeDisallowed;
+		if (style._topMost || kind == ViewKind::popup)
+			window.level = kind == ViewKind::popup ? NSPopUpMenuWindowLevel : NSFloatingWindowLevel;
+		if (style._toolWindow)
+			window.hidesOnDeactivate = NO;
+		if (!content)
+			content = createSurfaceView(native, NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height));
+		window.contentView = content;
+		content.hidden = NO;
+		native->_kind = kind;
+		native->_window = window;
+		native->_view = content;
+	}
+
 	NativeView* createView(ViewOwner* owner, ViewKind kind, NativeView* parent, const UiRect& frame, const TopLevelStyle& style)
 	{
 		auto* native = new NativeView;
@@ -731,23 +761,7 @@ namespace nppmac::ui
 			return native;
 		}
 
-		const NSUInteger mask = styleMask(kind, style);
-		const NSRect contentRect = [NSWindow contentRectForFrameRect:toCocoaScreenRect(frame) styleMask:mask];
-		NppMacWindow* window = [[NppMacWindow alloc] initWithContentRect:contentRect styleMask:mask backing:NSBackingStoreBuffered defer:NO];
-		window->_native = native;
-		window->_borderless = (mask == NSWindowStyleMaskBorderless);
-		window.releasedWhenClosed = NO;
-		window.delegate = g_windowDelegate;
-		window.acceptsMouseMovedEvents = YES;
-		window.tabbingMode = NSWindowTabbingModeDisallowed;
-		if (style._topMost || kind == ViewKind::popup)
-			window.level = kind == ViewKind::popup ? NSPopUpMenuWindowLevel : NSFloatingWindowLevel;
-		if (style._toolWindow)
-			window.hidesOnDeactivate = NO;
-		NppMacView* content = createSurfaceView(native, NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height));
-		window.contentView = content;
-		native->_window = window;
-		native->_view = content;
+		createWindow(native, kind, frame, style, nil);
 		return native;
 	}
 
@@ -845,13 +859,41 @@ namespace nppmac::ui
 			static_cast<NSControl*>(native->_view).enabled = enabled;
 	}
 
-	void setParent(NativeView* native, NativeView* newParent)
+	void setParent(NativeView* native, NativeView* newParent, const UiRect& frame, const TopLevelStyle& style, bool visible)
 	{
-		if (!native || native->_window)
+		if (!native)
 			return;
-		[native->_view removeFromSuperview];
+		NSView* view = native->_view;
+		if (native->_window)
+		{
+			if (!newParent)
+				return;
+			// A top-level window becomes a child: its content view moves, its NSWindow goes.
+			NppMacWindow* window = static_cast<NppMacWindow*>(native->_window);
+			window->_native = nullptr;
+			window.delegate = nil;
+			window.contentView = [[NSView alloc] initWithFrame:NSZeroRect];
+			[window orderOut:nil];
+			[window close];
+			native->_window = nil;
+			native->_kind = ViewKind::child;
+		}
+		[view removeFromSuperview];
 		if (newParent && newParent->_view)
-			[newParent->_view addSubview:native->_view positioned:NSWindowAbove relativeTo:nil];
+		{
+			// A content view resizes with its window; a child is placed by the window manager.
+			view.autoresizingMask = NSViewNotSizable;
+			view.hidden = !visible;
+			[newParent->_view addSubview:view positioned:NSWindowAbove relativeTo:nil];
+			return;
+		}
+		// A child becomes a top-level window.
+		if (!native->_adopted && [view isKindOfClass:NppMacView.class])
+		{
+			createWindow(native, ViewKind::topLevel, frame, style, static_cast<NppMacView*>(view));
+			if (visible)
+				[native->_window orderFront:nil];
+		}
 	}
 
 	void orderView(NativeView* native, bool front, NativeView* above)

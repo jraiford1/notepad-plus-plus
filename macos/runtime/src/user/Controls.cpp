@@ -32,6 +32,7 @@ namespace nppmac::controls
 	void registerListBox();
 	void registerComboBox();
 	void registerSmallControls();
+	void registerTreeView();
 
 	void registerControl(const char16_t* name, WNDPROC proc, UINT style, LPCWSTR cursor)
 	{
@@ -74,6 +75,7 @@ namespace nppmac::user
 		controls::registerListBox();
 		controls::registerComboBox();
 		controls::registerSmallControls();
+		controls::registerTreeView();
 
 		static const char16_t* const classes[] = {
 			WC_BUTTONW, WC_STATICW, WC_EDITW, WC_COMBOBOXW, WC_COMBOBOXEXW, WC_LISTBOXW, WC_SCROLLBARW,

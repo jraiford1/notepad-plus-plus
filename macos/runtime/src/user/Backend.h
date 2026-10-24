@@ -137,7 +137,9 @@ namespace nppmac::ui
 	void setVisible(NativeView* view, bool visible, bool activate);
 	void setTitle(NativeView* view, const std::u16string& title);
 	void setEnabled(NativeView* view, bool enabled);
-	void setParent(NativeView* view, NativeView* newParent);
+	// Moves a view under a new parent. A top-level window becoming a child gives up its NSWindow; a
+	// child becoming top-level (no parent) gets one, with the frame (screen) and style given.
+	void setParent(NativeView* view, NativeView* newParent, const Rect& frame, const TopLevelStyle& style, bool visible);
 	// Moves the view above (front == true) or below its siblings, or right above another sibling.
 	void orderView(NativeView* view, bool front, NativeView* above = nullptr);
 
