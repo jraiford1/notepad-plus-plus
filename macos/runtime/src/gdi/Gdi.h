@@ -106,10 +106,16 @@ namespace nppmac::gdi
 		std::vector<uint32_t> _ownedPixels;
 		uint32_t* _pixels = nullptr; // _ownedPixels.data(), or the DIB section's bits
 		CGContextRef _context = nullptr;
+		// The same image with twice the pixels, for Retina screens: an icon file's larger image. The
+		// program sees only this bitmap's size; drawing on a Retina surface uses the larger image.
+		std::shared_ptr<Bitmap> _hiRes;
 
 		// A context drawing into the pixels with a top-left origin.
 		CGContextRef context();
 		CGImageRef createImage() const;
+		// The image to draw on a context: the larger one where the context has more than one pixel per
+		// point (Retina), when there is one.
+		CGImageRef createImageFor(CGContextRef context) const;
 		uint32_t* rowPointer(int y) {
 			return _pixels + static_cast<size_t>(_bottomUp ? _height - 1 - y : y) * static_cast<size_t>(_width);
 		}

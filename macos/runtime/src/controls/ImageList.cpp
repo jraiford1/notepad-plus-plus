@@ -59,29 +59,39 @@ namespace
 		return image;
 	}
 
-	// Copies a source bitmap scaled to the list's size.
-	std::shared_ptr<Bitmap> fitImage(const ImageList& list, Bitmap* source, int sourceX, int sourceWidth)
+	// Copies part of a source bitmap scaled to the given size.
+	std::shared_ptr<Bitmap> fitImage(int width, int height, Bitmap* source, int sourceX, int sourceWidth)
 	{
-		auto image = newImage(list._width, list._height);
+		auto image = newImage(width, height);
 		if (!source)
 			return image;
-		if (sourceWidth == list._width && source->_height == list._height)
+		if (sourceWidth == width && source->_height == height)
 		{
-			for (int y = 0; y < list._height; ++y)
-				std::copy_n(source->rowPointer(y) + sourceX, list._width, image->rowPointer(y));
+			for (int y = 0; y < height; ++y)
+				std::copy_n(source->rowPointer(y) + sourceX, width, image->rowPointer(y));
 			return image;
 		}
 		CGImageRef whole = source->createImage();
 		CGImageRef part = CGImageCreateWithImageInRect(whole, CGRectMake(sourceX, 0, sourceWidth, source->_height));
 		CGContextRef context = image->context();
 		CGContextSaveGState(context);
-		CGContextTranslateCTM(context, 0, list._height);
+		CGContextTranslateCTM(context, 0, height);
 		CGContextScaleCTM(context, 1, -1);
 		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-		CGContextDrawImage(context, CGRectMake(0, 0, list._width, list._height), part);
+		CGContextDrawImage(context, CGRectMake(0, 0, width, height), part);
 		CGContextRestoreGState(context);
 		CGImageRelease(part);
 		CGImageRelease(whole);
+		return image;
+	}
+
+	// Copies a source bitmap scaled to the list's size; a larger image it carries for Retina screens
+	// comes along at twice that size.
+	std::shared_ptr<Bitmap> fitImage(const ImageList& list, Bitmap* source, int sourceX, int sourceWidth)
+	{
+		auto image = fitImage(list._width, list._height, source, sourceX, sourceWidth);
+		if (source && source->_hiRes && sourceX == 0)
+			image->_hiRes = fitImage(list._width * 2, list._height * 2, source->_hiRes.get(), 0, source->_hiRes->_width);
 		return image;
 	}
 
@@ -330,10 +340,10 @@ BOOL WINAPI ImageList_DrawEx(HIMAGELIST handle, int index, HDC hdc, int x, int y
 		nppmac::gdi::fillRect(dc, {x, y, x + width, y + height}, brush);
 		DeleteObject(brush);
 	}
-	CGImageRef image = list->_images[static_cast<size_t>(index)]->createImage();
 	CGContextRef context = dc->begin();
 	if (context)
 	{
+		CGImageRef image = list->_images[static_cast<size_t>(index)]->createImageFor(context);
 		CGContextSaveGState(context);
 		CGContextTranslateCTM(context, x, y + height);
 		CGContextScaleCTM(context, 1, -1);
@@ -342,9 +352,9 @@ BOOL WINAPI ImageList_DrawEx(HIMAGELIST handle, int index, HDC hdc, int x, int y
 			CGContextSetAlpha(context, 0.5);
 		CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
 		CGContextRestoreGState(context);
+		CGImageRelease(image);
 		dc->end();
 	}
-	CGImageRelease(image);
 	return TRUE;
 }
 
