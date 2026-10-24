@@ -20,6 +20,7 @@
 #include "Gdi.h"
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <unordered_set>
 
@@ -181,6 +182,17 @@ namespace nppmac::gdi
 			CGContextTranslateCTM(_context, 0, 0);
 		}
 		return _context;
+	}
+
+	CGImageRef Bitmap::createImageFor(CGContextRef context) const
+	{
+		if (_hiRes && context)
+		{
+			const CGSize pixel = CGContextConvertSizeToDeviceSpace(context, CGSizeMake(1, 1));
+			if (std::fabs(pixel.width) >= 1.5)
+				return _hiRes->createImage();
+		}
+		return createImage();
 	}
 
 	CGImageRef Bitmap::createImage() const

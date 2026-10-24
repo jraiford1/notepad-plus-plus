@@ -1034,15 +1034,15 @@ BOOL WINAPI DrawIconEx(HDC hdc, int x, int y, HICON handle, int width, int heigh
 		height = icon->_color->_height;
 	if (background)
 		fillRect(dc, {x, y, x + width, y + height}, background);
-	CGImageRef image = icon->_color->createImage();
 	CGContextRef context = dc->begin();
 	if (context)
 	{
+		CGImageRef image = icon->_color->createImageFor(context);
 		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
 		drawImage(context, image, CGRectMake(x, y, width, height));
+		CGImageRelease(image);
 		dc->end();
 	}
-	CGImageRelease(image);
 	return TRUE;
 }
 

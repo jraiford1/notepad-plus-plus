@@ -43,3 +43,9 @@ add_executable(nppRuntimeSystemInfoTest test/SystemInfoTest.cpp)
 # The user layer (DwmGetColorizationColor) brings in the Scintilla window class.
 target_link_libraries(nppRuntimeSystemInfoTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
 add_test(NAME runtimeSystemInfo COMMAND nppRuntimeSystemInfoTest)
+
+add_executable(nppRuntimeIconTest test/IconTest.cpp)
+target_include_directories(nppRuntimeIconTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(nppRuntimeIconTest PRIVATE "NPP_ROOT=\"${NPP_ROOT}\"")
+target_link_libraries(nppRuntimeIconTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
+add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)

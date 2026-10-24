@@ -391,7 +391,17 @@ namespace nppmac::user
 			hotspot = {x, y};
 			image = image.subspan(4);
 		}
-		return createIcon(decodeIconImage(image.data(), image.size()), !cursor, hotspot);
+		std::shared_ptr<gdi::Bitmap> decoded = decodeIconImage(image.data(), image.size());
+		// For Retina screens, the image nearest twice the size goes along, when the file has a larger one.
+		const int hiResId = cursor ? -1 : pickGroupEntry(group, width * 2);
+		if (decoded && hiResId >= 0 && hiResId != id)
+		{
+			std::span<const BYTE> hiResImage = resourceBytes(MAKEINTRESOURCEW(hiResId), RT_ICON);
+			std::shared_ptr<gdi::Bitmap> hiRes = decodeIconImage(hiResImage.data(), hiResImage.size());
+			if (hiRes && hiRes->_width > decoded->_width)
+				decoded->_hiRes = std::move(hiRes);
+		}
+		return createIcon(std::move(decoded), !cursor, hotspot);
 	}
 
 	HBITMAP loadBitmapResource(LPCWSTR name)
@@ -460,36 +470,50 @@ namespace nppmac::user
 		// ICONDIR: entries like a resource group's, ending with a file offset instead of an id.
 		WORD count = 0;
 		std::memcpy(&count, data.data() + 4, 2);
-		int bestOffset = -1;
-		int bestSize = 0;
-		int bestScore = 0;
-		POINT hotspot{};
-		for (WORD i = 0; i < count; ++i)
+		struct Choice
 		{
-			const BYTE* entry = data.data() + 6 + static_cast<size_t>(i) * 16;
-			if (entry + 16 > data.data() + data.size())
-				break;
-			WORD fourth = 0;
-			WORD sixth = 0;
-			DWORD size = 0;
-			DWORD offset = 0;
-			std::memcpy(&fourth, entry + 4, 2);
-			std::memcpy(&sixth, entry + 6, 2);
-			std::memcpy(&size, entry + 8, 4);
-			std::memcpy(&offset, entry + 12, 4);
-			const int score = sizeScore(entry[0] ? entry[0] : 256, width > 0 ? width : 32, type == IMAGE_CURSOR ? 0 : sixth);
-			if (bestOffset < 0 || score > bestScore)
+			int _offset = -1;
+			int _size = 0;
+			int _score = 0;
+			POINT _hotspot{};
+		};
+		auto choose = [&](int wanted)
+		{
+			Choice best;
+			for (WORD i = 0; i < count; ++i)
 			{
-				bestOffset = static_cast<int>(offset);
-				bestSize = static_cast<int>(size);
-				bestScore = score;
-				hotspot = {fourth, sixth}; // cursor files keep the hotspot where icons keep planes and depth
+				const BYTE* entry = data.data() + 6 + static_cast<size_t>(i) * 16;
+				if (entry + 16 > data.data() + data.size())
+					break;
+				WORD fourth = 0;
+				WORD sixth = 0;
+				DWORD size = 0;
+				DWORD offset = 0;
+				std::memcpy(&fourth, entry + 4, 2);
+				std::memcpy(&sixth, entry + 6, 2);
+				std::memcpy(&size, entry + 8, 4);
+				std::memcpy(&offset, entry + 12, 4);
+				const int score = sizeScore(entry[0] ? entry[0] : 256, wanted, type == IMAGE_CURSOR ? 0 : sixth);
+				if (best._offset < 0 || score > best._score)
+					best = {static_cast<int>(offset), static_cast<int>(size), score, {fourth, sixth}}; // cursors keep the hotspot where icons keep planes and depth
 			}
-		}
-		if (bestOffset < 0 || static_cast<size_t>(bestOffset) + static_cast<size_t>(bestSize) > data.size())
+			if (best._offset >= 0 && static_cast<size_t>(best._offset) + static_cast<size_t>(best._size) > data.size())
+				best._offset = -1;
+			return best;
+		};
+		const int wanted = width > 0 ? width : 32;
+		const Choice best = choose(wanted);
+		if (best._offset < 0)
 			return nullptr;
-		return createIcon(decodeIconImage(data.data() + bestOffset, static_cast<size_t>(bestSize)), type != IMAGE_CURSOR,
-			type == IMAGE_CURSOR ? hotspot : POINT{});
+		std::shared_ptr<gdi::Bitmap> decoded = decodeIconImage(data.data() + best._offset, static_cast<size_t>(best._size));
+		// For Retina screens, the image nearest twice the size goes along, when the file has a larger one.
+		if (const Choice hiRes = type == IMAGE_CURSOR ? Choice{} : choose(wanted * 2); decoded && hiRes._offset >= 0 && hiRes._offset != best._offset)
+		{
+			std::shared_ptr<gdi::Bitmap> image = decodeIconImage(data.data() + hiRes._offset, static_cast<size_t>(hiRes._size));
+			if (image && image->_width > decoded->_width)
+				decoded->_hiRes = std::move(image);
+		}
+		return createIcon(std::move(decoded), type != IMAGE_CURSOR, type == IMAGE_CURSOR ? best._hotspot : POINT{});
 	}
 }
 
