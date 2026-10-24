@@ -157,10 +157,12 @@ target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
 # --- Tests -------------------------------------------------------------------------------------------
 # The end-to-end smoke test needs a window server (a logged-in macOS session); its label lets it be
 # left out with ctest -LE gui.
-add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>")
+add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>"
+	"$<TARGET_FILE_DIR:HelloMac>/..")
 set_tests_properties(nppSmokeTest PROPERTIES LABELS gui TIMEOUT 600)
 # The other slice of a universal app, where the Mac can run it.
 if("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
-	add_test(NAME nppSmokeTestX86_64 COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>")
+	add_test(NAME nppSmokeTestX86_64 COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>"
+		"$<TARGET_FILE_DIR:HelloMac>/..")
 	set_tests_properties(nppSmokeTestX86_64 PROPERTIES LABELS gui TIMEOUT 600 ENVIRONMENT NPPMAC_TEST_ARCH=x86_64 SKIP_RETURN_CODE 77)
 endif()

@@ -19,6 +19,40 @@
 
 #pragma once
 
+#ifdef RC_INVOKED
+
+// Resource scripts see the common control styles and, as strings, the control class names (Wine's
+// header defines those as C arrays outside Visual C++).
+#include <commctrl.rh>
+#define WC_HEADER "SysHeader32"
+#define WC_LISTVIEW "SysListView32"
+#define WC_TREEVIEW "SysTreeView32"
+#define WC_TABCONTROL "SysTabControl32"
+#define WC_COMBOBOXEX "ComboBoxEx32"
+#define WC_IPADDRESS "SysIPAddress32"
+#define WC_PAGESCROLLER "SysPager"
+#define WC_NATIVEFONTCTL "NativeFontCtl"
+#define WC_LINK "SysLink"
+#define WC_BUTTON "Button"
+#define WC_STATIC "Static"
+#define WC_EDIT "Edit"
+#define WC_LISTBOX "ListBox"
+#define WC_COMBOBOX "ComboBox"
+#define WC_SCROLLBAR "ScrollBar"
+#define TOOLBARCLASSNAME "ToolbarWindow32"
+#define REBARCLASSNAME "ReBarWindow32"
+#define STATUSCLASSNAME "msctls_statusbar32"
+#define TOOLTIPS_CLASS "tooltips_class32"
+#define TRACKBAR_CLASS "msctls_trackbar32"
+#define UPDOWN_CLASS "msctls_updown32"
+#define PROGRESS_CLASS "msctls_progress32"
+#define HOTKEY_CLASS "msctls_hotkey32"
+#define ANIMATE_CLASS "SysAnimate32"
+#define MONTHCAL_CLASS "SysMonthCal32"
+#define DATETIMEPICK_CLASS "SysDateTimePick32"
+
+#else
+
 #include_next <commctrl.h>
 
 #ifndef ListView_SetItemCountEx
@@ -31,3 +65,5 @@
 #define LVCDI_GROUP 0x00000001
 #define LVCDI_ITEMSLIST 0x00000002
 #endif
+
+#endif // RC_INVOKED

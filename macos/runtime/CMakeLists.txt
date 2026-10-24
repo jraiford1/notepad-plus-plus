@@ -49,3 +49,7 @@ target_include_directories(nppRuntimeIconTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_definitions(nppRuntimeIconTest PRIVATE "NPP_ROOT=\"${NPP_ROOT}\"")
 target_link_libraries(nppRuntimeIconTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
 add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)
+
+add_executable(nppRuntimeProfileTest test/ProfileTest.cpp)
+target_link_libraries(nppRuntimeProfileTest PRIVATE nppRuntime nppRuntimeStubs)
+add_test(NAME runtimeProfile COMMAND nppRuntimeProfileTest)

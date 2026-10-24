@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <xlocale.h>
 
 #ifdef __cplusplus
@@ -108,6 +109,9 @@ errno_t memmove_s(void* dest, size_t destSize, const void* src, size_t count);
 char* _itoa(int value, char* buffer, int radix);
 char* itoa(int value, char* buffer, int radix);
 errno_t _itoa_s(int value, char* buffer, size_t size, int radix);
+// The Microsoft forms of the thread-safe time conversions (the result first).
+errno_t localtime_s(struct tm* result, const time_t* time);
+errno_t gmtime_s(struct tm* result, const time_t* time);
 
 // Structured exception translation does not exist outside the Microsoft CRT: the runtime accepts
 // the translator and never calls it (there are no SEH exceptions to translate).

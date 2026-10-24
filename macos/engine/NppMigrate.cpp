@@ -19,6 +19,7 @@
 //
 //     npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>]
 //                 [--text-rules <file> --text-base <path of sourceRoot under PowerEditor/>]
+//                 [--plugin-text-rules <file>]
 //
 // A file is only written when its content changes, so an incremental build only recompiles
 // what upstream actually changed.
@@ -47,6 +48,9 @@
 //
 // Lines starting with '#' are comments. A rule that changes nothing in the files of this run stops
 // the migration, as a fixup does.
+//
+// Plugins are migrated with --plugin-text-rules: rules for the code many plugins share (their
+// template), which may change nothing in a given plugin, and whose globs match at any depth.
 
 #include "MigrationRules.h"
 
@@ -87,6 +91,7 @@ namespace
 		std::string _from;
 		std::string _to;
 		bool _regex = false;
+		bool _optional = false; // a plugin rule: '*' matches across folders, and it may change nothing
 		int _line = 0;
 		size_t _changes = 0;
 		bool _matchedFile = false;
@@ -108,6 +113,91 @@ namespace
 		buffer << in.rdbuf();
 		content = buffer.str();
 		return true;
+	}
+
+	// Visual Studio saves sources and resource scripts in UTF-16 when they need it; clang and llvm-rc
+	// read UTF-8. A file starting with a UTF-16 byte order mark is converted.
+	bool convertFromUtf16(std::string& content)
+	{
+		if (content.size() < 2)
+			return false;
+		const auto byte = [&content](size_t i) { return static_cast<unsigned char>(content[i]); };
+		const bool littleEndian = byte(0) == 0xFF && byte(1) == 0xFE;
+		const bool bigEndian = byte(0) == 0xFE && byte(1) == 0xFF;
+		if (!littleEndian && !bigEndian)
+			return false;
+		std::string utf8;
+		for (size_t i = 2; i + 1 < content.size(); i += 2)
+		{
+			uint32_t unit = littleEndian ? (byte(i) | (byte(i + 1) << 8)) : ((byte(i) << 8) | byte(i + 1));
+			if (unit >= 0xD800 && unit <= 0xDBFF && i + 3 < content.size())
+			{
+				const uint32_t low = littleEndian ? (byte(i + 2) | (byte(i + 3) << 8)) : ((byte(i + 2) << 8) | byte(i + 3));
+				if (low >= 0xDC00 && low <= 0xDFFF)
+				{
+					unit = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+					i += 2;
+				}
+			}
+			if (unit < 0x80)
+			{
+				utf8 += static_cast<char>(unit);
+			}
+			else if (unit < 0x800)
+			{
+				utf8 += static_cast<char>(0xC0 | (unit >> 6));
+				utf8 += static_cast<char>(0x80 | (unit & 0x3F));
+			}
+			else if (unit < 0x10000)
+			{
+				utf8 += static_cast<char>(0xE0 | (unit >> 12));
+				utf8 += static_cast<char>(0x80 | ((unit >> 6) & 0x3F));
+				utf8 += static_cast<char>(0x80 | (unit & 0x3F));
+			}
+			else
+			{
+				utf8 += static_cast<char>(0xF0 | (unit >> 18));
+				utf8 += static_cast<char>(0x80 | ((unit >> 12) & 0x3F));
+				utf8 += static_cast<char>(0x80 | ((unit >> 6) & 0x3F));
+				utf8 += static_cast<char>(0x80 | (unit & 0x3F));
+			}
+		}
+		content = std::move(utf8);
+		return true;
+	}
+
+	bool isResourceScript(const fs::path& path)
+	{
+		const std::string ext = path.extension().string();
+		return ext == ".rc" || ext == ".rc2" || ext == ".RC";
+	}
+
+	// In a resource script, the files of ICON, BITMAP and other statements, and #include, are named with
+	// Windows separators ("res\\icon.ico"): a quoted name ending in an extension gets '/' instead.
+	size_t fixResourcePaths(std::string& content)
+	{
+		static const std::regex fileName{R"name("([^"\r\n]*\\[^"\r\n]*\.[A-Za-z0-9]{1,8})")name"};
+		size_t changes = 0;
+		std::string result;
+		auto last = content.cbegin();
+		for (std::sregex_iterator it{content.cbegin(), content.cend(), fileName}, end; it != end; ++it)
+		{
+			result.append(last, (*it)[1].first);
+			std::string name;
+			for (const char c : (*it)[1].str())
+			{
+				if (c != '\\')
+					name += c;
+				else if (name.empty() || name.back() != '/')
+					name += '/';
+			}
+			result += name;
+			last = (*it)[1].second;
+			++changes;
+		}
+		result.append(last, content.cend());
+		content = std::move(result);
+		return changes;
 	}
 
 	bool writeIfChanged(const fs::path& path, const std::string& content)
@@ -197,7 +287,7 @@ namespace
 		return first == std::string::npos ? std::string{} : text.substr(first, last - first + 1);
 	}
 
-	bool readTextRules(const fs::path& path, std::vector<TextRule>& rules)
+	bool readTextRules(const fs::path& path, std::vector<TextRule>& rules, bool optional = false)
 	{
 		std::ifstream in{path};
 		if (!in)
@@ -242,6 +332,7 @@ namespace
 				rule._from = value.substr(0, arrow);
 				rule._to = value.substr(arrow + 4);
 				rule._regex = key == "regex";
+				rule._optional = optional;
 				rules.push_back(rule);
 			}
 			else
@@ -257,7 +348,7 @@ namespace
 	{
 		for (TextRule& rule : rules)
 		{
-			if (fnmatch(rule._files.c_str(), path.c_str(), FNM_PATHNAME) != 0)
+			if (fnmatch(rule._files.c_str(), path.c_str(), rule._optional ? 0 : FNM_PATHNAME) != 0)
 				continue;
 			rule._matchedFile = true;
 			std::regex pattern;
@@ -333,7 +424,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 3 || argc % 2 == 0)
 	{
-		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>]\n";
+		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>]\n";
 		return exitUsage;
 	}
 
@@ -342,6 +433,7 @@ int main(int argc, char* argv[])
 	fs::path reportPath;
 	fs::path fixupPath;
 	fs::path textRulesPath;
+	fs::path pluginTextRulesPath;
 	std::string textBase;
 	for (int i = 3; i + 1 < argc; i += 2)
 	{
@@ -354,6 +446,8 @@ int main(int argc, char* argv[])
 			textRulesPath = argv[i + 1];
 		else if (option == "--text-base")
 			textBase = argv[i + 1];
+		else if (option == "--plugin-text-rules")
+			pluginTextRulesPath = argv[i + 1];
 		else
 		{
 			std::cerr << "unknown option: " << option << "\n";
@@ -371,6 +465,8 @@ int main(int argc, char* argv[])
 			std::cerr << "npp-migrate: --text-rules needs --text-base\n";
 		return exitFixupError;
 	}
+	if (!pluginTextRulesPath.empty() && !readTextRules(pluginTextRulesPath, textRules, true))
+		return exitFixupError;
 
 	// Sort so that the report, like the output, does not depend on directory iteration order.
 	std::vector<fs::path> files;
@@ -392,6 +488,8 @@ int main(int argc, char* argv[])
 	size_t changedFiles = 0;
 	size_t totalRewrites = 0;
 	size_t appliedFixups = 0;
+	size_t utf16Files = 0;
+	size_t resourcePaths = 0;
 	for (const fs::path& file : files)
 	{
 		const fs::path relative = fs::relative(file, sourceRoot);
@@ -402,6 +500,10 @@ int main(int argc, char* argv[])
 			return exitIoError;
 		}
 
+		if (convertFromUtf16(content))
+			++utf16Files;
+		if (isResourceScript(file))
+			resourcePaths += fixResourcePaths(content);
 		applyTextRules(textRules, textBase + "/" + relative.generic_string(), content);
 		if (isCodeFile(file))
 		{
@@ -453,7 +555,7 @@ int main(int argc, char* argv[])
 	for (const TextRule& rule : textRules)
 	{
 		textChanges += rule._changes;
-		const bool forThisRun = rule._files.compare(0, textBase.size() + 1, textBase + "/") == 0;
+		const bool forThisRun = !rule._optional && rule._files.compare(0, textBase.size() + 1, textBase + "/") == 0;
 		if (forThisRun && rule._changes == 0)
 		{
 			std::cerr << textRulesPath.string() << ":" << rule._line << ": "
@@ -466,6 +568,6 @@ int main(int argc, char* argv[])
 
 	std::cout << "npp-migrate: " << files.size() << " files, " << migratedFiles << " migrated, "
 		<< changedFiles << " changed, " << totalRewrites << " rewrites, " << appliedFixups << " fixups, "
-		<< textChanges << " text changes\n";
+		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource file names" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{}) << "\n";
 	return exitOk;
 }

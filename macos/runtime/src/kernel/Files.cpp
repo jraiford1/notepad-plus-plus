@@ -977,6 +977,41 @@ BOOL WINAPI FindNextFileW(HANDLE handle, LPWIN32_FIND_DATAW findData)
 	return TRUE;
 }
 
+namespace
+{
+	void toFindDataA(const WIN32_FIND_DATAW& wide, LPWIN32_FIND_DATAA data)
+	{
+		data->dwFileAttributes = wide.dwFileAttributes;
+		data->ftCreationTime = wide.ftCreationTime;
+		data->ftLastAccessTime = wide.ftLastAccessTime;
+		data->ftLastWriteTime = wide.ftLastWriteTime;
+		data->nFileSizeHigh = wide.nFileSizeHigh;
+		data->nFileSizeLow = wide.nFileSizeLow;
+		data->dwReserved0 = wide.dwReserved0;
+		data->dwReserved1 = wide.dwReserved1;
+		copyToBuffer(nppmac::toUtf8(wide.cFileName), data->cFileName, MAX_PATH);
+		copyToBuffer(nppmac::toUtf8(wide.cAlternateFileName), data->cAlternateFileName, 14);
+	}
+}
+
+HANDLE WINAPI FindFirstFileA(LPCSTR fileName, LPWIN32_FIND_DATAA findData)
+{
+	WIN32_FIND_DATAW wide{};
+	HANDLE handle = FindFirstFileW(nppmac::toUtf16(fileName ? fileName : "").c_str(), &wide);
+	if (handle != INVALID_HANDLE_VALUE)
+		toFindDataA(wide, findData);
+	return handle;
+}
+
+BOOL WINAPI FindNextFileA(HANDLE handle, LPWIN32_FIND_DATAA findData)
+{
+	WIN32_FIND_DATAW wide{};
+	if (!FindNextFileW(handle, &wide))
+		return FALSE;
+	toFindDataA(wide, findData);
+	return TRUE;
+}
+
 BOOL WINAPI FindClose(HANDLE handle)
 {
 	return CloseHandle(handle);
@@ -992,6 +1027,11 @@ BOOL WINAPI DeleteFileW(LPCWSTR fileName)
 		return FALSE;
 	}
 	return TRUE;
+}
+
+BOOL WINAPI DeleteFileA(LPCSTR fileName)
+{
+	return DeleteFileW(nppmac::toUtf16(fileName ? fileName : "").c_str());
 }
 
 BOOL WINAPI CopyFileExW(LPCWSTR existing, LPCWSTR newFile, LPPROGRESS_ROUTINE, LPVOID, LPBOOL, DWORD flags)
@@ -1168,6 +1208,14 @@ DWORD WINAPI GetTempPathW(DWORD size, LPWSTR buffer)
 	if (path.back() != '/')
 		path += '/';
 	return copyToBuffer(fromPosixPath(path), buffer, size);
+}
+
+DWORD WINAPI GetTempPathA(DWORD size, LPSTR buffer)
+{
+	char16_t wide[MAX_PATH]{};
+	if (!GetTempPathW(MAX_PATH, wide))
+		return 0;
+	return copyToBuffer(nppmac::toUtf8(wide), buffer, size);
 }
 
 UINT WINAPI GetTempFileNameW(LPCWSTR pathName, LPCWSTR prefix, UINT unique, LPWSTR tempFileName)

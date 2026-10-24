@@ -39,6 +39,7 @@ namespace nppmigrate
 		wideStdCFunction,   // std::wcslen etc. -> ::wcslen (the runtime declares char16_t overloads)
 		wideStdCharClass,   // std::isdigit(c, loc) etc. -> nppmac::isdigit (no ctype<char16_t> in libc++)
 		wideStdFilesystem,  // std::filesystem -> nppmac::filesystem (UTF-16 paths, as on Windows)
+		includeSeparator,   // #include "a\b.h" -> #include "a/b.h"
 		ruleCount           // keep last
 	};
 

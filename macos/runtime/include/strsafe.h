@@ -41,6 +41,8 @@ HRESULT StringCchCopyNW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR src
 HRESULT StringCchCatW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR src);
 HRESULT StringCchLengthW(STRSAFE_LPCWSTR str, size_t cchMax, size_t* length);
 HRESULT StringCchPrintfW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR format, ...);
+HRESULT StringCchVPrintfW(STRSAFE_LPWSTR dest, size_t cchDest, STRSAFE_LPCWSTR format, va_list args);
+HRESULT StringCbPrintfW(STRSAFE_LPWSTR dest, size_t cbDest, STRSAFE_LPCWSTR format, ...);
 HRESULT StringCbCopyW(STRSAFE_LPWSTR dest, size_t cbDest, STRSAFE_LPCWSTR src);
 HRESULT StringCbCatW(STRSAFE_LPWSTR dest, size_t cbDest, STRSAFE_LPCWSTR src);
 HRESULT StringCchCopyA(STRSAFE_LPSTR dest, size_t cchDest, STRSAFE_LPCSTR src);
@@ -51,5 +53,7 @@ HRESULT StringCchCatA(STRSAFE_LPSTR dest, size_t cchDest, STRSAFE_LPCSTR src);
 #define StringCchCat StringCchCatW
 #define StringCchLength StringCchLengthW
 #define StringCchPrintf StringCchPrintfW
+#define StringCchVPrintf StringCchVPrintfW
+#define StringCbPrintf StringCbPrintfW
 #define StringCbCopy StringCbCopyW
 #define StringCbCat StringCbCatW

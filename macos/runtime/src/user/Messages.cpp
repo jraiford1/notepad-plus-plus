@@ -890,6 +890,78 @@ LRESULT WINAPI SendDlgItemMessageW(HWND dialog, int id, UINT message, WPARAM wPa
 	return item ? SendMessageW(item, message, wParam, lParam) : 0;
 }
 
+LRESULT WINAPI SendMessageA(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	// The messages that carry text carry it in the ANSI code page: converted both ways. Every other
+	// message is the same in both.
+	const auto wide = [](LPARAM text)
+	{
+		const auto* narrow = reinterpret_cast<LPCSTR>(text);
+		const int length = MultiByteToWideChar(CP_ACP, 0, narrow, -1, nullptr, 0);
+		std::u16string result(static_cast<size_t>(std::max(0, length)), u'\0');
+		MultiByteToWideChar(CP_ACP, 0, narrow, -1, result.data(), length);
+		return result;
+	};
+	const auto narrowInto = [](const std::u16string& text, LPSTR buffer, int size)
+	{
+		const int bytes = WideCharToMultiByte(CP_ACP, 0, text.c_str(), -1, buffer, size, nullptr, nullptr);
+		if (size > 0 && bytes == 0)
+			buffer[size - 1] = '\0';
+		return std::max(0, bytes - 1);
+	};
+	switch (message)
+	{
+		case WM_SETTEXT:
+		case EM_REPLACESEL:
+		case CB_ADDSTRING:
+		case CB_INSERTSTRING:
+		case CB_FINDSTRING:
+		case CB_FINDSTRINGEXACT:
+		case CB_SELECTSTRING:
+		case CB_DIR:
+		case LB_ADDSTRING:
+		case LB_INSERTSTRING:
+		case LB_FINDSTRING:
+		case LB_FINDSTRINGEXACT:
+		case LB_SELECTSTRING:
+		case LB_DIR:
+		{
+			if (!lParam)
+				return SendMessageW(hwnd, message, wParam, lParam);
+			const std::u16string text = wide(lParam);
+			return SendMessageW(hwnd, message, wParam, reinterpret_cast<LPARAM>(text.c_str()));
+		}
+		case WM_GETTEXT:
+		{
+			std::u16string text(wParam + 1, u'\0');
+			SendMessageW(hwnd, WM_GETTEXT, wParam, reinterpret_cast<LPARAM>(text.data()));
+			text.resize(std::char_traits<char16_t>::length(text.c_str()));
+			return narrowInto(text, reinterpret_cast<LPSTR>(lParam), static_cast<int>(wParam));
+		}
+		case CB_GETLBTEXT:
+		case LB_GETTEXT:
+		{
+			const LRESULT length = SendMessageW(hwnd, message == CB_GETLBTEXT ? CB_GETLBTEXTLEN : LB_GETTEXTLEN, wParam, 0);
+			if (length < 0)
+				return length;
+			std::u16string text(static_cast<size_t>(length) + 1, u'\0');
+			SendMessageW(hwnd, message, wParam, reinterpret_cast<LPARAM>(text.data()));
+			text.resize(static_cast<size_t>(length));
+			// The caller's buffer is as large as the text needs (CB_GETLBTEXTLEN said so).
+			const int size = WideCharToMultiByte(CP_ACP, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+			return narrowInto(text, reinterpret_cast<LPSTR>(lParam), size);
+		}
+		default:
+			return SendMessageW(hwnd, message, wParam, lParam);
+	}
+}
+
+LRESULT WINAPI SendDlgItemMessageA(HWND dialog, int id, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	HWND item = GetDlgItem(dialog, id);
+	return item ? SendMessageA(item, message, wParam, lParam) : 0;
+}
+
 BOOL WINAPI PostMessageW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	if (hwnd == HWND_BROADCAST)
@@ -1684,6 +1756,11 @@ SHORT WINAPI VkKeyScanW(WCHAR ch)
 	if (ch >= u'0' && ch <= u'9')
 		return static_cast<SHORT>(ch);
 	return -1;
+}
+
+WORD WINAPI VkKeyScanExW(WCHAR ch, HKL)
+{
+	return static_cast<WORD>(VkKeyScanW(ch));
 }
 
 UINT WINAPI SendInput(UINT, LPINPUT, int)
