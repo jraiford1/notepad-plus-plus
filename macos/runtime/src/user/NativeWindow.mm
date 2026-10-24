@@ -673,6 +673,22 @@ namespace nppmac::ui
 		}
 	}
 
+	// Debugging aid: NPPMAC_TEST_COMMAND=<id> sends that menu command after NPPMAC_TEST_COMMAND_DELAY
+	// seconds (default 2), for dialogs without a shortcut.
+	void scheduleCommand()
+	{
+		const char* command = std::getenv("NPPMAC_TEST_COMMAND");
+		if (!command || !*command)
+			return;
+		const char* delayText = std::getenv("NPPMAC_TEST_COMMAND_DELAY");
+		const double delay = delayText ? std::atof(delayText) : 2.0;
+		const int id = std::atoi(command);
+		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
+			windowManagerTestCommand(id);
+		}];
+		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+	}
+
 	void dumpMenuBar(NSMenu* menu, int depth)
 	{
 		for (NSMenuItem* item in menu.itemArray)
@@ -696,6 +712,7 @@ namespace nppmac::ui
 		g_windowDelegate = [[NppMacWindowDelegate alloc] init];
 		scheduleSnapshot();
 		scheduleTyping();
+		scheduleCommand();
 	}
 
 	NativeView* createView(ViewOwner* owner, ViewKind kind, NativeView* parent, const UiRect& frame, const TopLevelStyle& style)

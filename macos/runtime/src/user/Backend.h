@@ -229,6 +229,8 @@ namespace nppmac::ui
 	void windowManagerKeyEvent(const KeyEvent& event);
 	// Debugging aid: prints the window tree (class, id, rectangle, visibility) to stderr.
 	void windowManagerDumpTree();
+	// Test aid: sends WM_COMMAND with the id to the active top-level window.
+	void windowManagerTestCommand(int id);
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);
 	// Text committed by an input method or a character picker, outside key events.
 	void windowManagerInsertText(const std::u16string& text);

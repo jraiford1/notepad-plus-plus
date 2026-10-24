@@ -242,6 +242,9 @@ namespace nppmac::controls
 					Static* created = createData<Static>(hwnd);
 					const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
 					loadTemplateImage(hwnd, *created, *create);
+					// An owner-drawn static paints only what its owner draws; what is under it shows.
+					if (typeOf(hwnd) == SS_OWNERDRAW)
+						user::setSeeThrough(hwnd, true);
 					// Image statics keep their name out of the window text.
 					const UINT type = typeOf(hwnd);
 					if (type == SS_ICON || type == SS_BITMAP)

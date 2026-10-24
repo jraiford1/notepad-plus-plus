@@ -380,6 +380,16 @@ namespace nppmac::user
 	}
 }
 
+void nppmac::ui::windowManagerTestCommand(int id)
+{
+	using namespace nppmac::user;
+	Window* target = activeWindow();
+	if (!target && !topLevels().empty())
+		target = topLevels().front();
+	if (target)
+		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
+}
+
 void nppmac::ui::windowManagerDumpTree()
 {
 	std::function<void(nppmac::user::Window*, int)> dump = [&dump](nppmac::user::Window* window, int depth)
@@ -718,6 +728,10 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 		nppmac::ui::setAcceptsFiles(window->_view, true);
 	if (exStyle & WS_EX_TRANSPARENT)
 		setSeeThrough(window->_hwnd, true);
+	// Dialog controls do not clip their siblings, so where they overlap, the one Windows paints last,
+	// the later one, is what shows: it is stacked on top of the others on screen (z-order is unchanged).
+	if ((style & WS_CHILD) && !(style & WS_CLIPSIBLINGS) && parent && parent->_class && parent->_class->_name == u"#32770")
+		nppmac::ui::orderView(window->_view, true);
 
 	if (!window->send(WM_NCCREATE, 0, reinterpret_cast<LPARAM>(&create)))
 	{
