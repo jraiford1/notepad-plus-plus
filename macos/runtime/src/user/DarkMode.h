@@ -25,4 +25,8 @@ namespace nppmac::user::darkmode
 {
 	FARPROC uxthemeOrdinal(WORD ordinal);
 	FARPROC user32Export(const char* name);
+
+	// Whether the program asked for dark controls (SetPreferredAppMode with ForceDark, or AllowDark on a
+	// dark system): the runtime's controls then draw as Windows' dark theme does.
+	bool controlsAreDark();
 }

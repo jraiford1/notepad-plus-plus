@@ -571,8 +571,8 @@ namespace nppmac::user
 		HWND hwnd = _hwnd;
 		static const bool trace = std::getenv("NPPMAC_TRACE_PAINT") != nullptr;
 		if (trace)
-			std::fprintf(stderr, "nppmac: WM_PAINT %s (%ld,%ld,%ld,%ld)\n", toUtf8(_class->_name).c_str(), static_cast<long>(_invalid.left),
-				static_cast<long>(_invalid.top), static_cast<long>(_invalid.right), static_cast<long>(_invalid.bottom));
+			std::fprintf(stderr, "nppmac: WM_PAINT %s (%ld,%ld,%ld,%ld)%s\n", toUtf8(_class->_name).c_str(), static_cast<long>(_invalid.left),
+				static_cast<long>(_invalid.top), static_cast<long>(_invalid.right), static_cast<long>(_invalid.bottom), _eraseBackground ? " erase" : "");
 		send(WM_PAINT, 0, 0);
 		// A window procedure that does not paint (no BeginPaint) leaves the region invalid;
 		// validate it so it is not asked again forever.

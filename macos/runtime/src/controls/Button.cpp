@@ -168,7 +168,7 @@ namespace nppmac::controls
 			HGDIOBJ oldFont = SelectObject(hdc, fontOf(hwnd));
 			SetBkMode(hdc, TRANSPARENT);
 			if (!enabled)
-				SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
+				SetTextColor(hdc, controlPalette()._textDisabled);
 			UINT format = textFormat(hwnd, kind);
 			if (format & DT_WORDBREAK)
 			{
@@ -188,26 +188,27 @@ namespace nppmac::controls
 			// The background around the button is the parent's.
 			FillRect(hdc, &client, controlColors(hwnd, hdc, WM_CTLCOLORBTN));
 			const bool down = button._pushed || (isPushLike(hwnd) && button._check == BST_CHECKED);
-			COLORREF fill = RGB(225, 225, 225);
-			COLORREF frame = RGB(173, 173, 173);
+			const ControlPalette& palette = controlPalette();
+			COLORREF fill = palette._face;
+			COLORREF frame = palette._frame;
 			if (!enabled)
 			{
-				fill = RGB(204, 204, 204);
-				frame = RGB(191, 191, 191);
+				fill = palette._faceDisabled;
+				frame = palette._frameDisabled;
 			}
 			else if (down)
 			{
-				fill = RGB(204, 228, 247);
-				frame = RGB(0, 84, 153);
+				fill = palette._facePressed;
+				frame = palette._accent;
 			}
 			else if (button._hot)
 			{
-				fill = RGB(229, 241, 251);
-				frame = RGB(0, 120, 215);
+				fill = palette._faceHot;
+				frame = palette._frameHot;
 			}
 			else if (isDefault(type) || button._focused)
 			{
-				frame = RGB(0, 120, 215);
+				frame = palette._accent;
 			}
 			fillAndFrame(hdc, client, fill, frame);
 			if (enabled && !down && (isDefault(type) || button._focused))
@@ -226,7 +227,7 @@ namespace nppmac::controls
 				const int x = client.right - splitWidth / 2;
 				const int y = (client.top + client.bottom) / 2;
 				const POINT arrow[] = {{x - 3, y - 1}, {x + 4, y - 1}, {x, y + 3}};
-				HBRUSH arrowBrush = solidBrush(enabled ? RGB(0, 0, 0) : GetSysColor(COLOR_GRAYTEXT));
+				HBRUSH arrowBrush = solidBrush(enabled ? palette._text : palette._textDisabled);
 				HGDIOBJ oldBrush = SelectObject(hdc, arrowBrush);
 				HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
 				Polygon(hdc, arrow, 3);
@@ -238,6 +239,8 @@ namespace nppmac::controls
 			}
 			if (down)
 				OffsetRect(&content, 1, 1);
+			// A push button's text has the theme's color, whatever WM_CTLCOLORBTN set.
+			SetTextColor(hdc, palette._text);
 			drawContent(hwnd, button, hdc, content, ButtonKind::push, enabled);
 		}
 
@@ -259,9 +262,10 @@ namespace nppmac::controls
 			const int left = textOnLeft ? client.right - checkBoxSize : client.left;
 			const RECT box{left, top, left + checkBoxSize, top + checkBoxSize};
 
-			COLORREF frame = enabled ? (button._hot || button._pushed ? RGB(0, 120, 215) : RGB(51, 51, 51)) : RGB(204, 204, 204);
-			COLORREF fill = button._pushed ? RGB(204, 228, 247) : RGB(255, 255, 255);
-			const COLORREF mark = enabled ? (button._hot || button._pushed ? RGB(0, 120, 215) : RGB(51, 51, 51)) : RGB(160, 160, 160);
+			const ControlPalette& palette = controlPalette();
+			COLORREF frame = enabled ? (button._hot || button._pushed ? palette._accent : palette._boxFrame) : palette._frameDisabled;
+			COLORREF fill = button._pushed ? palette._facePressed : palette._boxFill;
+			const COLORREF mark = enabled ? (button._hot || button._pushed ? palette._accent : palette._mark) : palette._textDisabled;
 			if (kind == ButtonKind::radio)
 			{
 				HBRUSH fillBrush = solidBrush(fill);
@@ -317,7 +321,7 @@ namespace nppmac::controls
 			const int frameTop = client.top + metrics.tmHeight / 2;
 
 			RECT frame{client.left, frameTop, client.right, client.bottom};
-			HBRUSH frameBrush = solidBrush(RGB(220, 220, 220));
+			HBRUSH frameBrush = solidBrush(controlPalette()._divider);
 			FrameRect(hdc, &frame, frameBrush);
 			DeleteObject(frameBrush);
 
@@ -332,7 +336,7 @@ namespace nppmac::controls
 				label.left += 2;
 				SetBkMode(hdc, TRANSPARENT);
 				if (!enabled)
-					SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
+					SetTextColor(hdc, controlPalette()._textDisabled);
 				DrawTextW(hdc, text.c_str(), static_cast<int>(text.size()), &label, DT_SINGLELINE | DT_LEFT | DT_TOP);
 			}
 			SelectObject(hdc, oldFont);

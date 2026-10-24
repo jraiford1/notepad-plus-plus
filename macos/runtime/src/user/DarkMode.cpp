@@ -154,6 +154,11 @@ namespace nppmac::user::darkmode
 		}
 	}
 
+	bool controlsAreDark()
+	{
+		return g_appMode == appModeForceDark || (g_appMode == appModeAllowDark && platform::isDarkAppearance());
+	}
+
 	FARPROC uxthemeOrdinal(WORD ordinal)
 	{
 		switch (ordinal)

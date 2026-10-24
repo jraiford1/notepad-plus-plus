@@ -224,8 +224,9 @@ namespace nppmac::ui
 	CGContextRef context = NSGraphicsContext.currentContext.CGContext;
 	if (!_native->_surface)
 	{
+		// The rectangle AppKit asks for can reach past the view; only the view's own area is filled.
 		CGContextSetRGBFillColor(context, 0.94, 0.94, 0.94, 1);
-		CGContextFillRect(context, NSRectToCGRect(dirtyRect));
+		CGContextFillRect(context, NSRectToCGRect(NSIntersectionRect(dirtyRect, self.bounds)));
 		return;
 	}
 	CGImageRef image = CGBitmapContextCreateImage(_native->_surface);
@@ -596,6 +597,8 @@ namespace
 		view->_native = native;
 		view.wantsLayer = NO;
 		view.autoresizingMask = NSViewNotSizable;
+		// A window's pixels stay inside it, as on Windows (views do not clip by default since macOS 14).
+		view.clipsToBounds = YES;
 		return view;
 	}
 

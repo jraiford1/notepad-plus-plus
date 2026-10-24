@@ -602,7 +602,7 @@ namespace nppmac::controls
 			DeleteObject(backgroundBrush);
 			if ((styleOf(hwnd) & WS_BORDER) || (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_CLIENTEDGE))
 			{
-				HBRUSH frame = CreateSolidBrush(RGB(130, 135, 144));
+				HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(frame);
 			}
@@ -653,7 +653,7 @@ namespace nppmac::controls
 				}
 
 				if ((style & TVS_HASBUTTONS) && !IsRectEmpty(&geometry._button) && hasChildren(hwnd, item))
-					paintButton(hdc, geometry._button, isExpanded(item), RGB(128, 128, 128));
+					paintButton(hdc, geometry._button, isExpanded(item), controlPalette()._frame);
 				if (tree._images)
 				{
 					const int image = item == tree._selected ? item->_selectedImage : item->_image;

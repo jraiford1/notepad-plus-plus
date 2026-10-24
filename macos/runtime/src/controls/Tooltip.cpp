@@ -267,12 +267,13 @@ namespace nppmac::controls
 		{
 			RECT client{};
 			GetClientRect(hwnd, &client);
-			const COLORREF background = tooltip._background == CLR_DEFAULT ? GetSysColor(COLOR_INFOBK) : tooltip._background;
-			const COLORREF text = tooltip._textColor == CLR_DEFAULT ? GetSysColor(COLOR_INFOTEXT) : tooltip._textColor;
+			const bool dark = user::darkmode::controlsAreDark();
+			const COLORREF background = tooltip._background != CLR_DEFAULT ? tooltip._background : (dark ? RGB(43, 43, 43) : GetSysColor(COLOR_INFOBK));
+			const COLORREF text = tooltip._textColor != CLR_DEFAULT ? tooltip._textColor : (dark ? controlPalette()._text : GetSysColor(COLOR_INFOTEXT));
 			HBRUSH fill = CreateSolidBrush(background);
 			FillRect(hdc, &client, fill);
 			DeleteObject(fill);
-			HBRUSH frame = CreateSolidBrush(RGB(118, 118, 118));
+			HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 			FrameRect(hdc, &client, frame);
 			DeleteObject(frame);
 			const int saved = SaveDC(hdc);

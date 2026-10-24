@@ -25,6 +25,8 @@
 #include <commctrl.h>
 #include <windowsx.h>
 
+#include "user/DarkMode.h"
+
 namespace nppmac::controls
 {
 	// The control's own data, created on WM_NCCREATE.
@@ -84,6 +86,43 @@ namespace nppmac::controls
 		SelectObject(hdc, old);
 		ReleaseDC(hwnd, hdc);
 		return size.cx;
+	}
+
+	// The colors the controls draw their own parts with (frames, faces, check marks, scroll bars), light
+	// or dark as the program chose (see darkmode::controlsAreDark). Text and backgrounds still come
+	// from WM_CTLCOLOR*, as on Windows.
+	struct ControlPalette
+	{
+		COLORREF _face;          // push buttons, drop-down lists, up-down arrows
+		COLORREF _faceHot;
+		COLORREF _facePressed;
+		COLORREF _faceDisabled;
+		COLORREF _frame;
+		COLORREF _frameHot;
+		COLORREF _frameDisabled;
+		COLORREF _text;
+		COLORREF _textDisabled;
+		COLORREF _boxFill;       // check boxes and radio buttons
+		COLORREF _boxFrame;
+		COLORREF _mark;
+		COLORREF _accent;        // focus and hot frames
+		COLORREF _track;         // scroll bars and trackbar channels
+		COLORREF _thumb;
+		COLORREF _thumbActive;
+		COLORREF _window;        // list and header backgrounds, when the program sets none
+		COLORREF _windowText;
+		COLORREF _divider;
+	};
+
+	inline const ControlPalette& controlPalette()
+	{
+		static const ControlPalette light{RGB(225, 225, 225), RGB(229, 241, 251), RGB(204, 228, 247), RGB(204, 204, 204), RGB(173, 173, 173),
+			RGB(0, 120, 215), RGB(191, 191, 191), RGB(0, 0, 0), RGB(131, 131, 131), RGB(255, 255, 255), RGB(51, 51, 51), RGB(51, 51, 51),
+			RGB(0, 120, 215), RGB(240, 240, 240), RGB(194, 194, 194), RGB(96, 96, 96), RGB(255, 255, 255), RGB(0, 0, 0), RGB(229, 229, 229)};
+		static const ControlPalette dark{RGB(51, 51, 51), RGB(69, 69, 69), RGB(102, 102, 102), RGB(45, 45, 45), RGB(155, 155, 155),
+			RGB(200, 200, 200), RGB(77, 77, 77), RGB(224, 224, 224), RGB(109, 109, 109), RGB(32, 32, 32), RGB(155, 155, 155), RGB(224, 224, 224),
+			RGB(76, 160, 224), RGB(23, 23, 23), RGB(77, 77, 77), RGB(140, 140, 140), RGB(32, 32, 32), RGB(224, 224, 224), RGB(64, 64, 64)};
+		return user::darkmode::controlsAreDark() ? dark : light;
 	}
 
 	// A ComboLBox tells its combo box which item was clicked (wParam: the index).

@@ -59,13 +59,13 @@ namespace nppmac::controls
 
 		void paint(HDC hdc) const
 		{
-			HBRUSH trackBrush = CreateSolidBrush(RGB(240, 240, 240));
+			HBRUSH trackBrush = CreateSolidBrush(controlPalette()._track);
 			FillRect(hdc, &_track, trackBrush);
 			DeleteObject(trackBrush);
 			const RECT thumbRect = thumb();
 			if (IsRectEmpty(&thumbRect))
 				return;
-			HBRUSH thumbBrush = CreateSolidBrush(_dragging ? RGB(96, 96, 96) : RGB(194, 194, 194));
+			HBRUSH thumbBrush = CreateSolidBrush(_dragging ? controlPalette()._thumbActive : controlPalette()._thumb);
 			FillRect(hdc, &thumbRect, thumbBrush);
 			DeleteObject(thumbBrush);
 		}

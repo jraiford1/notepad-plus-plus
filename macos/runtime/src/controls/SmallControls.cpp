@@ -109,8 +109,8 @@ namespace nppmac::controls
 			FillRect(hdc, &client, controlColors(hwnd, hdc, WM_CTLCOLORSTATIC));
 			const bool enabled = IsWindowEnabled(hwnd) != FALSE;
 			RECT channel = channelRect(hwnd);
-			HBRUSH channelFill = CreateSolidBrush(RGB(231, 234, 234));
-			HBRUSH channelFrame = CreateSolidBrush(RGB(214, 214, 214));
+			HBRUSH channelFill = CreateSolidBrush(controlPalette()._track);
+			HBRUSH channelFrame = CreateSolidBrush(controlPalette()._divider);
 			FillRect(hdc, &channel, channelFill);
 			FrameRect(hdc, &channel, channelFrame);
 			DeleteObject(channelFill);
@@ -119,7 +119,7 @@ namespace nppmac::controls
 			if (!(GetWindowLongW(hwnd, GWL_STYLE) & TBS_NOTHUMB))
 			{
 				const RECT thumb = thumbRect(hwnd, bar);
-				HBRUSH thumbFill = CreateSolidBrush(!enabled ? RGB(204, 204, 204) : (bar._dragging ? RGB(204, 204, 204) : RGB(0, 120, 215)));
+				HBRUSH thumbFill = CreateSolidBrush(!enabled ? controlPalette()._faceDisabled : (bar._dragging ? controlPalette()._thumbActive : controlPalette()._accent));
 				FillRect(hdc, &thumb, thumbFill);
 				DeleteObject(thumbFill);
 			}
@@ -328,10 +328,10 @@ namespace nppmac::controls
 		{
 			RECT client{};
 			GetClientRect(hwnd, &client);
-			HBRUSH background = CreateSolidBrush(progress._backgroundColor == CLR_DEFAULT ? RGB(230, 230, 230) : progress._backgroundColor);
+			HBRUSH background = CreateSolidBrush(progress._backgroundColor == CLR_DEFAULT ? controlPalette()._track : progress._backgroundColor);
 			FillRect(hdc, &client, background);
 			DeleteObject(background);
-			HBRUSH frame = CreateSolidBrush(RGB(188, 188, 188));
+			HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 			FrameRect(hdc, &client, frame);
 			DeleteObject(frame);
 
@@ -519,8 +519,8 @@ namespace nppmac::controls
 			for (int i = 0; i < 2; ++i)
 			{
 				const bool pressed = upDown._pressed == (i == 0 ? 1 : -1);
-				HBRUSH fill = CreateSolidBrush(pressed ? RGB(204, 228, 247) : RGB(225, 225, 225));
-				HBRUSH frame = CreateSolidBrush(RGB(173, 173, 173));
+				HBRUSH fill = CreateSolidBrush(pressed ? controlPalette()._facePressed : controlPalette()._face);
+				HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 				FillRect(hdc, &halves[i], fill);
 				FrameRect(hdc, &halves[i], frame);
 				DeleteObject(fill);
@@ -529,11 +529,13 @@ namespace nppmac::controls
 				const int y = (halves[i].top + halves[i].bottom) / 2;
 				const POINT up[] = {{x - 3, y + 1}, {x + 4, y + 1}, {x, y - 3}};
 				const POINT down[] = {{x - 3, y - 1}, {x + 4, y - 1}, {x, y + 3}};
-				HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(BLACK_BRUSH));
+				HBRUSH arrowBrush = CreateSolidBrush(controlPalette()._text);
+				HGDIOBJ oldBrush = SelectObject(hdc, arrowBrush);
 				HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
 				Polygon(hdc, i == 0 ? up : down, 3);
 				SelectObject(hdc, oldPen);
 				SelectObject(hdc, oldBrush);
+				DeleteObject(arrowBrush);
 			}
 		}
 
