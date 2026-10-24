@@ -1116,6 +1116,8 @@ HANDLE WINAPI OpenProcess(DWORD, BOOL, DWORD processId)
 
 BOOL WINAPI GetExitCodeProcess(HANDLE handle, LPDWORD exitCode)
 {
+	if (nppmac::kernel::childExitCode(handle, *exitCode))
+		return TRUE;
 	auto process = lookup<Process>(handle);
 	if (!process)
 		return FALSE;

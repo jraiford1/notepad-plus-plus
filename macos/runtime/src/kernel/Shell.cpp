@@ -28,6 +28,7 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 using namespace nppmac::kernel;
@@ -622,12 +623,33 @@ void WINAPI ILFree(LPITEMIDLIST idList)
 	CoTaskMemFree(idList);
 }
 
-HINSTANCE WINAPI ShellExecuteW(HWND, LPCWSTR operation, LPCWSTR file, LPCWSTR parameters, LPCWSTR, INT)
+namespace
+{
+	// A program to run, rather than a document to open: an executable file (not an app bundle).
+	bool isExecutable(LPCWSTR file)
+	{
+		if (!file)
+			return false;
+		const std::string path = toPosixPath(file);
+		struct stat info{};
+		return ::stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) && ::access(path.c_str(), X_OK) == 0;
+	}
+}
+
+HINSTANCE WINAPI ShellExecuteW(HWND, LPCWSTR operation, LPCWSTR file, LPCWSTR parameters, LPCWSTR directory, INT)
 {
 	const std::u16string verb = operation ? operation : u"open";
 	const std::string target = nppmac::toUtf8(file ? file : u"");
 	bool ok = false;
-	if (verb == u"explore")
+	if (verb != u"explore" && isExecutable(file))
+	{
+		// "open" and "runas" run a program; there is no elevation to ask for.
+		HANDLE process = nppmac::kernel::startProcess(file, parameters ? parameters : u"", directory);
+		ok = process != nullptr;
+		if (process)
+			CloseHandle(process);
+	}
+	else if (verb == u"explore")
 	{
 		ok = nppmac::platform::openUrlOrFile(toPosixPath(file));
 	}
@@ -651,9 +673,22 @@ HINSTANCE WINAPI ShellExecuteW(HWND, LPCWSTR operation, LPCWSTR file, LPCWSTR pa
 
 BOOL WINAPI ShellExecuteExW(SHELLEXECUTEINFOW* info)
 {
+	info->hProcess = nullptr;
+	const std::u16string verb = info->lpVerb ? info->lpVerb : u"open";
+	if (verb != u"explore" && isExecutable(info->lpFile))
+	{
+		HANDLE process = nppmac::kernel::startProcess(info->lpFile, info->lpParameters ? info->lpParameters : u"", info->lpDirectory);
+		info->hInstApp = reinterpret_cast<HINSTANCE>(static_cast<intptr_t>(process ? 42 : SE_ERR_FNF));
+		if (!process)
+			return FALSE;
+		if (info->fMask & SEE_MASK_NOCLOSEPROCESS)
+			info->hProcess = process;
+		else
+			CloseHandle(process);
+		return TRUE;
+	}
 	HINSTANCE result = ShellExecuteW(info->hwnd, info->lpVerb, info->lpFile, info->lpParameters, info->lpDirectory, info->nShow);
 	info->hInstApp = result;
-	info->hProcess = nullptr;
 	if (reinterpret_cast<intptr_t>(result) <= 32)
 	{
 		SetLastError(ERROR_FILE_NOT_FOUND);
