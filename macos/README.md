@@ -88,6 +88,20 @@ Tracked as job J1 in the work tracker. Today:
 About ten Win32 functions are still weak stubs (printing, IME, plugin loading, directory change
 notifications); the build lists them as `Win32 functions still stubbed`.
 
+## The app's name and icon
+
+The app's name (bundle, executable, application menu), bundle identifier and icon are CMake
+settings:
+
+```bash
+cmake -S macos -B macos/build -DNPPMAC_APP_NAME="..." -DNPPMAC_BUNDLE_ID="..." -DNPPMAC_APP_ICON=path/to/icon.png
+```
+
+They default to "Notepad++" and upstream's icon. Those are the Notepad++ project's name and
+trademark: a build published outside the project should set its own. Upstream's own texts (the Help
+menu's "About Notepad++", dialog titles) still name Notepad++; changing those means a localization
+file of the new name, not edits to upstream.
+
 ## Plugins
 
 A plugin for macOS is built from its Windows sources, with `nppmac_add_plugin` in

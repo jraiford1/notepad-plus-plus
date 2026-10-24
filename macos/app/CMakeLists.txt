@@ -61,13 +61,26 @@ nppAddResources("functionList" ${nppFunctionList})
 nppAddResources("themes" ${nppThemes})
 nppAddResources("userDefineLangs" ${nppUserDefineLangs})
 
-add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources})
-set_target_properties(NotepadPlusPlus PROPERTIES
-	OUTPUT_NAME "Notepad++"
-	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
-	MACOSX_BUNDLE_BUNDLE_NAME "Notepad++"
-	MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jraiford1.notepad-plus-plus-macos"
+# The app icon, made from NPPMAC_APP_ICON.
+set(appIcon "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.icns")
+add_custom_command(
+	OUTPUT "${appIcon}"
+	COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/make-icns.sh" "${NPPMAC_APP_ICON}" "${appIcon}"
+	DEPENDS "${NPPMAC_APP_ICON}" "${CMAKE_CURRENT_SOURCE_DIR}/make-icns.sh"
+	COMMENT "Making the app icon"
+	VERBATIM
 )
+set_source_files_properties("${appIcon}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources} "${appIcon}")
+set_target_properties(NotepadPlusPlus PROPERTIES
+	OUTPUT_NAME "${NPPMAC_APP_NAME}"
+	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+	MACOSX_BUNDLE_BUNDLE_NAME "${NPPMAC_APP_NAME}"
+	MACOSX_BUNDLE_GUI_IDENTIFIER "${NPPMAC_BUNDLE_ID}"
+	MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
+)
+target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 # The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions
 # they use in the app (see macos/plugins).
