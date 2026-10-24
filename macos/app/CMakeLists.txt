@@ -156,7 +156,10 @@ target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
 
 # Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
 add_dependencies(NotepadPlusPlus nppGup)
+# Resources/notepad++.exe, the program's file as upstream sees it (GetModuleFileName), is the executable:
+# upstream reads its version from that file (Plugins Admin's compatibility checks), so it must exist.
 add_custom_command(TARGET NotepadPlusPlus POST_BUILD
+	COMMAND "${CMAKE_COMMAND}" -E create_symlink "../MacOS/$<TARGET_FILE_NAME:NotepadPlusPlus>" "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/notepad++.exe"
 	COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater"
 	COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater/gup.exe"
 	VERBATIM
