@@ -94,7 +94,18 @@ namespace nppmac::kernel
 		waitCondition().notify_all();
 	}
 
-	DWORD waitForObjects(DWORD count, const HANDLE* handles, bool waitAll, DWORD milliseconds, bool (*extraCondition)())
+	// The wait itself, under the wait lock; APCs run after it, without the lock.
+	DWORD waitForObjectsOnce(DWORD count, const HANDLE* handles, bool waitAll, DWORD milliseconds, bool (*extraCondition)(), bool alertable);
+
+	DWORD waitForObjects(DWORD count, const HANDLE* handles, bool waitAll, DWORD milliseconds, bool (*extraCondition)(), bool alertable)
+	{
+		const DWORD result = waitForObjectsOnce(count, handles, waitAll, milliseconds, extraCondition, alertable);
+		if (result == WAIT_IO_COMPLETION)
+			runPendingApcs();
+		return result;
+	}
+
+	DWORD waitForObjectsOnce(DWORD count, const HANDLE* handles, bool waitAll, DWORD milliseconds, bool (*extraCondition)(), bool alertable)
 	{
 		std::vector<std::shared_ptr<KernelObject>> objects;
 		for (DWORD i = 0; i < count; ++i)
@@ -138,6 +149,8 @@ namespace nppmac::kernel
 
 			if (extraCondition && extraCondition())
 				return WAIT_OBJECT_0 + count;
+			if (alertable && hasPendingApcs())
+				return WAIT_IO_COMPLETION;
 
 			if (milliseconds == 0)
 				return WAIT_TIMEOUT;

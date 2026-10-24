@@ -20,6 +20,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <deque>
 #include <pthread.h>
 #include <thread>
 #include <unistd.h>
@@ -152,6 +153,7 @@ namespace
 		std::mutex _resumeMutex;
 		std::condition_variable _resumeCondition;
 		DWORD _suspendCount = 0;
+		std::deque<std::function<void()>> _apcs; // under waitMutex()
 
 	private:
 		bool _finished = false;
@@ -236,6 +238,68 @@ namespace
 	}
 }
 
+// --- Asynchronous procedure calls -----------------------------------------------------------------
+
+namespace nppmac::kernel
+{
+	std::shared_ptr<KernelObject> currentThreadObject()
+	{
+		if (!t_currentThread)
+		{
+			t_currentThread = std::make_shared<Thread>();
+			t_currentThread->_id = GetCurrentThreadId();
+		}
+		return t_currentThread;
+	}
+
+	bool queueApc(const std::shared_ptr<KernelObject>& object, std::function<void()> call)
+	{
+		auto thread = std::dynamic_pointer_cast<Thread>(object);
+		if (!thread)
+			return false;
+		std::lock_guard lock{waitMutex()};
+		if (thread->isSignaled())
+			return false;
+		thread->_apcs.push_back(std::move(call));
+		notifyWaiters();
+		return true;
+	}
+
+	bool hasPendingApcs()
+	{
+		return t_currentThread && !t_currentThread->_apcs.empty();
+	}
+
+	void runPendingApcs()
+	{
+		if (!t_currentThread)
+			return;
+		for (;;)
+		{
+			std::function<void()> call;
+			{
+				std::lock_guard lock{waitMutex()};
+				if (t_currentThread->_apcs.empty())
+					return;
+				call = std::move(t_currentThread->_apcs.front());
+				t_currentThread->_apcs.pop_front();
+			}
+			call();
+		}
+	}
+}
+
+DWORD WINAPI QueueUserAPC(PAPCFUNC function, HANDLE threadHandle, ULONG_PTR data)
+{
+	std::shared_ptr<KernelObject> thread = threadHandle == GetCurrentThread() ? nppmac::kernel::currentThreadObject() : nppmac::kernel::lookupHandle(threadHandle);
+	if (!nppmac::kernel::queueApc(thread, [function, data] { function(data); }))
+	{
+		SetLastError(ERROR_INVALID_HANDLE);
+		return 0;
+	}
+	return 1;
+}
+
 // --- Last error -----------------------------------------------------------------------------------
 
 DWORD WINAPI GetLastError()
@@ -264,12 +328,7 @@ BOOL WINAPI DuplicateHandle(HANDLE, HANDLE sourceHandle, HANDLE, LPHANDLE target
 	if (sourceHandle == GetCurrentThread())
 	{
 		// A real handle for the calling thread (one not created by CreateThread never finishes).
-		if (!t_currentThread)
-		{
-			t_currentThread = std::make_shared<Thread>();
-			t_currentThread->_id = GetCurrentThreadId();
-		}
-		duplicate = nppmac::kernel::createHandle(t_currentThread);
+		duplicate = nppmac::kernel::createHandle(nppmac::kernel::currentThreadObject());
 	}
 	else
 	{
@@ -291,9 +350,9 @@ DWORD WINAPI WaitForSingleObject(HANDLE handle, DWORD milliseconds)
 	return nppmac::kernel::waitForObjects(1, &handle, false, milliseconds);
 }
 
-DWORD WINAPI WaitForSingleObjectEx(HANDLE handle, DWORD milliseconds, BOOL)
+DWORD WINAPI WaitForSingleObjectEx(HANDLE handle, DWORD milliseconds, BOOL alertable)
 {
-	return WaitForSingleObject(handle, milliseconds);
+	return nppmac::kernel::waitForObjects(1, &handle, false, milliseconds, nullptr, alertable != FALSE);
 }
 
 DWORD WINAPI WaitForMultipleObjects(DWORD count, const HANDLE* handles, BOOL waitAll, DWORD milliseconds)
@@ -301,9 +360,9 @@ DWORD WINAPI WaitForMultipleObjects(DWORD count, const HANDLE* handles, BOOL wai
 	return nppmac::kernel::waitForObjects(count, handles, waitAll != FALSE, milliseconds);
 }
 
-DWORD WINAPI WaitForMultipleObjectsEx(DWORD count, const HANDLE* handles, BOOL waitAll, DWORD milliseconds, BOOL)
+DWORD WINAPI WaitForMultipleObjectsEx(DWORD count, const HANDLE* handles, BOOL waitAll, DWORD milliseconds, BOOL alertable)
 {
-	return WaitForMultipleObjects(count, handles, waitAll, milliseconds);
+	return nppmac::kernel::waitForObjects(count, handles, waitAll != FALSE, milliseconds, nullptr, alertable != FALSE);
 }
 
 // --- Events, mutexes, semaphores ------------------------------------------------------------------
@@ -551,10 +610,16 @@ void WINAPI Sleep(DWORD milliseconds)
 	std::this_thread::sleep_for(std::chrono::milliseconds{milliseconds});
 }
 
-DWORD WINAPI SleepEx(DWORD milliseconds, BOOL)
+DWORD WINAPI SleepEx(DWORD milliseconds, BOOL alertable)
 {
-	Sleep(milliseconds);
-	return 0;
+	if (!alertable)
+	{
+		Sleep(milliseconds);
+		return 0;
+	}
+	// A wait on nothing ends with the timeout, or early when an APC arrives.
+	const DWORD result = nppmac::kernel::waitForObjects(0, nullptr, false, milliseconds, nullptr, true);
+	return result == WAIT_IO_COMPLETION ? WAIT_IO_COMPLETION : 0;
 }
 
 void WINAPI ExitProcess(UINT exitCode)

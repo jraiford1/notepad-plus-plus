@@ -24,6 +24,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -72,6 +73,15 @@ namespace nppmac::kernel
 	// Waits until one (waitAll == false) or all of the objects are signaled, or the timeout expires.
 	// Returns WAIT_OBJECT_0 + index, WAIT_TIMEOUT or WAIT_FAILED. extraCondition, if set, is checked
 	// under the wait lock too and ends the wait with WAIT_OBJECT_0 + count (used for message waits).
+	// An alertable wait runs the calling thread's queued APCs and then returns WAIT_IO_COMPLETION.
 	DWORD waitForObjects(DWORD count, const HANDLE* handles, bool waitAll, DWORD milliseconds,
-		bool (*extraCondition)() = nullptr);
+		bool (*extraCondition)() = nullptr, bool alertable = false);
+
+	// Asynchronous procedure calls. The calling thread's kernel object (made on first use for threads
+	// the runtime did not create) is what an APC is queued to; it runs when that thread waits
+	// alertably. hasPendingApcs is called with waitMutex() held.
+	std::shared_ptr<KernelObject> currentThreadObject();
+	bool queueApc(const std::shared_ptr<KernelObject>& thread, std::function<void()> call);
+	bool hasPendingApcs();
+	void runPendingApcs();
 }

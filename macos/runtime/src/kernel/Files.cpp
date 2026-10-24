@@ -18,10 +18,14 @@
 
 #include "Handles.h"
 #include "Internal.h"
+#include "platform/DirectoryWatcher.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <copyfile.h>
+#include <cstddef>
+#include <cstring>
+#include <deque>
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -168,6 +172,151 @@ using namespace nppmac::kernel;
 
 namespace
 {
+	// The FSEvents watch behind ReadDirectoryChangesW: changes are kept until a read is pending, then
+	// written into its buffer and completed by an APC on the thread that issued the read.
+	class DirectoryWatch
+	{
+	public:
+		DirectoryWatch(const std::string& folder, bool subtree, DWORD filter) : _filter{filter}
+		{
+			// The watcher's callback uses this object: the destructor stops it before anything else goes.
+			_watcher = std::make_unique<nppmac::platform::DirectoryWatcher>(folder, subtree, [this](std::vector<nppmac::platform::DirectoryChange> changes)
+			{
+				std::lock_guard lock{_mutex};
+				for (auto& change : changes)
+				{
+					if (wanted(change))
+						_backlog.push_back(std::move(change));
+				}
+				deliver();
+			});
+		}
+
+		~DirectoryWatch()
+		{
+			_watcher.reset();
+		}
+
+		bool isWatching() const {
+			return _watcher->isWatching();
+		}
+
+		void read(BYTE* buffer, DWORD length, DWORD filter, LPOVERLAPPED overlapped, LPOVERLAPPED_COMPLETION_ROUTINE completion)
+		{
+			std::lock_guard lock{_mutex};
+			_filter = filter;
+			_request = Request{buffer, length, overlapped, completion, currentThreadObject()};
+			deliver();
+		}
+
+		void cancel()
+		{
+			std::lock_guard lock{_mutex};
+			if (!_request)
+				return;
+			complete(ERROR_OPERATION_ABORTED, 0);
+		}
+
+	private:
+		struct Request
+		{
+			BYTE* _buffer = nullptr;
+			DWORD _length = 0;
+			LPOVERLAPPED _overlapped = nullptr;
+			LPOVERLAPPED_COMPLETION_ROUTINE _completion = nullptr;
+			std::shared_ptr<KernelObject> _thread;
+		};
+
+		bool wanted(const nppmac::platform::DirectoryChange& change) const
+		{
+			if (change._change == nppmac::platform::FileChange::modified)
+				return (_filter & (FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SECURITY)) != 0;
+			return (_filter & (change._isDirectory ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME)) != 0;
+		}
+
+		static DWORD action(nppmac::platform::FileChange change)
+		{
+			switch (change)
+			{
+				case nppmac::platform::FileChange::added:
+					return FILE_ACTION_ADDED;
+				case nppmac::platform::FileChange::removed:
+					return FILE_ACTION_REMOVED;
+				case nppmac::platform::FileChange::renamedOld:
+					return FILE_ACTION_RENAMED_OLD_NAME;
+				case nppmac::platform::FileChange::renamedNew:
+					return FILE_ACTION_RENAMED_NEW_NAME;
+				case nppmac::platform::FileChange::modified:
+				default:
+					return FILE_ACTION_MODIFIED;
+			}
+		}
+
+		// Under _mutex: fills the pending read with as many changes as fit, the rest wait for the next.
+		void deliver()
+		{
+			if (!_request || _backlog.empty())
+				return;
+			DWORD used = 0;
+			FILE_NOTIFY_INFORMATION* previous = nullptr;
+			while (!_backlog.empty())
+			{
+				// Names are relative and '\' separated, as Windows reports them.
+				std::u16string name = nppmac::toUtf16(_backlog.front()._relativePath);
+				std::replace(name.begin(), name.end(), u'/', u'\\');
+				const DWORD nameBytes = static_cast<DWORD>(name.size() * sizeof(char16_t));
+				const DWORD recordSize = (static_cast<DWORD>(offsetof(FILE_NOTIFY_INFORMATION, FileName)) + nameBytes + sizeof(DWORD) - 1) & ~static_cast<DWORD>(sizeof(DWORD) - 1);
+				if (used + recordSize > _request->_length)
+					break;
+				auto* record = reinterpret_cast<FILE_NOTIFY_INFORMATION*>(_request->_buffer + used);
+				record->NextEntryOffset = 0;
+				record->Action = action(_backlog.front()._change);
+				record->FileNameLength = nameBytes;
+				std::memcpy(record->FileName, name.data(), nameBytes);
+				if (previous)
+					previous->NextEntryOffset = static_cast<DWORD>(reinterpret_cast<BYTE*>(record) - reinterpret_cast<BYTE*>(previous));
+				previous = record;
+				used += recordSize;
+				_backlog.pop_front();
+			}
+			if (used == 0)
+			{
+				// A name longer than the whole buffer: dropped, as Windows would lose it too.
+				_backlog.pop_front();
+				return;
+			}
+			complete(ERROR_SUCCESS, used);
+		}
+
+		// Under _mutex: ends the pending read through its completion routine, on the issuing thread.
+		void complete(DWORD error, DWORD bytes)
+		{
+			Request request = std::move(*_request);
+			_request.reset();
+			if (request._overlapped)
+			{
+				request._overlapped->Internal = error;
+				request._overlapped->InternalHigh = bytes;
+			}
+			if (request._completion)
+			{
+				LPOVERLAPPED_COMPLETION_ROUTINE completion = request._completion;
+				LPOVERLAPPED overlapped = request._overlapped;
+				queueApc(request._thread, [completion, overlapped, error, bytes] { completion(error, bytes, overlapped); });
+			}
+			else if (request._overlapped && request._overlapped->hEvent)
+			{
+				SetEvent(request._overlapped->hEvent);
+			}
+		}
+
+		std::mutex _mutex;
+		DWORD _filter = 0;
+		std::deque<nppmac::platform::DirectoryChange> _backlog;
+		std::optional<Request> _request;
+		std::unique_ptr<nppmac::platform::DirectoryWatcher> _watcher;
+	};
+
 	class File : public KernelObject
 	{
 	public:
@@ -188,6 +337,9 @@ namespace
 		const std::string& path() const {
 			return _path;
 		}
+
+		// Set by the first ReadDirectoryChangesW on a folder.
+		std::shared_ptr<DirectoryWatch> _watch;
 
 	private:
 		int _fd = -1;
@@ -599,8 +751,48 @@ BOOL WINAPI UnlockFile(HANDLE, DWORD, DWORD, DWORD, DWORD)
 	return TRUE;
 }
 
-BOOL WINAPI CancelIo(HANDLE)
+BOOL WINAPI CancelIo(HANDLE handle)
 {
+	auto file = lookup<File>(handle);
+	if (!file)
+		return FALSE;
+	if (file->_watch)
+		file->_watch->cancel();
+	return TRUE;
+}
+
+BOOL WINAPI ReadDirectoryChangesW(HANDLE handle, LPVOID buffer, DWORD length, BOOL subtree, DWORD filter, LPDWORD returned, LPOVERLAPPED overlapped, LPOVERLAPPED_COMPLETION_ROUTINE completion)
+{
+	auto file = lookup<File>(handle);
+	if (!file)
+		return FALSE;
+	struct stat info{};
+	if (::fstat(file->fd(), &info) != 0 || !S_ISDIR(info.st_mode))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	// Only the asynchronous form, the one Notepad++ uses: the call returns at once and the changes
+	// arrive through the completion routine (or the overlapped event).
+	if (!overlapped || !buffer || length < sizeof(FILE_NOTIFY_INFORMATION))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	if (!file->_watch)
+	{
+		file->_watch = std::make_shared<DirectoryWatch>(file->path(), subtree != FALSE, filter);
+		if (!file->_watch->isWatching())
+		{
+			file->_watch.reset();
+			SetLastError(ERROR_ACCESS_DENIED);
+			return FALSE;
+		}
+	}
+	if (returned)
+		*returned = 0;
+	file->_watch->read(static_cast<BYTE*>(buffer), length, filter, overlapped, completion);
+	SetLastError(ERROR_IO_PENDING);
 	return TRUE;
 }
 

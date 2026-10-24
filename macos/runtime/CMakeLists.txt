@@ -34,3 +34,7 @@ target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include" "$
 add_executable(nppRuntimeCrtTest test/CrtTest.cpp)
 target_link_libraries(nppRuntimeCrtTest PRIVATE nppRuntime nppRuntimeStubs)
 add_test(NAME runtimeCrt COMMAND nppRuntimeCrtTest)
+
+add_executable(nppRuntimeDirectoryChangesTest test/DirectoryChangesTest.cpp)
+target_link_libraries(nppRuntimeDirectoryChangesTest PRIVATE nppRuntime nppRuntimeStubs)
+add_test(NAME runtimeDirectoryChanges COMMAND nppRuntimeDirectoryChangesTest)

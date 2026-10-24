@@ -1036,14 +1036,6 @@ BOOL WINAPI Process32FirstW(HANDLE handle, LPPROCESSENTRY32W entry)
 	return Process32NextW(handle, entry);
 }
 
-DWORD WINAPI QueueUserAPC(PAPCFUNC function, HANDLE, ULONG_PTR data)
-{
-	// Upstream queues an APC to wake its directory-watcher thread; running it directly has the
-	// same effect here.
-	function(data);
-	return 1;
-}
-
 HRESULT WINAPI RegisterApplicationRestart(PCWSTR, DWORD)
 {
 	return S_OK;
