@@ -88,6 +88,8 @@ namespace nppmac::controls
 
 	// A ComboLBox tells its combo box which item was clicked (wParam: the index).
 	constexpr UINT comboListChosen = WM_APP + 0x3F01;
+	// A list view tells its header how far it is scrolled sideways (wParam: pixels).
+	constexpr UINT headerScrolled = WM_APP + 0x3F02;
 
 	// Asks the parent for the control's colors with a WM_CTLCOLOR* message, as Windows controls do:
 	// the parent sets the DC's text and background colors and returns the background brush.
