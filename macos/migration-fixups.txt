@@ -22,3 +22,19 @@ file: pugixml/pugiconfig.hpp
 #define PUGIXML_CHARCONV_FLOAT
 #endif
 >>>>
+
+# A watched file's change arrives as its folder, a '\' and its name, which on macOS is not how the
+# buffer's path is spelled ('/' only); the comparison with that path must see the same separators.
+file: NppIO.cpp
+<<<<
+					// Fix monitoring files which are under root problem
+					size_t pos = fn.find(L"\\\\");
+					if (pos == 2)
+						fn.replace(pos, 2, L"\\");
+====
+					// Fix monitoring files which are under root problem
+					size_t pos = fn.find(L"\\\\");
+					if (pos == 2)
+						fn.replace(pos, 2, L"\\");
+					std::replace(fn.begin(), fn.end(), L'\\', L'/');
+>>>>
