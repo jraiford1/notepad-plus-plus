@@ -227,9 +227,9 @@ namespace nppmac::controls
 					continue;
 				}
 				const bool enabled = (button._state & TBSTATE_ENABLED) != 0;
-				const bool checked = (button._state & TBSTATE_CHECKED) != 0;
-				const bool hot = enabled && static_cast<int>(i) == bar._hot;
-				const bool pressed = enabled && static_cast<int>(i) == bar._pressed && hot;
+				bool checked = (button._state & TBSTATE_CHECKED) != 0;
+				bool hot = enabled && static_cast<int>(i) == bar._hot;
+				bool pressed = enabled && static_cast<int>(i) == bar._pressed && hot;
 
 				LRESULT itemResult = CDRF_DODEFAULT;
 				if (prePaint & CDRF_NOTIFYITEMDRAW)
@@ -247,17 +247,31 @@ namespace nppmac::controls
 					itemResult = sendNotify(hwnd, notify, NM_CUSTOMDRAW, &custom.nmcd.hdr);
 					if (itemResult & CDRF_SKIPDEFAULT)
 						continue;
+					// The parent may have drawn the hot or checked look itself and cleared those states,
+					// as Notepad++'s dark mode does.
+					hot = (custom.nmcd.uItemState & CDIS_HOT) != 0;
+					checked = (custom.nmcd.uItemState & CDIS_CHECKED) != 0;
+					pressed = (custom.nmcd.uItemState & CDIS_SELECTED) != 0;
 				}
 
 				if (!(itemResult & TBCDRF_NOBACKGROUND) && (hot || pressed || checked))
 				{
-					// A Windows 10 flat toolbar: light blue when hot, a darker frame when pressed or checked.
-					HBRUSH fill = CreateSolidBrush(pressed ? RGB(204, 228, 247) : (checked ? RGB(204, 232, 255) : RGB(229, 243, 255)));
-					HBRUSH frame = CreateSolidBrush(pressed || checked ? RGB(153, 209, 255) : RGB(204, 232, 255));
-					FillRect(hdc, &rect, fill);
-					FrameRect(hdc, &rect, frame);
-					DeleteObject(fill);
-					DeleteObject(frame);
+					if (itemResult & TBCDRF_USECDCOLORS)
+					{
+						HBRUSH fill = CreateSolidBrush(hot || pressed ? custom.clrHighlightHotTrack : custom.clrBtnHighlight);
+						FillRect(hdc, &rect, fill);
+						DeleteObject(fill);
+					}
+					else
+					{
+						// A Windows 10 flat toolbar: light blue when hot, a darker frame when pressed or checked.
+						HBRUSH fill = CreateSolidBrush(pressed ? RGB(204, 228, 247) : (checked ? RGB(204, 232, 255) : RGB(229, 243, 255)));
+						HBRUSH frame = CreateSolidBrush(pressed || checked ? RGB(153, 209, 255) : RGB(204, 232, 255));
+						FillRect(hdc, &rect, fill);
+						FrameRect(hdc, &rect, frame);
+						DeleteObject(fill);
+						DeleteObject(frame);
+					}
 				}
 
 				HIMAGELIST images = !enabled && bar._disabledImages ? bar._disabledImages : (hot && bar._hotImages ? bar._hotImages : bar._images);

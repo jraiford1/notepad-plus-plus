@@ -461,11 +461,6 @@ HRESULT WINAPI DwmGetColorizationColor(DWORD* color, BOOL* opaque)
 	return S_OK;
 }
 
-HRESULT WINAPI DwmSetWindowAttribute(HWND, DWORD, LPCVOID, DWORD)
-{
-	return S_OK;
-}
-
 HRESULT WINAPI DwmGetWindowAttribute(HWND, DWORD, PVOID, DWORD)
 {
 	return E_NOTIMPL;

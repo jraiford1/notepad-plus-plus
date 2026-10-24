@@ -21,12 +21,15 @@
 #include "Internal.h"
 #include "nppmac/Startup.h"
 #include "platform/Platform.h"
+#include "user/DarkMode.h"
 
+#include <dbghelp.h>
 #include <sensapi.h>
 #include <tlhelp32.h>
 
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <dlfcn.h>
 #include <libproc.h>
 #include <mach/mach_time.h>
@@ -44,6 +47,93 @@ namespace
 	constexpr DWORD reportedBuild = 19045;
 
 	// The main executable's module handle: the address of its Mach-O header, as on Windows.
+	// Windows' system DLLs are not there, but the few functions programs look up in them by name or
+	// ordinal are: these modules answer GetModuleHandle, LoadLibrary and GetProcAddress for them.
+	enum class SystemModule
+	{
+		ntdll,
+		kernel32,
+		user32,
+		uxtheme,
+		comctl32,
+		count,
+	};
+
+	const char16_t* const g_systemModuleNames[] = {u"ntdll", u"kernel32", u"user32", u"uxtheme", u"comctl32"};
+	char g_systemModuleTags[static_cast<int>(SystemModule::count)]{};
+
+	HMODULE systemModuleHandle(SystemModule module)
+	{
+		return reinterpret_cast<HMODULE>(&g_systemModuleTags[static_cast<int>(module)]);
+	}
+
+	bool isSystemModule(HMODULE module, SystemModule* which = nullptr)
+	{
+		const auto* tag = reinterpret_cast<const char*>(module);
+		if (tag < g_systemModuleTags || tag >= g_systemModuleTags + static_cast<int>(SystemModule::count))
+			return false;
+		if (which)
+			*which = static_cast<SystemModule>(tag - g_systemModuleTags);
+		return true;
+	}
+
+	// "C:\Windows\System32\UxTheme.dll" and "uxtheme" name the same module.
+	HMODULE findSystemModule(LPCWSTR fileName)
+	{
+		if (!fileName)
+			return nullptr;
+		std::u16string name{fileName};
+		const size_t separator = name.find_last_of(u"\\/");
+		if (separator != std::u16string::npos)
+			name.erase(0, separator + 1);
+		if (name.size() > 4 && _wcsicmp(name.c_str() + name.size() - 4, u".dll") == 0)
+			name.erase(name.size() - 4);
+		for (int i = 0; i < static_cast<int>(SystemModule::count); ++i)
+		{
+			if (_wcsicmp(name.c_str(), g_systemModuleNames[i]) == 0)
+				return systemModuleHandle(static_cast<SystemModule>(i));
+		}
+		return nullptr;
+	}
+
+	// ntdll: the version Notepad++ checks before using the dark mode functions (Windows 10 22H2).
+	void WINAPI rtlGetNtVersionNumbers(LPDWORD major, LPDWORD minor, LPDWORD build)
+	{
+		constexpr DWORD windows10Build = 19045;
+		if (major)
+			*major = 10;
+		if (minor)
+			*minor = 0;
+		if (build)
+			*build = windows10Build | 0xF0000000;
+	}
+
+	FARPROC systemExport(SystemModule module, LPCSTR procName)
+	{
+		const bool byOrdinal = reinterpret_cast<uintptr_t>(procName) <= 0xFFFF;
+		switch (module)
+		{
+			case SystemModule::ntdll:
+				// Not wine_get_version: Notepad++ would take this for Wine.
+				return !byOrdinal && std::strcmp(procName, "RtlGetNtVersionNumbers") == 0 ? reinterpret_cast<FARPROC>(&rtlGetNtVersionNumbers) : nullptr;
+			case SystemModule::uxtheme:
+				if (byOrdinal)
+					return nppmac::user::darkmode::uxthemeOrdinal(static_cast<WORD>(reinterpret_cast<uintptr_t>(procName)));
+				break;
+			case SystemModule::user32:
+				if (!byOrdinal)
+				{
+					if (FARPROC dark = nppmac::user::darkmode::user32Export(procName))
+						return dark;
+				}
+				break;
+			default:
+				break;
+		}
+		// The runtime's own implementation of a function the module exports, if there is one.
+		return byOrdinal ? nullptr : reinterpret_cast<FARPROC>(::dlsym(RTLD_DEFAULT, procName));
+	}
+
 	HMODULE mainModule()
 	{
 		static HMODULE module = []
@@ -579,7 +669,8 @@ HMODULE WINAPI GetModuleHandleW(LPCWSTR moduleName)
 {
 	if (!moduleName)
 		return mainModule();
-	// Other modules (system DLLs) are not available; upstream copes with a NULL result.
+	if (HMODULE system = findSystemModule(moduleName))
+		return system;
 	SetLastError(ERROR_MOD_NOT_FOUND);
 	return nullptr;
 }
@@ -621,7 +712,9 @@ DWORD WINAPI GetModuleFileNameA(HMODULE module, LPSTR buffer, DWORD size)
 
 HMODULE WINAPI LoadLibraryExW(LPCWSTR fileName, HANDLE, DWORD)
 {
-	// Plugins are macOS dynamic libraries (W8); Windows system DLLs never load.
+	// Plugins are macOS dynamic libraries (W8); of the Windows system DLLs, the runtime's stand-ins.
+	if (HMODULE system = findSystemModule(fileName))
+		return system;
 	const std::string path = toPosixPath(fileName);
 	void* library = path.ends_with(".dylib") ? ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL) : nullptr;
 	if (!library)
@@ -636,13 +729,21 @@ HMODULE WINAPI LoadLibraryW(LPCWSTR fileName)
 
 BOOL WINAPI FreeLibrary(HMODULE module)
 {
-	if (module && module != mainModule())
+	if (module && module != mainModule() && !isSystemModule(module))
 		::dlclose(module);
 	return TRUE;
 }
 
 FARPROC WINAPI GetProcAddress(HMODULE module, LPCSTR procName)
 {
+	SystemModule system{};
+	if (isSystemModule(module, &system))
+	{
+		FARPROC found = systemExport(system, procName);
+		if (!found)
+			SetLastError(ERROR_PROC_NOT_FOUND);
+		return found;
+	}
 	if (!module || reinterpret_cast<uintptr_t>(procName) <= 0xFFFF)
 	{
 		SetLastError(ERROR_PROC_NOT_FOUND);
