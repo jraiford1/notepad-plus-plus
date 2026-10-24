@@ -19,6 +19,7 @@
 
 #include "Handles.h"
 #include "Internal.h"
+#include "Modules.h"
 #include "nppmac/Startup.h"
 #include "platform/Platform.h"
 #include "user/DarkMode.h"
@@ -33,6 +34,8 @@
 #include <chrono>
 #include <cstring>
 #include <dlfcn.h>
+#include <mutex>
+#include <unordered_map>
 #include <libkern/OSByteOrder.h>
 #include <libproc.h>
 #include <mach-o/fat.h>
@@ -747,12 +750,22 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR moduleName)
 
 DWORD WINAPI GetModuleFileNameW(HMODULE module, LPWSTR buffer, DWORD size)
 {
+	std::string file;
 	if (module && module != mainModule())
 	{
-		SetLastError(ERROR_MOD_NOT_FOUND);
-		return 0;
+		// A plugin's own file: plugins find their folder from it.
+		file = nppmac::kernel::libraryPath(module);
+		if (file.empty())
+		{
+			SetLastError(ERROR_MOD_NOT_FOUND);
+			return 0;
+		}
 	}
-	const std::u16string path = nppmac::toUtf16(nppmac::platform::resourcesDirectory() + "/notepad++.exe");
+	else
+	{
+		file = nppmac::platform::resourcesDirectory() + "/notepad++.exe";
+	}
+	const std::u16string path = nppmac::toUtf16(file);
 	if (path.size() + 1 > size)
 	{
 		// Truncated and terminated, as Windows does.
@@ -775,6 +788,52 @@ DWORD WINAPI GetModuleFileNameA(HMODULE module, LPSTR buffer, DWORD size)
 	return copyToBuffer(nppmac::toUtf8(wide), buffer, size);
 }
 
+namespace
+{
+	// The libraries LoadLibrary loaded: their files and how many loads each still has.
+	struct Library
+	{
+		std::string _path;
+		int _loads = 0;
+	};
+
+	std::mutex& librariesMutex()
+	{
+		static auto* mutex = new std::mutex;
+		return *mutex;
+	}
+
+	std::unordered_map<HMODULE, Library>& libraries()
+	{
+		static auto* map = new std::unordered_map<HMODULE, Library>;
+		return *map;
+	}
+
+	using DllMainFunction = BOOL (*)(HMODULE, DWORD, LPVOID);
+
+	// A library's DllMain, which plugins declare as a C++ function with HANDLE, HINSTANCE or HMODULE
+	// (HINSTANCE and HMODULE are one type): looked up under each of those names, and as a C function.
+	DllMainFunction findDllMain(HMODULE module)
+	{
+		for (const char* name : {"DllMain", "_Z7DllMainPvjS_", "_Z7DllMainP11HINSTANCE__jPv"})
+		{
+			if (void* symbol = ::dlsym(module, name))
+				return reinterpret_cast<DllMainFunction>(symbol);
+		}
+		return nullptr;
+	}
+}
+
+namespace nppmac::kernel
+{
+	std::string libraryPath(HMODULE module)
+	{
+		std::lock_guard lock{librariesMutex()};
+		auto it = libraries().find(module);
+		return it == libraries().end() ? std::string{} : it->second._path;
+	}
+}
+
 HMODULE WINAPI LoadLibraryExW(LPCWSTR fileName, HANDLE, DWORD)
 {
 	// Of the Windows system DLLs, the runtime's stand-ins; anything else is a macOS library, whatever
@@ -788,8 +847,25 @@ HMODULE WINAPI LoadLibraryExW(LPCWSTR fileName, HANDLE, DWORD)
 		if (const char* error = ::dlerror())
 			std::fprintf(stderr, "nppmac: LoadLibrary %s: %s\n", path.c_str(), error);
 		SetLastError(ERROR_MOD_NOT_FOUND);
+		return nullptr;
 	}
-	return static_cast<HMODULE>(library);
+	HMODULE module = static_cast<HMODULE>(library);
+	bool first = false;
+	{
+		std::lock_guard lock{librariesMutex()};
+		Library& entry = libraries()[module];
+		first = entry._loads++ == 0;
+		if (first)
+			entry._path = path;
+	}
+	// As Windows does, the first load runs the library's DllMain, with its module handle: plugins
+	// keep it for their dialogs and resources.
+	if (first)
+	{
+		if (DllMainFunction dllMain = findDllMain(module))
+			dllMain(module, DLL_PROCESS_ATTACH, nullptr);
+	}
+	return module;
 }
 
 HMODULE WINAPI LoadLibraryW(LPCWSTR fileName)
@@ -799,8 +875,24 @@ HMODULE WINAPI LoadLibraryW(LPCWSTR fileName)
 
 BOOL WINAPI FreeLibrary(HMODULE module)
 {
-	if (module && module != mainModule() && !isSystemModule(module))
-		::dlclose(module);
+	if (!module || module == mainModule() || isSystemModule(module))
+		return TRUE;
+	bool last = false;
+	{
+		std::lock_guard lock{librariesMutex()};
+		auto it = libraries().find(module);
+		if (it != libraries().end() && --it->second._loads == 0)
+		{
+			libraries().erase(it);
+			last = true;
+		}
+	}
+	if (last)
+	{
+		if (DllMainFunction dllMain = findDllMain(module))
+			dllMain(module, DLL_PROCESS_DETACH, nullptr);
+	}
+	::dlclose(module);
 	return TRUE;
 }
 

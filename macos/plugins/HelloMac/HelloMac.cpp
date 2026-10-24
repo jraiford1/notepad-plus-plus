@@ -20,6 +20,9 @@
 #include <windows.h>
 
 #include "PluginInterface.h"
+#include "resource.h"
+
+#include <string>
 
 namespace
 {
@@ -27,9 +30,11 @@ namespace
 	{
 		commandInsertGreeting,
 		commandAbout,
+		commandInsertResourceGreeting,
 		commandCount,
 	};
 
+	HMODULE g_module = nullptr;
 	NppData g_nppData{};
 	FuncItem g_commands[commandCount];
 
@@ -45,6 +50,23 @@ namespace
 		::SendMessage(currentScintilla(), SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>("Hello from a plugin on macOS"));
 	}
 
+	// A string from the plugin's own resources, and the name of its folder: its module handle (from
+	// DllMain) at work.
+	void insertResourceGreeting()
+	{
+		wchar_t greeting[100]{};
+		::LoadString(g_module, IDS_GREETING, greeting, 100);
+		wchar_t path[MAX_PATH]{};
+		::GetModuleFileName(g_module, path, MAX_PATH);
+		std::wstring folder = path;
+		folder = folder.substr(0, folder.find_last_of(L"\\/"));
+		folder = folder.substr(folder.find_last_of(L"\\/") + 1);
+		const std::wstring text = std::wstring{greeting} + L" in " + folder;
+		char utf8[300]{};
+		::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8, 300, nullptr, nullptr);
+		::SendMessage(currentScintilla(), SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>(utf8));
+	}
+
 	void about()
 	{
 		::MessageBox(g_nppData._nppHandle, L"HelloMac shows that Notepad++ plugins work on macOS.", L"HelloMac", MB_OK);
@@ -57,11 +79,19 @@ namespace
 	}
 }
 
+BOOL APIENTRY DllMain(HANDLE module, DWORD reason, LPVOID)
+{
+	if (reason == DLL_PROCESS_ATTACH)
+		g_module = static_cast<HMODULE>(module);
+	return TRUE;
+}
+
 extern "C" __declspec(dllexport) void setInfo(NppData nppData)
 {
 	g_nppData = nppData;
 	addCommand(commandInsertGreeting, L"Insert greeting", insertGreeting);
 	addCommand(commandAbout, L"About HelloMac", about);
+	addCommand(commandInsertResourceGreeting, L"Insert greeting from resources", insertResourceGreeting);
 }
 
 extern "C" __declspec(dllexport) const wchar_t* getName()

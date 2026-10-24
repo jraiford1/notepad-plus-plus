@@ -173,9 +173,20 @@ done
 if [ -n "$plugin" ]; then
 	mkdir -p "$pluginFolder"
 	cp "$plugin" "$pluginFolder/HelloMac.dll"
+	# Its resources, beside it.
+	if [ -f "${plugin%.dll}.res" ]; then
+		cp "${plugin%.dll}.res" "$pluginFolder/HelloMac.res"
+	fi
 	files=()
 	run plugin NPPMAC_TEST_COMMAND=22000 NPPMAC_TEST_TYPE='^s' NPPMAC_TEST_TYPE_DELAY=3 NPPMAC_TEST_FILE_PANEL="$work/plugin.txt" \
 		&& expect_file plugin "$work/plugin.txt" 'Hello from a plugin on macOS'
+	# Its third command (22002) inserts a string from its own resources and its folder's name: its
+	# module handle (DllMain), LoadString from its .res and GetModuleFileName at work.
+	files=()
+	mkdir -p "$work/plugin-resources-settings"
+	runSettings="$work/plugin-resources-settings" run plugin-resources NPPMAC_TEST_COMMAND=22002 NPPMAC_TEST_TYPE='^s' NPPMAC_TEST_TYPE_DELAY=3 \
+		NPPMAC_TEST_FILE_PANEL="$work/plugin-resources.txt" \
+		&& expect_file plugin-resources "$work/plugin-resources.txt" 'Hello from a plugin resource in HelloMac'
 	rm -rf "$pluginFolder"
 fi
 

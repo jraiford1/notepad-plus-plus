@@ -22,7 +22,7 @@
 #     nppmac_add_plugin(<Name> SOURCE_DIR <dir> SOURCES <file>...)
 
 function(nppmac_add_plugin name)
-	cmake_parse_arguments(plugin "" "SOURCE_DIR" "SOURCES" ${ARGN})
+	cmake_parse_arguments(plugin "" "SOURCE_DIR" "SOURCES;RC_FILES" ${ARGN})
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 	set(generatedSources "")
 	foreach(source IN LISTS plugin_SOURCES)
@@ -56,7 +56,44 @@ function(nppmac_add_plugin name)
 	target_link_libraries(${name} PRIVATE nppRuntimeHeaders)
 	target_link_options(${name} PRIVATE "SHELL:-bundle_loader \"$<TARGET_FILE:NotepadPlusPlus>\"")
 	add_dependencies(${name} NotepadPlusPlus)
+
+	# The plugin's resources (dialogs, icons, strings): its .rc files compiled into <name>.res beside
+	# <name>.dll, where the runtime finds them for the plugin's module handle. Several .rc files are
+	# concatenated, as a .res file is a sequence of resources.
+	if(plugin_RC_FILES)
+		set(resFiles "")
+		foreach(rcFile IN LISTS plugin_RC_FILES)
+			get_filename_component(rcName "${rcFile}" NAME_WE)
+			get_filename_component(rcDirectory "${plugin_SOURCE_DIR}/${rcFile}" DIRECTORY)
+			set(partFile "${CMAKE_CURRENT_BINARY_DIR}/${name}/res/${rcName}.res")
+			add_custom_command(
+				OUTPUT "${partFile}"
+				COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${name}/res"
+				COMMAND "${NPPMAC_LLVM_RC}" -I "${rcDirectory}" ${nppPluginRcFlags} -c 65001 -D_WIN64 -DUNICODE -D_UNICODE
+					-fo "${partFile}" "${rcFile}"
+				WORKING_DIRECTORY "${plugin_SOURCE_DIR}"
+				DEPENDS "${plugin_SOURCE_DIR}/${rcFile}"
+				COMMENT "Compiling resources of plugin ${name}: ${rcFile}"
+				VERBATIM
+			)
+			list(APPEND resFiles "${partFile}")
+		endforeach()
+		set(resFile "${CMAKE_CURRENT_BINARY_DIR}/${name}/${name}.res")
+		add_custom_command(
+			OUTPUT "${resFile}"
+			COMMAND "${CMAKE_COMMAND}" -E cat ${resFiles} > "${resFile}"
+			DEPENDS ${resFiles}
+			VERBATIM
+		)
+		target_sources(${name} PRIVATE "${resFile}")
+	endif()
 endfunction()
 
+# The include paths llvm-rc needs for a plugin's .rc: the runtime's and Wine's headers.
+set(nppPluginRcFlags -I "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/include")
+foreach(wineDir IN LISTS NPPMAC_WINE_INCLUDE_DIRS)
+	list(APPEND nppPluginRcFlags -I "${wineDir}")
+endforeach()
+
 # A demonstration plugin, used by the tests.
-nppmac_add_plugin(HelloMac SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/HelloMac" SOURCES HelloMac.cpp)
+nppmac_add_plugin(HelloMac SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/HelloMac" SOURCES HelloMac.cpp RC_FILES HelloMac.rc)

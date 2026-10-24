@@ -403,9 +403,9 @@ HMENU WINAPI LoadMenuIndirectW(const MENUTEMPLATE* menuTemplate)
 	return menu;
 }
 
-HMENU WINAPI LoadMenuW(HINSTANCE, LPCWSTR name)
+HMENU WINAPI LoadMenuW(HINSTANCE instance, LPCWSTR name)
 {
-	std::span<const BYTE> data = resourceBytes(name, RT_MENU);
+	std::span<const BYTE> data = resourceBytes(name, RT_MENU, instance);
 	if (data.empty())
 	{
 		SetLastError(ERROR_RESOURCE_NAME_NOT_FOUND);
@@ -855,10 +855,10 @@ int WINAPI CopyAcceleratorTableW(HACCEL handle, LPACCEL entries, int count)
 	return n;
 }
 
-HACCEL WINAPI LoadAcceleratorsW(HINSTANCE, LPCWSTR name)
+HACCEL WINAPI LoadAcceleratorsW(HINSTANCE instance, LPCWSTR name)
 {
 	// Resource entries: fFlags, wAnsi, wId, padding; 0x80 in fFlags marks the last one.
-	std::span<const BYTE> data = resourceBytes(name, RT_ACCELERATOR);
+	std::span<const BYTE> data = resourceBytes(name, RT_ACCELERATOR, instance);
 	std::vector<ACCEL> entries;
 	for (size_t offset = 0; offset + 8 <= data.size(); offset += 8)
 	{
