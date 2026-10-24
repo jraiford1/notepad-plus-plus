@@ -28,6 +28,10 @@ namespace nppmac::platform
 	// The first preferred language, as a BCP 47 tag ("en-US", "ja-JP", "zh-Hans-CN").
 	std::string preferredLanguage();
 
+	// Brings the program to the front, as a window it shows or a modal panel needs. A test run
+	// (NPPMAC_TEST_RUN=1) never does: it must not take the keyboard from whoever uses the Mac.
+	void activateApplication();
+
 	// Whether the system appearance is dark.
 	bool isDarkAppearance();
 

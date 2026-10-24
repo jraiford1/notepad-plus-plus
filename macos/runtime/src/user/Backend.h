@@ -281,8 +281,22 @@ namespace nppmac::ui
 	void windowManagerDumpTree();
 	// Test aid: sends WM_COMMAND with the id to the active top-level window.
 	void windowManagerTestCommand(int id);
+	// The program became the active one, or stopped being it (WM_ACTIVATEAPP to its top levels).
+	void windowManagerApplicationActivated(bool active);
+	// Files macOS asks the running program to open (Finder's Open With, a double-click, a drop on the
+	// Dock icon): dropped on the main window, as if dragged there. False when there is no main
+	// window yet.
+	bool windowManagerOpenFiles(const std::vector<std::string>& paths);
+	// Files macOS gave the program when it launched it (they arrive while it finishes launching):
+	// taken once, for the command line.
+	std::vector<std::string> takeLaunchFiles();
+	void setLaunched();
 	// Test aid: the focus window's view, for NPPMAC_TEST_IME.
 	NativeView* windowManagerFocusView();
+	// Test aid: the view a snapshot shows, the latest shown top level that is enabled (a modal dialog
+	// rather than the window it disables). Chosen by the window manager, since a test run's windows
+	// are never on screen.
+	NativeView* windowManagerSnapshotView();
 	// The system's light or dark appearance changed: WM_SETTINGCHANGE "ImmersiveColorSet", as on Windows.
 	void windowManagerAppearanceChanged();
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);

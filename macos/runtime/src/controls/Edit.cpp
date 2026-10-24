@@ -68,6 +68,7 @@ namespace nppmac::controls
 			std::u16string _cueBanner;
 			bool _cueWhenFocused = false;
 			bool _canUndo = false;
+			size_t _typingEnd = std::u16string::npos; // the end of the current run of typing (one undo step)
 			std::u16string _composition;   // the text an input method is composing, shown at the caret
 			size_t _compositionCaret = 0;
 			std::u16string _undoText;
@@ -423,6 +424,7 @@ namespace nppmac::controls
 				return;
 			if (canUndo)
 				saveUndo(edit);
+			edit._typingEnd = std::u16string::npos;
 			edit._text.replace(start, end - start, text);
 			edit._anchor = edit._caret = start + text.size();
 			edit._modified = true;
@@ -493,6 +495,7 @@ namespace nppmac::controls
 			std::swap(edit._text, edit._undoText);
 			std::swap(edit._anchor, edit._undoAnchor);
 			std::swap(edit._caret, edit._undoCaret);
+			edit._typingEnd = std::u16string::npos;
 			edit._anchor = std::min(edit._anchor, edit._text.size());
 			edit._caret = std::min(edit._caret, edit._text.size());
 			edit._modified = true;
@@ -693,7 +696,11 @@ namespace nppmac::controls
 				MessageBeep(MB_OK);
 				return;
 			}
-			replaceSelection(hwnd, edit, std::u16string(1, ch), true);
+			// Typing is one undo step while the caret stays at the end of the run, as in Windows' edit
+			// control: Ctrl+Z takes back the whole word typed, not its last letter.
+			const bool continuing = edit._canUndo && selectionStart(edit) == selectionEnd(edit) && edit._caret == edit._typingEnd;
+			replaceSelection(hwnd, edit, std::u16string(1, ch), !continuing);
+			edit._typingEnd = edit._caret;
 		}
 
 		// The caret's rectangle, in client coordinates (hdc has the edit's font).

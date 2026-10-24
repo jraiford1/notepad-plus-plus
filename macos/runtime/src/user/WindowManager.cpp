@@ -415,6 +415,46 @@ void nppmac::ui::windowManagerTestCommand(int id)
 		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }
 
+void nppmac::ui::windowManagerApplicationActivated(bool active)
+{
+	using namespace nppmac::user;
+	// To every top level, as Windows sends it; Notepad++ checks its files for outside changes then.
+	const std::vector<Window*> windows = topLevelWindows();
+	for (Window* window : windows)
+	{
+		if (fromHandle(window->_hwnd))
+			window->send(WM_ACTIVATEAPP, active ? TRUE : FALSE, 0);
+	}
+}
+
+bool nppmac::ui::windowManagerOpenFiles(const std::vector<std::string>& paths)
+{
+	using namespace nppmac::user;
+	// The program's main window: the first visible top level that accepts dropped files.
+	for (Window* window : topLevelWindows())
+	{
+		if (!window->_visible || !window->nativeAcceptsFiles())
+			continue;
+		// At the middle of the client area, which is the editor: the drop goes to the current view.
+		window->nativeFilesDropped(paths, Point{window->_clientWidth / 2, window->_clientHeight / 2});
+		return true;
+	}
+	return false;
+}
+
+nppmac::ui::NativeView* nppmac::ui::windowManagerSnapshotView()
+{
+	using namespace nppmac::user;
+	NativeView* chosen = nullptr;
+	for (Window* window : topLevelWindows())
+	{
+		if (window->_visible && !(window->_style & WS_DISABLED) && !(window->_style & WS_CHILD) && window->_view
+			&& window->_clientWidth > 0 && window->_clientHeight > 0 && window->_class && window->_class->_name != u"tooltips_class32")
+			chosen = window->_view;
+	}
+	return chosen;
+}
+
 nppmac::ui::NativeView* nppmac::ui::windowManagerFocusView()
 {
 	nppmac::user::Window* focus = nppmac::user::focusWindow();
@@ -438,8 +478,8 @@ void nppmac::ui::windowManagerDumpTree()
 	std::function<void(nppmac::user::Window*, int)> dump = [&dump](nppmac::user::Window* window, int depth)
 	{
 		// The text as the window reports it (an edit control keeps its own).
-		char16_t text[41]{};
-		GetWindowTextW(window->_hwnd, text, 41);
+		char16_t text[201]{};
+		GetWindowTextW(window->_hwnd, text, 201);
 		std::fprintf(stderr, "%*s%p %s id=%lu rect=(%d,%d,%d,%d) client=%dx%d %s%s text=\"%s\"\n", depth * 2, "", static_cast<void*>(window->_hwnd),
 			nppmac::toUtf8(window->_class->_name).c_str(), static_cast<unsigned long>(window->_id), window->_rect.left, window->_rect.top,
 			window->_rect.right, window->_rect.bottom, window->_clientWidth, window->_clientHeight, window->_visible ? "visible" : "hidden",

@@ -116,6 +116,19 @@ files=()
 run save-as NPPMAC_TEST_TYPE='new document^s' NPPMAC_TEST_FILE_PANEL="$work/saved.txt" \
 	&& expect_file save-as "$work/saved.txt" 'new document'
 
+# Undo, select all, copy and paste with the Command keys. (Undo is a Scintilla key command, assigned
+# with Windows' capital-letter key codes; Select All too.)
+# Each starts from fresh settings, so that it types into an empty new document.
+files=()
+mkdir -p "$work/undo-settings" "$work/paste-settings" "$work/edit-undo-settings"
+runSettings="$work/undo-settings" run undo NPPMAC_TEST_TYPE='abcd^zxy^s' NPPMAC_TEST_FILE_PANEL="$work/undo.txt" \
+	&& expect_file undo "$work/undo.txt" 'xy'
+runSettings="$work/paste-settings" run paste NPPMAC_TEST_TYPE='abc^a^c^v^v^s' NPPMAC_TEST_FILE_PANEL="$work/paste.txt" \
+	&& expect_file paste "$work/paste.txt" 'abcabc'
+# In a text box, Command-Z takes back the whole word typed, as in Windows' edit control.
+runSettings="$work/edit-undo-settings" run edit-undo NPPMAC_TEST_TYPE='^fabcd^z' NPPMAC_DUMP_TREE=1 \
+	&& expect_log edit-undo 'Edit id=1001 .* text=""'
+
 # Find: Command-F, a search twice, Escape; the document must be left as it was.
 printf 'one two\ntwo three\n' > "$work/find.txt"
 files=("$work/find.txt")
@@ -139,6 +152,16 @@ if run print NPPMAC_TEST_COMMAND=41010 NPPMAC_TEST_PRINT_PDF="$work/print.pdf"; 
 	fi
 fi
 
+# A file changed by another program while open: coming back to Notepad++ (WM_ACTIVATEAPP, played by
+# the test aid) asks whether to reload it.
+printf 'before\n' > "$work/switch.txt"
+files=("$work/switch.txt")
+mkdir -p "$work/switch-settings"
+(sleep 2.5; printf 'after\n' > "$work/switch.txt") &
+runSettings="$work/switch-settings" run switch NPPMAC_TEST_SWITCH_BACK=3.5 \
+	&& expect_log switch 'NPPMAC alert: .*modified by another program'
+wait
+
 # Dialogs and panels open without crashing: About, Preferences, Shortcut Mapper, Function List.
 files=("$work/find.txt")
 for command in 47000 48011 48009 44084; do
@@ -159,6 +182,60 @@ fi
 # Dark mode, following the system.
 files=()
 runSettings="$darkSettings" run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"
+
+# Files from Finder: opened by LaunchServices (open -g: in the background, as tests must stay),
+# when they launch the program and when it is already running.
+bundle="$(cd "$(dirname "$app")/../.." && pwd)"
+openArch=()
+if [ -n "${NPPMAC_TEST_ARCH:-}" ]; then
+	openArch=(--arch "$NPPMAC_TEST_ARCH")
+fi
+finder()
+{
+	local name="$1" delay="$2"
+	shift 2
+	mkdir -p "$work/$name-settings"
+	perl -e 'alarm 60; exec @ARGV' open -g -n -W ${openArch[@]+"${openArch[@]}"} -a "$bundle" --env NPPMAC_TEST_RUN=1 --env NPPMAC_QUIET_STUBS=1 \
+		--env NPPMAC_DUMP_TREE=1 --env NPPMAC_SNAPSHOT="$work/$name.png" --env NPPMAC_SNAPSHOT_DELAY="$delay" --env NPPMAC_SNAPSHOT_EXIT=1 \
+		--stderr "$work/$name.log" "$@" --args -settingsDir="$work/$name-settings"
+}
+expect_title()
+{
+	local name="$1" file="$2"
+	# By its name: Finder gives the resolved path (/private/var/... for $TMPDIR).
+	if grep -q "Notepad++ id=.* text=\".*/$file - Notepad++\"" "$work/$name.log"; then
+		echo "ok   $name"
+	else
+		echo "FAIL $name: the main window is not showing $file"
+		grep -m1 'Notepad++ id=' "$work/$name.log"
+		failures=$((failures + 1))
+	fi
+}
+echo one > "$work/first.txt"
+echo two > "$work/second.txt"
+echo three > "$work/third.txt"
+finder finder-launch 4 "$work/first.txt" "$work/second.txt"
+expect_title finder-launch second.txt
+finder finder-running 6 &
+# Only to the test's own instance: with none running, open would start one with the user's settings.
+running=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+	sleep 0.5
+	if pgrep -f "finder-running-settings" > /dev/null; then
+		running=1
+		break
+	fi
+done
+if [ $running -eq 1 ]; then
+	sleep 2
+	open -g -a "$bundle" "$work/third.txt"
+	wait
+	expect_title finder-running third.txt
+else
+	wait
+	echo "FAIL finder-running: the test instance did not start"
+	failures=$((failures + 1))
+fi
 
 # Quitting through File > Exit (IDM_FILE_EXIT), as a user does: the program's static objects are
 # destroyed, and upstream's call into the runtime from theirs (dark mode's theme deletes its pens).

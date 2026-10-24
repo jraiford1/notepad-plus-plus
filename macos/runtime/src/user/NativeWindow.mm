@@ -21,10 +21,13 @@
 #import <Cocoa/Cocoa.h>
 
 #include "Backend.h"
+#include "platform/Platform.h"
 
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace nppmac::ui;
 
@@ -158,6 +161,11 @@ struct TextInputCollector
 	std::u16string _committed;
 };
 static TextInputCollector g_textInput;
+
+// A test run (NPPMAC_TEST_RUN=1) is invisible and deaf to the Mac's own keyboard: it takes only the
+// key events its test aids make, sent while g_sendingTestEvent is set.
+static const bool g_testRun = std::getenv("NPPMAC_TEST_RUN") != nullptr;
+static bool g_sendingTestEvent = false;
 
 @interface NppMacView : NSView <NSTextInputClient>
 {
@@ -470,7 +478,8 @@ static TextInputCollector g_textInput;
 
 - (BOOL)canBecomeKeyWindow
 {
-	return YES;
+	// A test run's windows never take the keyboard: it stays with whoever is using the Mac.
+	return !g_testRun;
 }
 
 - (BOOL)canBecomeMainWindow
@@ -566,6 +575,9 @@ static TextInputCollector g_textInput;
 
 - (void)sendEvent:(NSEvent*)event
 {
+	if (g_testRun && !g_sendingTestEvent
+		&& (event.type == NSEventTypeKeyDown || event.type == NSEventTypeKeyUp || event.type == NSEventTypeFlagsChanged))
+		return;
 	switch (event.type)
 	{
 		case NSEventTypeKeyDown:
@@ -660,6 +672,10 @@ static TextInputCollector g_textInput;
 @interface NppMacApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
 
+// Files macOS hands the program while it launches, kept for its command line (see takeLaunchFiles).
+static bool g_launched = false;
+static std::vector<std::string> g_launchFiles;
+
 @implementation NppMacApplicationDelegate
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender
@@ -683,6 +699,45 @@ static TextInputCollector g_textInput;
 - (BOOL)applicationShouldHandleReopen:(NSApplication*)sender hasVisibleWindows:(BOOL)flag
 {
 	return YES;
+}
+
+- (void)applicationDidBecomeActive:(NSNotification*)notification
+{
+	windowManagerApplicationActivated(true);
+}
+
+- (void)applicationDidResignActive:(NSNotification*)notification
+{
+	windowManagerApplicationActivated(false);
+}
+
+- (void)application:(NSApplication*)application openURLs:(NSArray<NSURL*>*)urls
+{
+	std::vector<std::string> paths;
+	for (NSURL* url in urls)
+	{
+		if (url.isFileURL)
+			paths.push_back(url.path.UTF8String);
+	}
+	if (paths.empty())
+		return;
+	// While launching, the files join the command line, as files given to notepad++.exe do.
+	if (!g_launched)
+	{
+		g_launchFiles.insert(g_launchFiles.end(), paths.begin(), paths.end());
+		return;
+	}
+	[self openFiles:paths attempt:0];
+}
+
+- (void)openFiles:(std::vector<std::string>)paths attempt:(int)attempt
+{
+	// Between launching and the main window's creation there is nothing to drop on yet.
+	if (windowManagerOpenFiles(paths) || attempt >= 50)
+		return;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+		[self openFiles:paths attempt:attempt + 1];
+	});
 }
 
 @end
@@ -781,6 +836,7 @@ namespace nppmac::ui
 			if (std::getenv("NPPMAC_DUMP_TREE"))
 			{
 				windowManagerDumpTree();
+				std::fprintf(stderr, "NSApp active=%d keyWindow=%d\n", NSApp.isActive ? 1 : 0, NSApp.keyWindow ? 1 : 0);
 				for (NSWindow* window in NSApp.orderedWindows)
 				{
 					std::fprintf(stderr, "NSWindow %s visible=%d frame=%s\n", NSStringFromClass(window.class).UTF8String, window.isVisible ? 1 : 0,
@@ -788,16 +844,13 @@ namespace nppmac::ui
 				}
 				dumpMenuBar(NSApp.mainMenu, 0);
 			}
-			for (NSWindow* window in NSApp.orderedWindows)
+			if (NativeView* native = windowManagerSnapshotView(); native && native->_view)
 			{
-				if (![window isKindOfClass:NppMacWindow.class] || !window.isVisible)
-					continue;
-				NSView* content = window.contentView;
+				NSView* content = native->_view;
 				NSBitmapImageRep* bitmap = [content bitmapImageRepForCachingDisplayInRect:content.bounds];
 				[content cacheDisplayInRect:content.bounds toBitmapImageRep:bitmap];
 				NSData* png = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 				[png writeToFile:file atomically:YES];
-				break;
 			}
 			if (std::getenv("NPPMAC_SNAPSHOT_EXIT"))
 				_exit(0); // no static destructors: the program is mid-run
@@ -840,7 +893,9 @@ namespace nppmac::ui
 				{
 					NSEvent* event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers timestamp:NSProcessInfo.processInfo.systemUptime
 						windowNumber:window.windowNumber context:nil characters:character charactersIgnoringModifiers:character isARepeat:NO keyCode:keyCode];
+					g_sendingTestEvent = true;
 					[NSApp sendEvent:event];
+					g_sendingTestEvent = false;
 				}
 			}];
 			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
@@ -863,6 +918,20 @@ namespace nppmac::ui
 			}];
 			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 		}
+	}
+
+	// Debugging aid: NPPMAC_TEST_SWITCH_BACK=<seconds> acts as if the user switched to another program
+	// and back then (the program cannot become active in a test run).
+	void scheduleSwitchBack()
+	{
+		const char* delayText = std::getenv("NPPMAC_TEST_SWITCH_BACK");
+		if (!delayText || !*delayText)
+			return;
+		NSTimer* timer = [NSTimer timerWithTimeInterval:std::atof(delayText) repeats:NO block:^(NSTimer*) {
+			windowManagerApplicationActivated(false);
+			windowManagerApplicationActivated(true);
+		}];
+		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 	}
 
 	// Debugging aid: NPPMAC_TEST_COMMAND=<id> sends that menu command after NPPMAC_TEST_COMMAND_DELAY
@@ -893,6 +962,16 @@ namespace nppmac::ui
 		}
 	}
 
+	std::vector<std::string> takeLaunchFiles()
+	{
+		return std::exchange(g_launchFiles, {});
+	}
+
+	void setLaunched()
+	{
+		g_launched = true;
+	}
+
 	void createApplication()
 	{
 		// AppKit adds Dictation and Emoji items to any menu titled "Edit", again each time the program
@@ -908,6 +987,7 @@ namespace nppmac::ui
 		scheduleSnapshot();
 		scheduleTyping();
 		scheduleCommand();
+		scheduleSwitchBack();
 		[NSDistributedNotificationCenter.defaultCenter addObserverForName:@"AppleInterfaceThemeChangedNotification" object:nil queue:NSOperationQueue.mainQueue
 			usingBlock:^(NSNotification*) {
 				windowManagerAppearanceChanged();
@@ -934,6 +1014,14 @@ namespace nppmac::ui
 			content = createSurfaceView(native, NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height));
 		window.contentView = content;
 		content.hidden = NO;
+		// A test run's windows are drawn (snapshots render the views) but never seen or clicked:
+		// they must not get in the way of whoever is using the Mac.
+		if (std::getenv("NPPMAC_TEST_RUN"))
+		{
+			window.alphaValue = 0;
+			window.ignoresMouseEvents = YES;
+			window.hasShadow = NO;
+		}
 		native->_kind = kind;
 		native->_window = window;
 		native->_view = content;
@@ -1034,8 +1122,11 @@ namespace nppmac::ui
 			}
 			else if (activate)
 			{
-				[NSApp activateIgnoringOtherApps:YES];
-				[native->_window makeKeyAndOrderFront:nil];
+				nppmac::platform::activateApplication();
+				if (g_testRun)
+					[native->_window orderFront:nil];
+				else
+					[native->_window makeKeyAndOrderFront:nil];
 			}
 			else
 			{
@@ -1161,7 +1252,7 @@ namespace nppmac::ui
 		if (!native)
 			return;
 		NSWindow* window = native->_window ?: native->_view.window;
-		if (window && !window.isKeyWindow && window.isVisible)
+		if (window && !window.isKeyWindow && window.isVisible && !g_testRun)
 			[window makeKeyAndOrderFront:nil];
 	}
 
