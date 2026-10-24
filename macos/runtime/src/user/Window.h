@@ -59,6 +59,7 @@ namespace nppmac::user
 		std::vector<BYTE> _extra;
 		std::shared_ptr<BuiltInClass> _builtIn;
 		bool _drawsOwnScrollBars = false; // the runtime's controls draw WS_VSCROLL / WS_HSCROLL themselves
+		bool _editsText = false;          // keys go through the macOS text input system (input methods)
 		ATOM _atom = 0;
 	};
 
@@ -139,6 +140,9 @@ namespace nppmac::user
 		void nativeFilesDropped(const std::vector<std::string>& paths, ui::Point position) override;
 		bool nativeAcceptsFiles() const override;
 		void nativeScroll(bool vertical, ui::ScrollPart part, double value) override;
+		void nativeComposition(const std::u16string& text, size_t caret) override;
+		void nativeInsertText(const std::u16string& text) override;
+		ui::Rect nativeCaretRect() override;
 	};
 
 	// --- Window table -----------------------------------------------------------------------------
@@ -180,6 +184,15 @@ namespace nppmac::user
 	// Standard scroll bars: shows or hides them as the style says, and makes the client area fit.
 	void updateScrollBars(Window* window);
 	void setClassDrawsOwnScrollBars(const char16_t* className);
+	// The class edits text: its keys go through the macOS text input system first (input methods,
+	// dead keys), as Windows' IME does. It gets the text being composed as imeComposition and is
+	// asked where its caret is with imeCaretRect.
+	void setClassEditsText(const char16_t* className);
+	// wParam: the caret's place in the text being composed; lParam: const std::u16string* (empty when
+	// composing ends).
+	constexpr UINT imeComposition = WM_APP + 0x3F03;
+	// lParam: RECT* to fill with the caret (client coordinates); returns TRUE if it did.
+	constexpr UINT imeCaretRect = WM_APP + 0x3F04;
 	// The client size once the visible standard scroll bars take their room.
 	void fitClientToScrollBars(Window* window);
 	Window* activeWindow();

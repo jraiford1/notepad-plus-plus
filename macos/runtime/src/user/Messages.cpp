@@ -263,6 +263,35 @@ namespace nppmac::user
 			g_currentNativeEvent = nativeEvent;
 		}
 
+		// A key down for a window that edits text goes through the macOS text input system first, as
+		// Windows runs its IME when the key is read: a key the input method takes becomes VK_PROCESSKEY
+		// and the text it enters follows as WM_CHAR. Option keys (Alt, here) that type a character type
+		// it, as in every macOS text field, instead of making a menu mnemonic.
+		void applyTextInput(MSG* msg, void* nativeEvent)
+		{
+			if (!nativeEvent || (msg->message != WM_KEYDOWN && msg->message != WM_SYSKEYDOWN) || (g_keyState[VK_CONTROL] & 0x80))
+				return;
+			Window* window = fromHandle(msg->hwnd);
+			if (!window || !window->_class || !window->_class->_editsText || !window->_view)
+				return;
+			const ui::TextInputResult input = ui::interpretKey(window->_view, nativeEvent);
+			if (!input._consumed)
+				return;
+			g_pendingCharacters.erase(static_cast<BYTE>(msg->wParam));
+			msg->message = WM_KEYDOWN;
+			msg->wParam = VK_PROCESSKEY;
+			std::lock_guard lock{g_queueMutex};
+			auto& messages = queue();
+			for (auto it = input._committed.rbegin(); it != input._committed.rend(); ++it)
+			{
+				MSG charMsg = *msg;
+				charMsg.message = WM_CHAR;
+				charMsg.wParam = *it;
+				charMsg.lParam = 1;
+				messages.push_front({charMsg, nullptr, nullptr});
+			}
+		}
+
 		bool quitPending(MSG* msg)
 		{
 			if (!g_quitPosted)
@@ -286,7 +315,10 @@ namespace nppmac::user
 			if (takeMessage(msg, hwnd, filterMin, filterMax, remove, &nativeEvent))
 			{
 				if (remove)
+				{
+					applyTextInput(msg, nativeEvent);
 					setCurrentNativeEvent(nativeEvent);
+				}
 				g_messageTime = msg->time;
 				g_messagePosition = msg->pt;
 				callGetMessageHooks(msg, remove);

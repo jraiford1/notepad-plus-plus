@@ -345,6 +345,28 @@ namespace nppmac::user
 	{
 	}
 
+	void Window::nativeComposition(const std::u16string& text, size_t caret)
+	{
+		send(imeComposition, caret, reinterpret_cast<LPARAM>(&text));
+	}
+
+	void Window::nativeInsertText(const std::u16string& text)
+	{
+		ui::windowManagerInsertText(text);
+	}
+
+	ui::Rect Window::nativeCaretRect()
+	{
+		RECT caret{};
+		if (!send(imeCaretRect, 0, reinterpret_cast<LPARAM>(&caret)))
+		{
+			// Below the window's client area, where a candidate window does not hide it.
+			GetClientRect(_hwnd, &caret);
+			caret.top = caret.bottom;
+		}
+		return ui::Rect{caret.left, caret.top, caret.right, caret.bottom};
+	}
+
 	void Window::nativeFilesDropped(const std::vector<std::string>& paths, ui::Point position)
 	{
 		// An HDROP as DragQueryFileW reads it: DROPFILES, then the paths, doubly terminated.
@@ -393,6 +415,12 @@ void nppmac::ui::windowManagerTestCommand(int id)
 		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }
 
+nppmac::ui::NativeView* nppmac::ui::windowManagerFocusView()
+{
+	nppmac::user::Window* focus = nppmac::user::focusWindow();
+	return focus ? focus->_view : nullptr;
+}
+
 void nppmac::ui::windowManagerAppearanceChanged()
 {
 	using namespace nppmac::user;
@@ -409,10 +437,13 @@ void nppmac::ui::windowManagerDumpTree()
 {
 	std::function<void(nppmac::user::Window*, int)> dump = [&dump](nppmac::user::Window* window, int depth)
 	{
+		// The text as the window reports it (an edit control keeps its own).
+		char16_t text[41]{};
+		GetWindowTextW(window->_hwnd, text, 41);
 		std::fprintf(stderr, "%*s%p %s id=%lu rect=(%d,%d,%d,%d) client=%dx%d %s%s text=\"%s\"\n", depth * 2, "", static_cast<void*>(window->_hwnd),
 			nppmac::toUtf8(window->_class->_name).c_str(), static_cast<unsigned long>(window->_id), window->_rect.left, window->_rect.top,
 			window->_rect.right, window->_rect.bottom, window->_clientWidth, window->_clientHeight, window->_visible ? "visible" : "hidden",
-			window->_nativeControl ? " native" : "", nppmac::toUtf8(window->_text.substr(0, 40)).c_str());
+			window->_nativeControl ? " native" : "", nppmac::toUtf8(text).c_str());
 		for (nppmac::user::Window* child : window->_children)
 			dump(child, depth + 1);
 	};

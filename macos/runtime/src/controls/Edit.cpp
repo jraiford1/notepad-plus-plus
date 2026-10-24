@@ -68,6 +68,8 @@ namespace nppmac::controls
 			std::u16string _cueBanner;
 			bool _cueWhenFocused = false;
 			bool _canUndo = false;
+			std::u16string _composition;   // the text an input method is composing, shown at the caret
+			size_t _compositionCaret = 0;
 			std::u16string _undoText;
 			size_t _undoAnchor = 0;
 			size_t _undoCaret = 0;
@@ -694,6 +696,16 @@ namespace nppmac::controls
 			replaceSelection(hwnd, edit, std::u16string(1, ch), true);
 		}
 
+		// The caret's rectangle, in client coordinates (hdc has the edit's font).
+		RECT caretRect(HWND hwnd, Edit& edit, HDC hdc)
+		{
+			const RECT area = textArea(hwnd, edit);
+			const size_t line = lineOf(hwnd, edit, edit._caret);
+			const int top = lineTop(hwnd, edit, hdc, line);
+			const int x = area.left - edit._scrollX + alignmentOffset(hwnd, edit, hdc, edit._lines[line]) + xOf(hwnd, edit, hdc, edit._caret);
+			return RECT{x, top, x + 1, top + lineHeight(hdc)};
+		}
+
 		void paint(HWND hwnd, Edit& edit, HDC hdc)
 		{
 			layout(hwnd, edit);
@@ -753,12 +765,26 @@ namespace nppmac::controls
 				}
 			}
 
+			RECT caret = caretRect(hwnd, edit, hdc);
+			if (edit._focused && !edit._composition.empty())
+			{
+				// The composition is drawn over the text at the caret, underlined, as Windows' IME
+				// window does; the caret moves within it.
+				const int width = widthOf(hdc, edit._composition);
+				RECT box{caret.left, caret.top, caret.left + width, caret.bottom};
+				FillRect(hdc, &box, background);
+				SetTextColor(hdc, textColor);
+				TextOutW(hdc, box.left, box.top, edit._composition.c_str(), static_cast<int>(edit._composition.size()));
+				RECT underline{box.left, box.bottom - 1, box.right, box.bottom};
+				HBRUSH underlineBrush = CreateSolidBrush(textColor);
+				FillRect(hdc, &underline, underlineBrush);
+				DeleteObject(underlineBrush);
+				const int offset = widthOf(hdc, edit._composition.substr(0, edit._compositionCaret));
+				caret.left += offset;
+				caret.right += offset;
+			}
 			if (edit._focused && edit._caretOn)
 			{
-				const size_t line = lineOf(hwnd, edit, edit._caret);
-				const int top = lineTop(hwnd, edit, hdc, line);
-				const int x = area.left - edit._scrollX + alignmentOffset(hwnd, edit, hdc, edit._lines[line]) + xOf(hwnd, edit, hdc, edit._caret);
-				RECT caret{x, top, x + 1, top + height};
 				HBRUSH caretBrush = CreateSolidBrush(textColor);
 				FillRect(hdc, &caret, caretBrush);
 				DeleteObject(caretBrush);
@@ -900,6 +926,7 @@ namespace nppmac::controls
 				case WM_KILLFOCUS:
 					edit->_focused = false;
 					edit->_caretOn = false;
+					edit->_composition.clear();
 					KillTimer(hwnd, caretTimer);
 					InvalidateRect(hwnd, nullptr, FALSE);
 					sendCommand(hwnd, EN_KILLFOCUS);
@@ -913,8 +940,23 @@ namespace nppmac::controls
 					}
 					return DefWindowProcW(hwnd, message, wParam, lParam);
 				case WM_KEYDOWN:
-					keyDown(hwnd, *edit, wParam);
+					// VK_PROCESSKEY: the input method took the key.
+					if (wParam != VK_PROCESSKEY)
+						keyDown(hwnd, *edit, wParam);
 					return 0;
+				case user::imeComposition:
+					edit->_composition = *reinterpret_cast<const std::u16string*>(lParam);
+					edit->_compositionCaret = std::min<size_t>(wParam, edit->_composition.size());
+					restartCaret(hwnd, *edit);
+					InvalidateRect(hwnd, nullptr, FALSE);
+					return 0;
+				case user::imeCaretRect:
+				{
+					layout(hwnd, *edit);
+					EditDC dc{hwnd};
+					*reinterpret_cast<RECT*>(lParam) = caretRect(hwnd, *edit, dc.get());
+					return TRUE;
+				}
 				case WM_CHAR:
 					character(hwnd, *edit, static_cast<char16_t>(wParam));
 					return 0;
@@ -1193,5 +1235,6 @@ namespace nppmac::controls
 	void registerEdit()
 	{
 		registerControl(WC_EDITW, editProc, CS_DBLCLKS, IDC_IBEAM);
+		user::setClassEditsText(WC_EDITW);
 	}
 }

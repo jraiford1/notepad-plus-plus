@@ -79,6 +79,12 @@ namespace nppmac::user
 			windowClass->_drawsOwnScrollBars = true;
 	}
 
+	void setClassEditsText(const char16_t* className)
+	{
+		if (WindowClass* windowClass = findClass(className))
+			windowClass->_editsText = true;
+	}
+
 	void fitClientToScrollBars(Window* window)
 	{
 		if (!window || (window->_class && window->_class->_drawsOwnScrollBars) || window->_nativeControl)
