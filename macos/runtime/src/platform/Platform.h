@@ -93,6 +93,10 @@ namespace nppmac::platform
 	// Runs the panel modally. NPPMAC_TEST_FILE_PANEL=<path> answers with that path instead, for tests.
 	FilePanelResult runFilePanel(const FilePanelRequest& request);
 
+	// The color panel, run modally with OK and Cancel. rgb is 0xRRGGBB in and out; returns false when
+	// cancelled. NPPMAC_TEST_COLOR=RRGGBB answers without showing it, for tests.
+	bool chooseColor(unsigned& rgb);
+
 	// Shows a modal alert; returns the index of the chosen button (buttons are listed left to right
 	// as on Windows; on the Mac the first is the rightmost). escapeButton is chosen by Escape.
 	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,

@@ -482,9 +482,9 @@ int WINAPI SHCreateDirectoryExW(HWND, LPCWSTR path, LPSECURITY_ATTRIBUTES)
 	return ERROR_SUCCESS;
 }
 
-int WINAPI SHCreateDirectory(HWND window, LPCWSTR path)
+DWORD WINAPI SHCreateDirectory(HWND window, LPCVOID path)
 {
-	return SHCreateDirectoryExW(window, path, nullptr);
+	return static_cast<DWORD>(SHCreateDirectoryExW(window, static_cast<LPCWSTR>(path), nullptr));
 }
 
 int WINAPI SHFileOperationW(LPSHFILEOPSTRUCTW operation)

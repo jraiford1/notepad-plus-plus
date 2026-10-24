@@ -16,6 +16,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <unistd.h>
 
@@ -328,5 +330,63 @@ namespace nppmac::platform
 		for (size_t i = 0; i < accessory->_checkBoxes.size(); ++i)
 			result._checkBoxes[i]._checked = accessory->_checkBoxes[i].state == NSControlStateValueOn;
 		return result;
+	}
+}
+
+@interface NppMacColorPanelButtons : NSObject
+@end
+
+@implementation NppMacColorPanelButtons
+
+- (void)ok:(id)sender
+{
+	[NSApp stopModalWithCode:NSModalResponseOK];
+}
+
+- (void)cancel:(id)sender
+{
+	[NSApp stopModalWithCode:NSModalResponseCancel];
+}
+
+@end
+
+namespace nppmac::platform
+{
+	bool chooseColor(unsigned& rgb)
+	{
+		if (const char* testColor = std::getenv("NPPMAC_TEST_COLOR"))
+		{
+			rgb = static_cast<unsigned>(std::strtoul(testColor, nullptr, 16)) & 0xFFFFFF;
+			return true;
+		}
+
+		NSColorPanel* panel = NSColorPanel.sharedColorPanel;
+		panel.showsAlpha = NO;
+		panel.color = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:1];
+
+		// The panel has no buttons of its own; a modal run needs OK and Cancel.
+		NppMacColorPanelButtons* target = [[NppMacColorPanelButtons alloc] init];
+		NSButton* cancel = [NSButton buttonWithTitle:@"Cancel" target:target action:@selector(cancel:)];
+		cancel.keyEquivalent = @"\033";
+		NSButton* ok = [NSButton buttonWithTitle:@"OK" target:target action:@selector(ok:)];
+		ok.keyEquivalent = @"\r";
+		NSStackView* buttons = [NSStackView stackViewWithViews:@[cancel, ok]];
+		buttons.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
+		buttons.frame = NSMakeRect(0, 0, 220, buttons.fittingSize.height);
+		NSView* previousAccessory = panel.accessoryView;
+		panel.accessoryView = buttons;
+
+		[NSApp activateIgnoringOtherApps:YES];
+		const NSModalResponse response = [NSApp runModalForWindow:panel];
+		[panel orderOut:nil];
+		panel.accessoryView = previousAccessory;
+		if (response != NSModalResponseOK)
+			return false;
+		NSColor* color = [panel.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+		if (!color)
+			return false;
+		const auto channel = [](CGFloat value) { return static_cast<unsigned>(std::lround(std::clamp(value, 0.0, 1.0) * 255)); };
+		rgb = (channel(color.redComponent) << 16) | (channel(color.greenComponent) << 8) | channel(color.blueComponent);
+		return true;
 	}
 }
