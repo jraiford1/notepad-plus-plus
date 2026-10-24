@@ -20,7 +20,20 @@
 
 #pragma once
 
+// WINE_UNIX_LIB is Wine's switch for code built as native host code: with it, minwindef.h gives
+// __stdcall and __cdecl the native convention from the start, so the types it and winnt.h declare
+// (FARPROC, WNDPROC…) agree with every later declaration. It is set only while they are read.
+#ifndef WINE_UNIX_LIB
+#define WINE_UNIX_LIB
+#define NPPMAC_WINE_UNIX_LIB_SET
+#endif
+
 #include_next <minwindef.h>
+
+#ifdef NPPMAC_WINE_UNIX_LIB_SET
+#undef WINE_UNIX_LIB
+#undef NPPMAC_WINE_UNIX_LIB_SET
+#endif
 
 #undef __stdcall
 #undef __cdecl

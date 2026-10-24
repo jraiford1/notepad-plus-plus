@@ -34,10 +34,11 @@ the app is opened the first time with right-click → Open.
 
 ## Verification checks and tooling
 
-- `macos/ci/build-and-test.sh` is the check: it configures and builds `macos` (Release, macOS 13.3 and
+- `macos/ci/build-and-test.sh` is the check: it configures and builds `macos` (Release, universal arm64 + x86_64, macOS 13.3 and
   later), checks that this branch changed nothing in upstream's directories since the last upstream
   merge, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
-  (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, dialogs and panels, a plugin, dark mode).
+  (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, dialogs and panels, a plugin, dark mode),
+  on the arm64 slice and, through Rosetta, the x86_64 slice of the universal app.
   CI runs the same script on every push (`.github/workflows/macos.yml`).
 - `NPPMAC_SKIP_GUI_TESTS=1` leaves out the smoke test where there is no window server.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.
