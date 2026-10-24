@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 
 #include "Platform.h"
@@ -56,9 +57,10 @@ namespace nppmac::platform
 
 	bool isDarkAppearance()
 	{
-		NSAppearance* appearance = NSApp ? NSApp.effectiveAppearance : NSAppearance.currentDrawingAppearance;
-		NSAppearanceName match = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
-		return [match isEqualToString:NSAppearanceNameDarkAqua];
+		// The system's choice, not the application's: the program may have forced its own appearance.
+		if (const char* test = std::getenv("NPPMAC_TEST_APPEARANCE"))
+			return std::strcmp(test, "dark") == 0;
+		return [[NSUserDefaults.standardUserDefaults stringForKey:@"AppleInterfaceStyle"] isEqualToString:@"Dark"];
 	}
 
 	std::string executablePath()

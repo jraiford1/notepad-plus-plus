@@ -306,7 +306,7 @@ namespace nppmac::controls
 			FillRect(hdc, &client, background);
 			if ((styleOf(hwnd) & WS_BORDER) || (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_CLIENTEDGE))
 			{
-				HBRUSH frame = CreateSolidBrush(RGB(130, 135, 144));
+				HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(frame);
 			}
@@ -328,12 +328,12 @@ namespace nppmac::controls
 				RECT track{};
 				RECT thumb{};
 				scrollBarGeometry(hwnd, list, track, thumb);
-				HBRUSH trackBrush = CreateSolidBrush(RGB(240, 240, 240));
+				HBRUSH trackBrush = CreateSolidBrush(controlPalette()._track);
 				FillRect(hdc, &track, trackBrush);
 				DeleteObject(trackBrush);
 				if (!IsRectEmpty(&thumb))
 				{
-					HBRUSH thumbBrush = CreateSolidBrush(list._draggingThumb ? RGB(96, 96, 96) : RGB(194, 194, 194));
+					HBRUSH thumbBrush = CreateSolidBrush(list._draggingThumb ? controlPalette()._thumbActive : controlPalette()._thumb);
 					FillRect(hdc, &thumb, thumbBrush);
 					DeleteObject(thumbBrush);
 				}

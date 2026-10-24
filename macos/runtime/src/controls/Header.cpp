@@ -111,12 +111,12 @@ namespace nppmac::controls
 			const LRESULT prePaint = sendNotify(hwnd, GetParent(hwnd), NM_CUSTOMDRAW, &custom.hdr);
 			if (!(prePaint & CDRF_SKIPDEFAULT))
 			{
-				HBRUSH background = CreateSolidBrush(RGB(255, 255, 255));
+				HBRUSH background = CreateSolidBrush(controlPalette()._window);
 				FillRect(hdc, &client, background);
 				DeleteObject(background);
 			}
 
-			const COLORREF text = GetSysColor(IsWindowEnabled(hwnd) ? COLOR_WINDOWTEXT : COLOR_GRAYTEXT);
+			const COLORREF text = IsWindowEnabled(hwnd) ? controlPalette()._windowText : controlPalette()._textDisabled;
 			for (int i = 0; i < static_cast<int>(header._items.size()); ++i)
 			{
 				const HeaderItem& item = header._items[static_cast<size_t>(i)];
@@ -135,13 +135,13 @@ namespace nppmac::controls
 				}
 				if (i == header._hot || i == header._pressed)
 				{
-					HBRUSH hot = CreateSolidBrush(i == header._pressed ? RGB(204, 228, 247) : RGB(217, 235, 249));
+					HBRUSH hot = CreateSolidBrush(i == header._pressed ? controlPalette()._facePressed : controlPalette()._faceHot);
 					FillRect(hdc, &rect, hot);
 					DeleteObject(hot);
 				}
 				// The divider after the item.
 				RECT divider{rect.right - 1, rect.top + 3, rect.right, rect.bottom - 3};
-				HBRUSH dividerBrush = CreateSolidBrush(RGB(229, 229, 229));
+				HBRUSH dividerBrush = CreateSolidBrush(controlPalette()._divider);
 				FillRect(hdc, &divider, dividerBrush);
 				DeleteObject(dividerBrush);
 
@@ -165,7 +165,7 @@ namespace nppmac::controls
 				{
 					const int x = (rect.left + rect.right) / 2;
 					const int y = rect.top + 3;
-					HPEN pen = CreatePen(PS_SOLID, 1, RGB(128, 128, 128));
+					HPEN pen = CreatePen(PS_SOLID, 1, controlPalette()._frame);
 					HGDIOBJ oldPen = SelectObject(hdc, pen);
 					const POINT up[] = {{x - 3, y + 3}, {x, y}, {x + 3, y + 3}};
 					const POINT down[] = {{x - 3, y}, {x, y + 3}, {x + 3, y}};
@@ -175,7 +175,7 @@ namespace nppmac::controls
 				}
 			}
 			RECT bottomLine{client.left, client.bottom - 1, client.right, client.bottom};
-			HBRUSH line = CreateSolidBrush(RGB(229, 229, 229));
+			HBRUSH line = CreateSolidBrush(controlPalette()._divider);
 			FillRect(hdc, &bottomLine, line);
 			DeleteObject(line);
 			if (prePaint & CDRF_NOTIFYPOSTPAINT)

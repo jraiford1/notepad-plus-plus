@@ -78,7 +78,10 @@ Tracked as job J1 in the work tracker. Today:
   Windows…) and docking panels (Function List, Document List…) run on the runtime's controls:
   button, static, edit, list box, combo box, tree view, list view and header, trackbar, progress,
   up-down, link, tooltip and standard scroll bars, drawn as Windows 10 draws them;
-* not yet: dark mode and visual styles (W6), printing, IME, plugins (W8).
+* Notepad++'s dark mode works, including "follow Windows", which follows the macOS appearance:
+  the editor, panels, dialogs and the runtime's controls go dark, and so do the native menus and
+  panels;
+* not yet: printing, IME, plugins (W8).
 
 About ten Win32 functions are still weak stubs (printing, IME, plugin loading, directory change
 notifications); the build lists them as `Win32 functions still stubbed`.
@@ -94,15 +97,19 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
 | `NPPMAC_TEST_COMMAND=<id>` | sends a menu command (`IDM_*` value) after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
 | `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
+| `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |
 | `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree, the native windows and the menu bar |
 | `NPPMAC_TRACE_PAINT=1`, `NPPMAC_TRACE_MESSAGEBOX=1`, `NPPMAC_TRACE_WINDOWS=1` | trace painting, message boxes, window creation |
 | `NPPMAC_QUIET_STUBS=1` | do not log calls to stubbed functions |
+
+Test runs should use Notepad++'s own `-settingsDir=<folder>` so they leave the real settings in
+`~/Library/Application Support/Notepad++` alone.
 
 For example, open a file, type into it, save it and capture the window:
 
 ```bash
 NPPMAC_TEST_RUN=1 NPPMAC_TEST_TYPE='hello ^s' NPPMAC_SNAPSHOT=/tmp/npp.png NPPMAC_SNAPSHOT_EXIT=1 \
-	"macos/build/app/Notepad++.app/Contents/MacOS/Notepad++" /path/to/file.txt
+	"macos/build/app/Notepad++.app/Contents/MacOS/Notepad++" -settingsDir=/tmp/npp-settings /path/to/file.txt
 ```
 
 ## Coding style

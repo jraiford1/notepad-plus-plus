@@ -23,6 +23,7 @@
 #include "Backend.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 using namespace nppmac::ui;
@@ -223,8 +224,9 @@ namespace nppmac::ui
 	CGContextRef context = NSGraphicsContext.currentContext.CGContext;
 	if (!_native->_surface)
 	{
+		// The rectangle AppKit asks for can reach past the view; only the view's own area is filled.
 		CGContextSetRGBFillColor(context, 0.94, 0.94, 0.94, 1);
-		CGContextFillRect(context, NSRectToCGRect(dirtyRect));
+		CGContextFillRect(context, NSRectToCGRect(NSIntersectionRect(dirtyRect, self.bounds)));
 		return;
 	}
 	CGImageRef image = CGBitmapContextCreateImage(_native->_surface);
@@ -595,6 +597,8 @@ namespace
 		view->_native = native;
 		view.wantsLayer = NO;
 		view.autoresizingMask = NSViewNotSizable;
+		// A window's pixels stay inside it, as on Windows (views do not clip by default since macOS 14).
+		view.clipsToBounds = YES;
 		return view;
 	}
 
@@ -776,12 +780,19 @@ namespace nppmac::ui
 		// refills it; the editor takes its input as key events, which those do not send.
 		[NSUserDefaults.standardUserDefaults registerDefaults:@{@"NSDisabledDictationMenuItem": @YES, @"NSDisabledCharacterPaletteMenuItem": @YES}];
 		[NppMacApplication sharedApplication];
+		// Debugging aid: NPPMAC_TEST_APPEARANCE=dark (or light) runs the program as if the system were so.
+		if (const char* appearance = std::getenv("NPPMAC_TEST_APPEARANCE"))
+			NSApp.appearance = [NSAppearance appearanceNamed:std::strcmp(appearance, "dark") == 0 ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
 		g_applicationDelegate = [[NppMacApplicationDelegate alloc] init];
 		NSApp.delegate = g_applicationDelegate;
 		g_windowDelegate = [[NppMacWindowDelegate alloc] init];
 		scheduleSnapshot();
 		scheduleTyping();
 		scheduleCommand();
+		[NSDistributedNotificationCenter.defaultCenter addObserverForName:@"AppleInterfaceThemeChangedNotification" object:nil queue:NSOperationQueue.mainQueue
+			usingBlock:^(NSNotification*) {
+				windowManagerAppearanceChanged();
+			}];
 	}
 
 	// The NSWindow of a top-level or popup view; its content is a new surface view, or the given one.
@@ -1114,6 +1125,36 @@ namespace nppmac::ui
 			[native->_window deminiaturize:nil];
 		else if (native->_window.isZoomed)
 			[native->_window zoom:nil];
+	}
+
+	NSAppearance* toNSAppearance(Appearance appearance)
+	{
+		switch (appearance)
+		{
+			case Appearance::light:
+				return [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+			case Appearance::dark:
+				return [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+			default:
+			{
+				// The system's, unless a test run chose one (NPPMAC_TEST_APPEARANCE).
+				const char* test = std::getenv("NPPMAC_TEST_APPEARANCE");
+				if (!test)
+					return nil;
+				return [NSAppearance appearanceNamed:std::strcmp(test, "dark") == 0 ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
+			}
+		}
+	}
+
+	void setApplicationAppearance(Appearance appearance)
+	{
+		NSApp.appearance = toNSAppearance(appearance);
+	}
+
+	void setWindowAppearance(NativeView* native, Appearance appearance)
+	{
+		if (native && native->_window)
+			native->_window.appearance = appearance == Appearance::system ? nil : toNSAppearance(appearance);
 	}
 
 	int scrollBarThickness()

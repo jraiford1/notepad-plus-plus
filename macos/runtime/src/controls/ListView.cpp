@@ -490,15 +490,15 @@ namespace nppmac::controls
 		void drawCheckBox(HDC hdc, int x, int y, bool checked)
 		{
 			RECT box{x, y, x + checkBoxSize, y + checkBoxSize};
-			HBRUSH fill = CreateSolidBrush(RGB(255, 255, 255));
-			HBRUSH frame = CreateSolidBrush(RGB(51, 51, 51));
+			HBRUSH fill = CreateSolidBrush(controlPalette()._boxFill);
+			HBRUSH frame = CreateSolidBrush(controlPalette()._boxFrame);
 			FillRect(hdc, &box, fill);
 			FrameRect(hdc, &box, frame);
 			DeleteObject(fill);
 			DeleteObject(frame);
 			if (checked)
 			{
-				HPEN pen = CreatePen(PS_SOLID, 2, RGB(51, 51, 51));
+				HPEN pen = CreatePen(PS_SOLID, 2, controlPalette()._mark);
 				HGDIOBJ oldPen = SelectObject(hdc, pen);
 				const POINT mark[] = {{x + 3, y + 6}, {x + 5, y + 9}, {x + 10, y + 3}};
 				Polyline(hdc, mark, 3);
@@ -551,7 +551,7 @@ namespace nppmac::controls
 			DeleteObject(backgroundBrush);
 			if ((styleOf(hwnd) & WS_BORDER) || (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_CLIENTEDGE))
 			{
-				HBRUSH frame = CreateSolidBrush(RGB(130, 135, 144));
+				HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(frame);
 			}

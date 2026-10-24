@@ -706,7 +706,7 @@ namespace nppmac::controls
 			FillRect(hdc, &client, background);
 			if (hasBorder(hwnd))
 			{
-				HBRUSH frame = CreateSolidBrush(edit._focused ? RGB(0, 120, 215) : RGB(122, 122, 122));
+				HBRUSH frame = CreateSolidBrush(edit._focused ? controlPalette()._accent : controlPalette()._frame);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(frame);
 			}

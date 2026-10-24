@@ -283,8 +283,8 @@ namespace nppmac::controls
 			{
 				// A drop-down list looks like a button with the selected item on it.
 				const bool hot = combo._dropped;
-				HBRUSH fill = CreateSolidBrush(!enabled ? RGB(204, 204, 204) : (hot ? RGB(229, 241, 251) : RGB(225, 225, 225)));
-				HBRUSH frame = CreateSolidBrush(!enabled ? RGB(191, 191, 191) : (hot || combo._focused ? RGB(0, 120, 215) : RGB(173, 173, 173)));
+				HBRUSH fill = CreateSolidBrush(!enabled ? controlPalette()._faceDisabled : (hot ? controlPalette()._faceHot : controlPalette()._face));
+				HBRUSH frame = CreateSolidBrush(!enabled ? controlPalette()._frameDisabled : (hot || combo._focused ? controlPalette()._accent : controlPalette()._frame));
 				FillRect(hdc, &client, fill);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(fill);
@@ -316,7 +316,7 @@ namespace nppmac::controls
 					}
 					else
 					{
-						SetTextColor(hdc, GetSysColor(enabled ? COLOR_BTNTEXT : COLOR_GRAYTEXT));
+						SetTextColor(hdc, enabled ? controlPalette()._text : controlPalette()._textDisabled);
 					}
 					const std::u16string text = itemText(combo, selection);
 					RECT textRect{field.left + 2, field.top, field.right - 2, field.bottom};
@@ -328,14 +328,14 @@ namespace nppmac::controls
 				// An edit field with a button.
 				HBRUSH background = controlColors(hwnd, hdc, WM_CTLCOLOREDIT);
 				FillRect(hdc, &client, background);
-				HBRUSH frame = CreateSolidBrush(combo._focused || combo._dropped ? RGB(0, 120, 215) : RGB(122, 122, 122));
+				HBRUSH frame = CreateSolidBrush(combo._focused || combo._dropped ? controlPalette()._accent : controlPalette()._frame);
 				FrameRect(hdc, &client, frame);
 				DeleteObject(frame);
 				if (typeOf(hwnd) != CBS_SIMPLE)
 				{
 					RECT button = buttonRect(hwnd);
 					InflateRect(&button, -1, -1);
-					HBRUSH buttonBrush = CreateSolidBrush(combo._dropped ? RGB(204, 228, 247) : RGB(240, 240, 240));
+					HBRUSH buttonBrush = CreateSolidBrush(combo._dropped ? controlPalette()._facePressed : controlPalette()._face);
 					FillRect(hdc, &button, buttonBrush);
 					DeleteObject(buttonBrush);
 				}
@@ -346,7 +346,7 @@ namespace nppmac::controls
 				const RECT button = buttonRect(hwnd);
 				const int x = (button.left + button.right) / 2;
 				const int y = (button.top + button.bottom) / 2;
-				HPEN pen = CreatePen(PS_SOLID, 1, enabled ? RGB(96, 96, 96) : RGB(160, 160, 160));
+				HPEN pen = CreatePen(PS_SOLID, 1, enabled ? controlPalette()._text : controlPalette()._textDisabled);
 				HGDIOBJ oldPen = SelectObject(hdc, pen);
 				const POINT arrow[] = {{x - 4, y - 2}, {x, y + 2}, {x + 4, y - 2}};
 				Polyline(hdc, arrow, 3);

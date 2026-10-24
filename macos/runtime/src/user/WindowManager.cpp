@@ -393,6 +393,18 @@ void nppmac::ui::windowManagerTestCommand(int id)
 		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }
 
+void nppmac::ui::windowManagerAppearanceChanged()
+{
+	using namespace nppmac::user;
+	// Sent to a copy of the list: a window may go away while handling it.
+	const std::vector<Window*> windows = topLevels();
+	for (Window* window : windows)
+	{
+		if (fromHandle(window->_hwnd))
+			window->send(WM_SETTINGCHANGE, 0, reinterpret_cast<LPARAM>(u"ImmersiveColorSet"));
+	}
+}
+
 void nppmac::ui::windowManagerDumpTree()
 {
 	std::function<void(nppmac::user::Window*, int)> dump = [&dump](nppmac::user::Window* window, int depth)

@@ -196,6 +196,17 @@ namespace nppmac::ui
 	// Standard scroll bars, shown at the right and bottom edges of the view, over its content: the
 	// window manager makes the client area smaller by their thickness, as Windows' non-client area.
 	void setScrollBar(NativeView* view, bool vertical, const ScrollBarState& state);
+
+	// Light or dark: the application's (menus, panels, alerts and every window that does not choose)
+	// and a top-level window's (its title bar, scroll bars and native parts).
+	enum class Appearance
+	{
+		system,
+		light,
+		dark,
+	};
+	void setApplicationAppearance(Appearance appearance);
+	void setWindowAppearance(NativeView* view, Appearance appearance);
 	int scrollBarThickness();
 	void clearSurface(NativeView* view, const Rect& rect);
 
@@ -263,6 +274,8 @@ namespace nppmac::ui
 	void windowManagerDumpTree();
 	// Test aid: sends WM_COMMAND with the id to the active top-level window.
 	void windowManagerTestCommand(int id);
+	// The system's light or dark appearance changed: WM_SETTINGCHANGE "ImmersiveColorSet", as on Windows.
+	void windowManagerAppearanceChanged();
 	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);
 	// Text committed by an input method or a character picker, outside key events.
 	void windowManagerInsertText(const std::u16string& text);

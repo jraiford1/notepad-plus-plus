@@ -182,6 +182,24 @@ namespace nppmac::controls
 			}
 		}
 
+		// The background, then NM_CUSTOMDRAW: the parent may paint over it (Notepad++'s dark mode does).
+		void paint(HWND hwnd, HDC hdc)
+		{
+			RECT client{};
+			GetClientRect(hwnd, &client);
+			FillRect(hdc, &client, GetSysColorBrush(COLOR_BTNFACE));
+			NMCUSTOMDRAW custom{};
+			custom.dwDrawStage = CDDS_PREPAINT;
+			custom.hdc = hdc;
+			custom.rc = client;
+			const LRESULT prePaint = sendNotify(hwnd, GetParent(hwnd), NM_CUSTOMDRAW, &custom.hdr);
+			if (prePaint & CDRF_NOTIFYPOSTPAINT)
+			{
+				custom.dwDrawStage = CDDS_POSTPAINT;
+				sendNotify(hwnd, GetParent(hwnd), NM_CUSTOMDRAW, &custom.hdr);
+			}
+		}
+
 		LRESULT CALLBACK rebarProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			Rebar* rebar = dataOf<Rebar>(hwnd);
@@ -203,21 +221,14 @@ namespace nppmac::controls
 					return 0;
 				}
 				case WM_PRINTCLIENT:
-				{
-					RECT client{};
-					GetClientRect(hwnd, &client);
-					FillRect(reinterpret_cast<HDC>(wParam), &client, GetSysColorBrush(COLOR_BTNFACE));
+					paint(hwnd, reinterpret_cast<HDC>(wParam));
 					return 0;
-				}
 				case WM_PAINT:
 				{
-					PAINTSTRUCT paint{};
-					HDC hdc = BeginPaint(hwnd, &paint);
-					RECT client{};
-					GetClientRect(hwnd, &client);
-					// The parent may paint the background (Notepad++'s dark mode does, through WM_ERASEBKGND).
-					FillRect(hdc, &client, GetSysColorBrush(COLOR_BTNFACE));
-					EndPaint(hwnd, &paint);
+					PAINTSTRUCT ps{};
+					HDC hdc = BeginPaint(hwnd, &ps);
+					paint(hwnd, hdc);
+					EndPaint(hwnd, &ps);
 					return 0;
 				}
 				case WM_NOTIFY:
