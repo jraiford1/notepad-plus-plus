@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include "Immortal.h"
 #include "Handles.h"
 
 #include <unordered_map>
@@ -26,7 +27,8 @@ namespace nppmac::kernel
 		// Upstream's static initializers already create handles (a thread, during settings
 		// loading), so the runtime's own state must not depend on initialization order: it is
 		// created on first use and never destroyed.
-		std::mutex g_tableMutex;
+		nppmac::Immortal<std::mutex> g_tableMutexStorage;
+		std::mutex& g_tableMutex = g_tableMutexStorage._value;
 		uintptr_t g_nextHandle = 0x100;
 
 		std::unordered_map<uintptr_t, std::shared_ptr<KernelObject>>& table()
@@ -44,7 +46,9 @@ namespace nppmac::kernel
 		// Handles are multiples of 4, as on Windows (some code tests the low bits).
 		constexpr uintptr_t handleStep = 4;
 
-		std::mutex g_waitMutex;
+		nppmac::Immortal<std::mutex> g_waitMutexStorage;
+
+		std::mutex& g_waitMutex = g_waitMutexStorage._value;
 	}
 
 	HANDLE createHandle(std::shared_ptr<KernelObject> object)

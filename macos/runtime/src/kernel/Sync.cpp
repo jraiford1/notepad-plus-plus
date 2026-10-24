@@ -16,6 +16,7 @@
 
 // kernel32: last error, synchronization objects, critical sections, waits, threads.
 
+#include "Immortal.h"
 #include "Handles.h"
 
 #include <atomic>
@@ -162,7 +163,8 @@ namespace
 
 	// Named objects are per process: enough for Notepad++'s single-instance mutex, which only has
 	// to be found again within the same process.
-	std::mutex g_namesMutex;
+	nppmac::Immortal<std::mutex> g_namesMutexStorage;
+	std::mutex& g_namesMutex = g_namesMutexStorage._value;
 
 	std::unordered_map<std::u16string, std::weak_ptr<KernelObject>>& names()
 	{

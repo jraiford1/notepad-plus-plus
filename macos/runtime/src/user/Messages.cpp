@@ -18,6 +18,7 @@
 // DefWindowProc, timers, hooks, window subclassing (comctl32), painting entry points, and the
 // conversion of native input to Win32 input messages.
 
+#include "Immortal.h"
 #include "Window.h"
 
 #include <algorithm>
@@ -56,7 +57,8 @@ namespace nppmac::user
 		KeyboardState g_asyncKeyState{}; // the keyboard as it is now
 		KeyboardState g_keyState{};      // as of the last input message retrieved
 		unsigned g_modifiers = 0;
-		std::unordered_map<BYTE, std::u16string> g_pendingCharacters; // characters of the key downs retrieved
+		nppmac::Immortal<std::unordered_map<BYTE, std::u16string>> g_pendingCharactersStorage; // characters of the key downs retrieved
+		std::unordered_map<BYTE, std::u16string>& g_pendingCharacters = g_pendingCharactersStorage._value;
 
 		void applyInputState(const MSG& msg, const InputState& input)
 		{
@@ -76,8 +78,11 @@ namespace nppmac::user
 			bool _done = false;
 		};
 
-		std::mutex g_queueMutex;
-		std::condition_variable g_sendDone;
+		nppmac::Immortal<std::mutex> g_queueMutexStorage;
+
+		std::mutex& g_queueMutex = g_queueMutexStorage._value;
+		nppmac::Immortal<std::condition_variable> g_sendDoneStorage;
+		std::condition_variable& g_sendDone = g_sendDoneStorage._value;
 
 		std::deque<QueuedMessage>& queue()
 		{

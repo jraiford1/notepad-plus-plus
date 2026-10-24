@@ -17,6 +17,7 @@
 // GDI device contexts: window DCs over view surfaces, memory DCs over bitmaps, attributes, clipping,
 // coordinate origins, device capabilities; BeginPaint and EndPaint.
 
+#include "Immortal.h"
 #include "Gdi.h"
 #include "user/Window.h"
 
@@ -29,7 +30,8 @@ namespace nppmac::gdi
 {
 	namespace
 	{
-		std::mutex g_dcsMutex;
+		nppmac::Immortal<std::mutex> g_dcsMutexStorage;
+		std::mutex& g_dcsMutex = g_dcsMutexStorage._value;
 
 		std::unordered_set<const DC*>& liveDCs()
 		{

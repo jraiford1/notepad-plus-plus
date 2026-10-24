@@ -48,6 +48,10 @@ cleanup()
 trap cleanup EXIT
 settings="$work/settings"
 mkdir -p "$settings"
+# Notepad++'s own dark mode on, following the system ("Follow Windows"), as a user sets it.
+darkSettings="$work/dark-settings"
+mkdir -p "$darkSettings"
+printf '<?xml version="1.0" encoding="UTF-8" ?>\n<NotepadPlus>\n<GUIConfigs>\n<GUIConfig name="DarkMode" enable="yes" enableWindowsMode="yes" />\n</GUIConfigs>\n</NotepadPlus>\n' > "$darkSettings/config.xml"
 failures=0
 
 # Runs the app with the given environment and arguments; a snapshot after 5 seconds ends the run.
@@ -58,7 +62,7 @@ run()
 	local log="$work/$name.log"
 	# perl's alarm is the timeout macOS has without coreutils.
 	env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
-		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$settings" ${files[@]+"${files[@]}"} > "$log" 2>&1
+		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="${runSettings:-$settings}" ${files[@]+"${files[@]}"} > "$log" 2>&1
 	local status=$?
 	if [ $status -ne 0 ]; then
 		echo "FAIL $name: exit status $status"
@@ -154,7 +158,41 @@ fi
 
 # Dark mode, following the system.
 files=()
-run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"
+runSettings="$darkSettings" run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"
+
+# Quitting through File > Exit (IDM_FILE_EXIT), as a user does: the program's static objects are
+# destroyed, and upstream's call into the runtime from theirs (dark mode's theme deletes its pens).
+# The other runs end with _exit and skip that.
+quit()
+{
+	local name="$1" folder="$2"
+	shift 2
+	env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_TEST_COMMAND=41011 NPPMAC_TEST_COMMAND_DELAY=3 "$@" \
+		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$folder" > "$work/$name.log" 2>&1
+	local status=$?
+	if [ $status -ne 0 ]; then
+		echo "FAIL $name: exit status $status"
+		grep -i 'terminat\|exception' "$work/$name.log" | head -5
+		failures=$((failures + 1))
+		return 1
+	fi
+	echo "ok   $name"
+}
+quit quit-light "$settings"
+quit quit-dark "$darkSettings" NPPMAC_TEST_APPEARANCE=dark
+
+# Starting again with the window position that quit saved: the editor's tabs sit below the toolbar,
+# not over it (the window must be visible when its saved placement lays it out).
+files=()
+if runSettings="$darkSettings" run restart NPPMAC_TEST_APPEARANCE=dark NPPMAC_DUMP_TREE=1; then
+	if grep -q 'SysTabControl32 id=0 rect=(0,0,' "$work/restart.log" || ! grep -q 'SysTabControl32 id=0 rect=' "$work/restart.log"; then
+		echo "FAIL restart: the tabs are not below the toolbar"
+		grep 'SysTabControl32 id=0\|ReBarWindow32' "$work/restart.log" | head -3
+		failures=$((failures + 1))
+	else
+		echo "ok   restart"
+	fi
+fi
 
 if [ $failures -ne 0 ]; then
 	echo "$failures failure(s)"

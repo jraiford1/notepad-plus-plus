@@ -16,6 +16,7 @@
 
 // kernel32: files, directories, paths, find handles, file mappings.
 
+#include "Immortal.h"
 #include "Handles.h"
 #include "Internal.h"
 #include "platform/DirectoryWatcher.h"
@@ -370,7 +371,9 @@ namespace
 		size_t _length = 0;
 	};
 
-	std::mutex g_viewsMutex;
+	nppmac::Immortal<std::mutex> g_viewsMutexStorage;
+
+	std::mutex& g_viewsMutex = g_viewsMutexStorage._value;
 
 	std::vector<MappedView>& views()
 	{

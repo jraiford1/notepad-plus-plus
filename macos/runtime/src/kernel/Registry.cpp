@@ -18,6 +18,7 @@
 // the Windows "apps use light theme" setting follows the macOS appearance, so upstream's own
 // dark-mode logic follows it too. Writes (file associations) last for the session.
 
+#include "Immortal.h"
 #include "Internal.h"
 #include "platform/Platform.h"
 
@@ -49,7 +50,9 @@ namespace
 		std::map<std::u16string, Value, CaseInsensitiveLess> _values;
 	};
 
-	std::recursive_mutex g_mutex;
+	nppmac::Immortal<std::recursive_mutex> g_mutexStorage;
+
+	std::recursive_mutex& g_mutex = g_mutexStorage._value;
 
 	std::map<uintptr_t, std::unique_ptr<Key>>& roots()
 	{

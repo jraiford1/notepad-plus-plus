@@ -16,6 +16,7 @@
 
 // kernel32 and ole32 memory: Global*, Local*, Heap*, Virtual*, CoTaskMem*.
 
+#include "Immortal.h"
 #include <windows.h>
 
 #include <cstdlib>
@@ -36,7 +37,9 @@ namespace
 		unsigned _lockCount = 0;
 	};
 
-	std::mutex g_blocksMutex;
+	nppmac::Immortal<std::mutex> g_blocksMutexStorage;
+
+	std::mutex& g_blocksMutex = g_blocksMutexStorage._value;
 
 	// Created on first use: memory is allocated by upstream's static initializers too.
 	std::unordered_map<const void*, Block*>& handles() // handle -> block, for moveable blocks
