@@ -39,7 +39,10 @@ the app is opened the first time with right-click → Open.
   merge, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
   (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, an input method, printing, dialogs and
   panels, a plugin, dark mode),
-  on the arm64 slice and, through Rosetta, the x86_64 slice of the universal app.
+  on the arm64 slice and, through Rosetta, the x86_64 slice of the universal app. The smoke test also
+  covers files from Finder, undo and copy/paste keys, outside changes, quitting, restarting and the
+  session.
+- On the owner's Mac, only `ctest -LE gui`: GUI tests run on CI, on a pushed branch, merged when green.
   CI runs the same script on every push (`.github/workflows/macos.yml`).
 - `NPPMAC_SKIP_GUI_TESTS=1` leaves out the smoke test where there is no window server.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.

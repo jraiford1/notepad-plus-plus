@@ -92,8 +92,11 @@ Tracked as job J1 in the work tracker. Today:
   panels;
 * plugins load from `Notepad++.app/Contents/Resources/plugins/<Name>/<Name>.dll`, the place and name
   they have next to `notepad++.exe` on Windows (see [Plugins](#plugins));
+* Finder opens files with it (Open With, a double-click once it is the default, a drop on the Dock
+  icon), into the running window; a folder opens as a dropped one does;
 * changes made outside Notepad++ show up: Folder as Workspace follows its folders, through
-  `ReadDirectoryChangesW` on FSEvents;
+  `ReadDirectoryChangesW` on FSEvents, and coming back to Notepad++ asks to reload a file another
+  program changed;
 * input methods (Japanese, Chinese, Korean…), dead keys and Option characters work in Notepad++'s own
   text boxes (Find, Preferences…) through the macOS text input system, as the editor's do;
 * printing goes through the macOS print panel (printer, copies, pages, selection, paper): upstream's
@@ -133,7 +136,8 @@ Environment variables read by the runtime:
 
 | Variable | Effect |
 |---|---|
-| `NPPMAC_TEST_RUN=1` | a crash prints a backtrace and exits, without the macOS crash report dialog |
+| `NPPMAC_TEST_RUN=1` | a test run: it can never become the active program (no Dock icon, no keyboard: it takes only the test aids' keys), its windows are never on screen (snapshots draw them), alerts are printed (`NPPMAC alert: …`) and answered with their default, and a crash prints a backtrace and exits, without the macOS crash report dialog |
+| `NPPMAC_TEST_SWITCH_BACK=<seconds>` | acts as if the user switched to another program and back then (`WM_ACTIVATEAPP`) |
 | `NPPMAC_SNAPSHOT=<file.png>` | renders the front window to a PNG after `NPPMAC_SNAPSHOT_DELAY` seconds (default 5); `NPPMAC_SNAPSHOT_EXIT=1` then quits |
 | `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
 | `NPPMAC_TEST_IME=<composing>[\|<committed>]` | after the typing, plays an input method on the focus window: composes the first text, a second later commits the second |
@@ -147,6 +151,9 @@ Environment variables read by the runtime:
 
 Test runs should use Notepad++'s own `-settingsDir=<folder>` so they leave the real settings in
 `~/Library/Application Support/Notepad++` alone.
+
+The smoke test runs on CI on every push; it can also run on a Mac in use (test runs stay off the
+screen and the keyboard), but `ctest -LE gui` leaves it out.
 
 For example, open a file, type into it, save it and capture the window:
 
