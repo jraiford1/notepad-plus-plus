@@ -376,7 +376,7 @@ HWND WINAPI CreateDialogIndirectParamW(HINSTANCE instance, LPCDLGTEMPLATEW dialo
 
 HWND WINAPI CreateDialogParamW(HINSTANCE instance, LPCWSTR name, HWND parent, DLGPROC proc, LPARAM parameter)
 {
-	std::span<const BYTE> data = resourceBytes(name, RT_DIALOG);
+	std::span<const BYTE> data = resourceBytes(name, RT_DIALOG, instance);
 	if (data.empty())
 	{
 		SetLastError(ERROR_RESOURCE_NAME_NOT_FOUND);
@@ -430,7 +430,7 @@ INT_PTR WINAPI DialogBoxIndirectParamW(HINSTANCE instance, LPCDLGTEMPLATEW dialo
 
 INT_PTR WINAPI DialogBoxParamW(HINSTANCE instance, LPCWSTR name, HWND parent, DLGPROC proc, LPARAM parameter)
 {
-	std::span<const BYTE> data = resourceBytes(name, RT_DIALOG);
+	std::span<const BYTE> data = resourceBytes(name, RT_DIALOG, instance);
 	if (data.empty())
 	{
 		SetLastError(ERROR_RESOURCE_NAME_NOT_FOUND);

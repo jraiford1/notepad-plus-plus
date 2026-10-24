@@ -21,6 +21,7 @@
 #include <ImageIO/ImageIO.h>
 
 #include "Resources.h"
+#include "kernel/Modules.h"
 #include "Window.h"
 #include "platform/Platform.h"
 
@@ -28,6 +29,8 @@
 #include <dirent.h>
 #include <fstream>
 #include <iterator>
+#include <mutex>
+#include <unordered_map>
 
 namespace nppmac::user
 {
@@ -120,7 +123,8 @@ namespace nppmac::user
 			}
 		}
 
-		Store& store()
+		// The program's resources.
+		Store& appStore()
 		{
 			static Store* resources = []
 			{
@@ -154,6 +158,36 @@ namespace nppmac::user
 				return result;
 			}();
 			return *resources;
+		}
+
+		// A plugin's resources: its compiled .rc beside it, <Name>.res for <Name>.dll. Null for the program
+		// and for modules without one.
+		const Store* moduleStore(HMODULE module)
+		{
+			if (!module)
+				return nullptr;
+			const std::string library = kernel::libraryPath(module);
+			if (library.empty())
+				return nullptr;
+			static auto* mutex = new std::mutex;
+			static auto* stores = new std::unordered_map<std::string, std::unique_ptr<Store>>;
+			std::lock_guard lock{*mutex};
+			auto it = stores->find(library);
+			if (it == stores->end())
+			{
+				const size_t dot = library.find_last_of('.');
+				const std::string resPath = (dot == std::string::npos ? library : library.substr(0, dot)) + ".res";
+				std::unique_ptr<Store> store;
+				std::ifstream in{resPath, std::ios::binary};
+				if (in)
+				{
+					store = std::make_unique<Store>();
+					store->_files.emplace_back(std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{});
+					parse(*store, store->_files.back());
+				}
+				it = stores->emplace(library, std::move(store)).first;
+			}
+			return it->second.get();
 		}
 
 #pragma pack(push, 2)
@@ -218,12 +252,18 @@ namespace nppmac::user
 		}
 	}
 
-	const ResourceData* findResource(LPCWSTR name, LPCWSTR type)
+	const ResourceData* findResource(LPCWSTR name, LPCWSTR type, HMODULE module)
 	{
-		for (const Entry& entry : store()._entries)
+		// A plugin's own resources first, then the program's.
+		for (const Store* store : {moduleStore(module), static_cast<const Store*>(&appStore())})
 		{
-			if (entry._type.matches(type) && entry._name.matches(name))
-				return reinterpret_cast<const ResourceData*>(&entry);
+			if (!store)
+				continue;
+			for (const Entry& entry : store->_entries)
+			{
+				if (entry._type.matches(type) && entry._name.matches(name))
+					return reinterpret_cast<const ResourceData*>(&entry);
+			}
 		}
 		return nullptr;
 	}
@@ -234,9 +274,9 @@ namespace nppmac::user
 		return entry ? std::span<const BYTE>{entry->_data, entry->_size} : std::span<const BYTE>{};
 	}
 
-	std::span<const BYTE> resourceBytes(LPCWSTR name, LPCWSTR type)
+	std::span<const BYTE> resourceBytes(LPCWSTR name, LPCWSTR type, HMODULE module)
 	{
-		return resourceBytes(findResource(name, type));
+		return resourceBytes(findResource(name, type, module));
 	}
 
 	std::shared_ptr<gdi::Bitmap> decodeIconImage(const BYTE* data, size_t size)
@@ -366,9 +406,9 @@ namespace nppmac::user
 		return best;
 	}
 
-	HICON loadIconResource(LPCWSTR name, int width, int height, bool cursor)
+	HICON loadIconResource(LPCWSTR name, int width, int height, bool cursor, HMODULE module)
 	{
-		std::span<const BYTE> group = resourceBytes(name, cursor ? RT_GROUP_CURSOR : RT_GROUP_ICON);
+		std::span<const BYTE> group = resourceBytes(name, cursor ? RT_GROUP_CURSOR : RT_GROUP_ICON, module);
 		if (group.empty())
 			return nullptr;
 		if (width <= 0)
@@ -377,7 +417,7 @@ namespace nppmac::user
 		const int id = pickGroupEntry(group, width);
 		if (id < 0)
 			return nullptr;
-		std::span<const BYTE> image = resourceBytes(MAKEINTRESOURCEW(id), cursor ? RT_CURSOR : RT_ICON);
+		std::span<const BYTE> image = resourceBytes(MAKEINTRESOURCEW(id), cursor ? RT_CURSOR : RT_ICON, module);
 		if (image.size() < 4)
 			return nullptr;
 		POINT hotspot{};
@@ -396,7 +436,7 @@ namespace nppmac::user
 		const int hiResId = cursor ? -1 : pickGroupEntry(group, width * 2);
 		if (decoded && hiResId >= 0 && hiResId != id)
 		{
-			std::span<const BYTE> hiResImage = resourceBytes(MAKEINTRESOURCEW(hiResId), RT_ICON);
+			std::span<const BYTE> hiResImage = resourceBytes(MAKEINTRESOURCEW(hiResId), RT_ICON, module);
 			std::shared_ptr<gdi::Bitmap> hiRes = decodeIconImage(hiResImage.data(), hiResImage.size());
 			if (hiRes && hiRes->_width > decoded->_width)
 				decoded->_hiRes = std::move(hiRes);
@@ -404,9 +444,9 @@ namespace nppmac::user
 		return createIcon(std::move(decoded), !cursor, hotspot);
 	}
 
-	HBITMAP loadBitmapResource(LPCWSTR name)
+	HBITMAP loadBitmapResource(LPCWSTR name, HMODULE module)
 	{
-		std::span<const BYTE> data = resourceBytes(name, RT_BITMAP);
+		std::span<const BYTE> data = resourceBytes(name, RT_BITMAP, module);
 		if (data.size() < sizeof(BITMAPINFOHEADER))
 			return nullptr;
 		const auto* info = reinterpret_cast<const BITMAPINFO*>(data.data());
@@ -521,9 +561,9 @@ using namespace nppmac::user;
 
 // --- Generic resource access ----------------------------------------------------------------------
 
-HRSRC WINAPI FindResourceW(HMODULE, LPCWSTR name, LPCWSTR type)
+HRSRC WINAPI FindResourceW(HMODULE module, LPCWSTR name, LPCWSTR type)
 {
-	const ResourceData* resource = findResource(name, type);
+	const ResourceData* resource = findResource(name, type, module);
 	if (!resource)
 		SetLastError(ERROR_RESOURCE_NAME_NOT_FOUND);
 	return reinterpret_cast<HRSRC>(const_cast<ResourceData*>(resource));
@@ -557,10 +597,10 @@ BOOL WINAPI FreeResource(HGLOBAL)
 
 // --- Strings --------------------------------------------------------------------------------------
 
-int WINAPI LoadStringW(HINSTANCE, UINT id, LPWSTR buffer, int size)
+int WINAPI LoadStringW(HINSTANCE instance, UINT id, LPWSTR buffer, int size)
 {
 	// Strings come in blocks of sixteen: each a length, then that many characters, not terminated.
-	std::span<const BYTE> block = resourceBytes(MAKEINTRESOURCEW((id >> 4) + 1), RT_STRING);
+	std::span<const BYTE> block = resourceBytes(MAKEINTRESOURCEW((id >> 4) + 1), RT_STRING, instance);
 	if (block.empty())
 	{
 		if (buffer && size > 0)
@@ -595,7 +635,7 @@ HCURSOR WINAPI LoadCursorW(HINSTANCE instance, LPCWSTR name)
 {
 	if (!instance)
 		return loadSystemCursor(name);
-	HCURSOR cursor = loadIconResource(name, 32, 32, true);
+	HCURSOR cursor = loadIconResource(name, 32, 32, true, instance);
 	return cursor ? cursor : loadSystemCursor(IDC_ARROW);
 }
 
@@ -603,7 +643,7 @@ HICON WINAPI LoadIconW(HINSTANCE instance, LPCWSTR name)
 {
 	if (!instance)
 		return loadSystemIcon(name);
-	HICON icon = loadIconResource(name, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), false);
+	HICON icon = loadIconResource(name, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), false, instance);
 	if (auto* object = nppmac::gdi::objectAs<nppmac::gdi::Icon>(icon, nppmac::gdi::ObjectType::icon))
 		object->_shared = true; // LoadIcon's icons are shared and never destroyed
 	return icon;
@@ -611,7 +651,7 @@ HICON WINAPI LoadIconW(HINSTANCE instance, LPCWSTR name)
 
 HRESULT WINAPI LoadIconWithScaleDown(HINSTANCE instance, PCWSTR name, int width, int height, HICON* icon)
 {
-	*icon = instance ? loadIconResource(name, width, height, false) : loadSystemIcon(name);
+	*icon = instance ? loadIconResource(name, width, height, false, instance) : loadSystemIcon(name);
 	return *icon ? S_OK : HRESULT_FROM_WIN32(ERROR_RESOURCE_NAME_NOT_FOUND);
 }
 
@@ -623,7 +663,7 @@ HRESULT WINAPI LoadIconMetric(HINSTANCE instance, PCWSTR name, int metric, HICON
 
 HBITMAP WINAPI LoadBitmapW(HINSTANCE instance, LPCWSTR name)
 {
-	return instance ? loadBitmapResource(name) : nullptr;
+	return instance ? loadBitmapResource(name, instance) : nullptr;
 }
 
 HANDLE WINAPI LoadImageW(HINSTANCE instance, LPCWSTR name, UINT type, int width, int height, UINT flags)
@@ -634,20 +674,20 @@ HANDLE WINAPI LoadImageW(HINSTANCE instance, LPCWSTR name, UINT type, int width,
 	{
 		case IMAGE_BITMAP:
 		{
-			HBITMAP bitmap = instance ? loadBitmapResource(name) : nullptr;
+			HBITMAP bitmap = instance ? loadBitmapResource(name, instance) : nullptr;
 			if (bitmap && (flags & LR_LOADTRANSPARENT))
 				makeBackgroundTransparent(bitmap);
 			return bitmap;
 		}
 		case IMAGE_CURSOR:
-			return instance ? loadIconResource(name, width, height, true) : loadSystemCursor(name);
+			return instance ? loadIconResource(name, width, height, true, instance) : loadSystemCursor(name);
 		case IMAGE_ICON:
 		{
 			if (!instance)
 				return loadSystemIcon(name);
 			if ((flags & LR_DEFAULTSIZE) && width == 0)
 				width = height = GetSystemMetrics(SM_CXICON);
-			HICON icon = loadIconResource(name, width, height, false);
+			HICON icon = loadIconResource(name, width, height, false, instance);
 			auto* object = nppmac::gdi::objectAs<nppmac::gdi::Icon>(icon, nppmac::gdi::ObjectType::icon);
 			if (object && (flags & LR_SHARED))
 				object->_shared = true;

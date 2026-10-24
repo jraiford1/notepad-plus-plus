@@ -28,13 +28,14 @@ namespace nppmac::user
 {
 	struct ResourceData;
 
-	const ResourceData* findResource(LPCWSTR name, LPCWSTR type);
+	// A resource of the given module (a plugin's own, then the program's), or of the program.
+	const ResourceData* findResource(LPCWSTR name, LPCWSTR type, HMODULE module = nullptr);
 	std::span<const BYTE> resourceBytes(const ResourceData* resource);
-	std::span<const BYTE> resourceBytes(LPCWSTR name, LPCWSTR type);
+	std::span<const BYTE> resourceBytes(LPCWSTR name, LPCWSTR type, HMODULE module = nullptr);
 
 	// Decodes an icon or cursor image (a DIB with an AND mask, or a PNG) into premultiplied BGRA.
 	std::shared_ptr<gdi::Bitmap> decodeIconImage(const BYTE* data, size_t size);
 	HICON createIcon(std::shared_ptr<gdi::Bitmap> image, bool isIcon, POINT hotspot);
-	HICON loadIconResource(LPCWSTR name, int width, int height, bool cursor);
-	HBITMAP loadBitmapResource(LPCWSTR name);
+	HICON loadIconResource(LPCWSTR name, int width, int height, bool cursor, HMODULE module = nullptr);
+	HBITMAP loadBitmapResource(LPCWSTR name, HMODULE module = nullptr);
 }
