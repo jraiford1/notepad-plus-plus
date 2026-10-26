@@ -181,13 +181,27 @@ static bool g_sendingTestEvent = false;
 }
 @end
 
+@interface NppMacWindow : NSWindow
+{
+@public
+	NativeView* _native;
+	BOOL _borderless;
+	BOOL _ordered; // ordered in: shown, as Windows sees it (also while the application is hidden or minimized)
+}
+@end
+
 namespace
 {
 	void releaseSurface(NativeView* native);
 
+	// Shown as Windows sees it: in a window that is ordered in, and not hidden. (NSWindow.isVisible is also
+	// false while the application is hidden or the window minimized, where Windows' windows are shown.)
 	bool isShown(NSView* view)
 	{
-		return !view.isHiddenOrHasHiddenAncestor && view.window.isVisible;
+		NSWindow* window = view.window;
+		if (!window || view.isHiddenOrHasHiddenAncestor)
+			return false;
+		return [window isKindOfClass:NppMacWindow.class] ? static_cast<NppMacWindow*>(window)->_ordered : window.isVisible;
 	}
 
 	// A view that is not shown gives its surface up; it is painted again, whole, when it is shown.
@@ -450,8 +464,10 @@ namespace
 - (void)viewDidUnhide
 {
 	[super viewDidUnhide];
+	// What is inside is shown again too: its views were not painted while hidden (made then, or given
+	// their pixels up), and AppKit does not ask them again.
 	if (isShown(self))
-		self.needsDisplay = YES;
+		showTree(self);
 }
 
 // Only for an image of the view (cacheDisplayInRect: the test runs' snapshots); the screen shows the layer.
@@ -606,15 +622,14 @@ namespace
 
 // --- Windows ----------------------------------------------------------------------------------------
 
-@interface NppMacWindow : NSWindow
-{
-@public
-	NativeView* _native;
-	BOOL _borderless;
-}
-@end
-
 @implementation NppMacWindow
+
+// Every way of ordering a window in or out comes here.
+- (void)orderWindow:(NSWindowOrderingMode)place relativeTo:(NSInteger)other
+{
+	_ordered = place != NSWindowOut;
+	[super orderWindow:place relativeTo:other];
+}
 
 - (BOOL)canBecomeKeyWindow
 {
@@ -692,8 +707,6 @@ namespace
 
 - (void)windowDidDeminiaturize:(NSNotification*)notification
 {
-	// Nothing was painted while the window was in the Dock.
-	showTree(static_cast<NSWindow*>(notification.object).contentView);
 	NativeView* native = [self nativeFor:notification];
 	if (native)
 		native->_owner->nativeMinimized(false);
@@ -846,16 +859,6 @@ static std::vector<std::string> g_launchFiles;
 - (void)applicationDidBecomeActive:(NSNotification*)notification
 {
 	windowManagerApplicationActivated(true);
-}
-
-// Nothing was painted while the application was hidden.
-- (void)applicationDidUnhide:(NSNotification*)notification
-{
-	for (NSWindow* window in NSApp.windows)
-	{
-		if (window.isVisible && window.contentView)
-			showTree(window.contentView);
-	}
 }
 
 - (void)applicationDidResignActive:(NSNotification*)notification
@@ -1032,11 +1035,11 @@ namespace nppmac::ui
 			if (std::getenv("NPPMAC_DUMP_TREE"))
 			{
 				windowManagerDumpTree();
-				std::fprintf(stderr, "NSApp active=%d keyWindow=%d\n", NSApp.isActive ? 1 : 0, NSApp.keyWindow ? 1 : 0);
+				std::fprintf(stderr, "NSApp active=%d hidden=%d keyWindow=%d\n", NSApp.isActive ? 1 : 0, NSApp.isHidden ? 1 : 0, NSApp.keyWindow ? 1 : 0);
 				for (NSWindow* window in NSApp.orderedWindows)
 				{
-					std::fprintf(stderr, "NSWindow %s visible=%d frame=%s\n", NSStringFromClass(window.class).UTF8String, window.isVisible ? 1 : 0,
-						NSStringFromRect(window.frame).UTF8String);
+					std::fprintf(stderr, "NSWindow %s visible=%d occlusion=%lu frame=%s\n", NSStringFromClass(window.class).UTF8String, window.isVisible ? 1 : 0,
+						static_cast<unsigned long>(window.occlusionState), NSStringFromRect(window.frame).UTF8String);
 				}
 				dumpMenuBar(NSApp.mainMenu, 0);
 			}
@@ -1130,20 +1133,28 @@ namespace nppmac::ui
 		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 	}
 
-	// Debugging aid: NPPMAC_TEST_COMMAND=<id> sends that menu command after NPPMAC_TEST_COMMAND_DELAY
-	// seconds (default 2), for dialogs without a shortcut.
+	// Debugging aid: NPPMAC_TEST_COMMAND=<id>[,<id>...] sends those menu commands, half a second apart,
+	// after NPPMAC_TEST_COMMAND_DELAY seconds (default 2), for dialogs without a shortcut.
 	void scheduleCommand()
 	{
 		const char* command = std::getenv("NPPMAC_TEST_COMMAND");
 		if (!command || !*command)
 			return;
 		const char* delayText = std::getenv("NPPMAC_TEST_COMMAND_DELAY");
-		const double delay = delayText ? std::atof(delayText) : 2.0;
-		const int id = std::atoi(command);
-		NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
-			windowManagerTestCommand(id);
-		}];
-		[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+		double delay = delayText ? std::atof(delayText) : 2.0;
+		for (const char* next = command; *next;)
+		{
+			char* end = nullptr;
+			const int id = static_cast<int>(std::strtol(next, &end, 10));
+			if (end == next)
+				break;
+			NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
+				windowManagerTestCommand(id);
+			}];
+			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+			delay += 0.5;
+			next = *end == ',' ? end + 1 : end;
+		}
 	}
 
 	void dumpMenuBar(NSMenu* menu, int depth)
@@ -1333,6 +1344,8 @@ namespace nppmac::ui
 			return;
 		}
 		native->_view.hidden = !visible;
+		if (visible && isShown(native->_view))
+			showTree(native->_view);
 	}
 
 	void setTitle(NativeView* native, const std::u16string& title)
