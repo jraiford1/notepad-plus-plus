@@ -16,6 +16,12 @@ files: *
 line: L#
 regex: \bL#\s*(\w+) => u"" #$1
 
+# A literal given to a structure's text pointer (LVCOLUMN, TVITEM... pszText), which is not const in
+# Windows' headers: the controls only read it there.
+files: *
+line: pszText
+regex: (pszText\s*=\s*)((?:TEXT|_T)\s*\(\s*"(?:[^"\\]|\\.)*"\s*\)|L"(?:[^"\\]|\\.)*") => $1const_cast<LPTSTR>($2)
+
 # --- Single plugins: rules for one plugin's own files (its name, then its path) ---
 
 # BigFiles' message helper takes the message as wchar_t *, and is given literals.
@@ -27,3 +33,65 @@ replace: wchar_t* str => const wchar_t* str
 files: Papyrus/src/Plugin/Resources.rc
 line: #define VER_FILEVERSION_STR
 replace: L"." BUILD_NUMBER => L"." STR(BUILD_NUMBER)
+
+# NppExport's exporters return their clipboard format's name, a literal, as TCHAR *.
+files: NppExport/src/*Exporter.*
+line: getClipboardType()
+replace: TCHAR * => const TCHAR *
+
+# XBrackets stringizes its version, "2, 0, 4, 0": a macro argument with commas; it has the string too.
+files: XBrackets/XBrackets/src/XBrackets.rc
+line: VALUE "
+replace: STR(PLUGIN_VERSION) => PLUGIN_VERSION_STR
+
+# QuickText uses std::tr1, which is part of std since C++11.
+files: QuickText/lib/*
+line: using namespace std::tr1;
+replace: using namespace std::tr1; => // using namespace std::tr1; (part of std)
+
+# GitSCM shows Windows Explorer's context menu for the files of its panel, through the shell namespace,
+# which does not exist here: the panel's right-click does nothing.
+files: GitSCM/DockingFeature/GitPanelDlg.cpp
+line: cm.SetObjects(
+replace: cm.SetObjects( files ); => (void)files; // macOS: no Explorer context menu
+
+files: GitSCM/DockingFeature/GitPanelDlg.cpp
+line: cm.ShowContextMenu(
+replace: cm.ShowContextMenu( _hInst, _hParent, _hSelf, pt ); => (void)cm;
+
+# DoxyIt's stringReplace changes a string in place, and is given temporaries (Visual C++ binds them to
+# a reference to non-const): for those, an overload that takes the string and returns it.
+files: DoxyIt/src/Utilities/Utils.h
+line: std::string& stringReplace(
+replace: const std::string& newStr); => const std::string& newStr); inline std::string stringReplace(std::string&& str, const std::string& oldStr, const std::string& newStr) { stringReplace(str, oldStr, newStr); return std::move(str); }
+
+# NppFavorites opens a favorite by its key's name, a literal, taken as TCHAR *.
+files: NppFavorites/PluginDefinition.*
+line: OpenFavFile(TCHAR* keyName)
+replace: TCHAR* keyName => const TCHAR* keyName
+
+# DoxyIt defines SendNpp inline in one file and calls it from others, which Visual C++ links.
+files: DoxyIt/src/PluginDefinition.cpp
+line: inline LRESULT SendNpp(
+replace: inline LRESULT SendNpp( => LRESULT SendNpp(
+
+# ColumnTools declares a member with its class's name (Visual C++ allows the extra qualification).
+files: ColumnTools/HorizontalRuler.h
+line: void HorizontalRuler::Init(
+replace: void HorizontalRuler::Init( => void Init(
+
+# ColumnTools reads a setting into &static_cast<int>(g_iEdgeColOrig): Visual C++ gives the address of a
+# temporary copy, so the value read is dropped. The same here: a temporary that lasts the call.
+files: ColumnTools/HorizontalRuler.cpp
+line: &static_cast<int>(g_iEdgeColOrig)
+replace: &static_cast<int>(g_iEdgeColOrig) => [](int&& copy) { return &copy; }(static_cast<int>(g_iEdgeColOrig))
+
+# NppJavaPlugin declares a member with its class's name (Visual C++ allows the extra qualification).
+files: NppJavaPlugin/src/Command/LoggingCommand.h
+line: void LoggingCommandExecutor::Execute(
+replace: void LoggingCommandExecutor::Execute( => void Execute(
+
+# NppJavaPlugin's rich edit adds a literal through a TCHAR * parameter.
+files: NppJavaPlugin/src/Components/CRichEdit.cpp
+line: AddString(_T("\r\n"), color);
+replace: AddString(_T("\r\n"), color); => AddString(const_cast<LPTSTR>(_T("\r\n")), color);

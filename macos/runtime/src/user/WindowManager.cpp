@@ -1190,6 +1190,17 @@ LONG WINAPI GetWindowLongW(HWND hwnd, int index)
 	return static_cast<LONG>(GetWindowLongPtrW(hwnd, index));
 }
 
+// Window procedures here all take UTF-16 messages: the ANSI forms are the same calls.
+LONG_PTR WINAPI GetWindowLongPtrA(HWND hwnd, int index)
+{
+	return GetWindowLongPtrW(hwnd, index);
+}
+
+LONG_PTR WINAPI SetWindowLongPtrA(HWND hwnd, int index, LONG_PTR value)
+{
+	return SetWindowLongPtrW(hwnd, index, value);
+}
+
 LONG_PTR WINAPI SetWindowLongPtrW(HWND hwnd, int index, LONG_PTR value)
 {
 	Window* window = fromHandle(hwnd);

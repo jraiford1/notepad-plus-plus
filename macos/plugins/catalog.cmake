@@ -281,3 +281,126 @@ nppmac_add_external_plugin(pork2sausage
 	RC_FILES src/Pork2Sausage.rc
 	INCLUDES vs.proj
 	DEFINES PORK2SAUSAGE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(ColumnTools
+	DISPLAY_NAME ColumnTools
+	VERSION 1.4.5.1
+	GIT https://github.com/vinsworldcom/nppColumnTools.git
+	COMMIT e7c4d6fe2dac40edd560ad1300a398666ef6c904
+	SOURCES ColumnTools.cpp PluginDefinition.cpp HorizontalRuler.cpp NppHorizontalRuler.cpp Ini.cpp SettingsDlg.cpp
+	RC_FILES ColumnTools.rc
+	INCLUDES .
+	DEFINES NppGitSCM_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(DoxyIt
+	DISPLAY_NAME DoxyIt
+	VERSION 0.4.4
+	GIT https://github.com/dail8859/DoxyIt.git
+	COMMIT 8c251ad6ee8eef6aef2d5b4cad73017c42a87450
+	SOURCES src/Dialogs/AboutDialog.cpp src/Dialogs/Hyperlinks.cpp src/Dialogs/SettingsDialog.cpp src/Dialogs/StaticDialog.cpp src/DoxyIt.cpp src/JumpLocations.cpp src/Parsers/C_Parser.cpp src/Parsers/Null_Parser.cpp src/Parsers/Parsers.cpp src/Parsers/Python_Parser.cpp src/PluginDefinition.cpp src/Utilities/trex.cpp src/Utilities/Utils.cpp
+	RC_FILES src/Dialogs/resource.rc src/Dialogs/Version.rc
+	INCLUDES src src/Dialogs src/Parsers src/Npp src/Utilities
+	DEFINES __STDC_WANT_SECURE_LIB__=1 _CRT_NONSTDC_NO_DEPRECATE)
+
+nppmac_add_external_plugin(EmojiDescription
+	DISPLAY_NAME "Emoji Description"
+	VERSION 0.4.17
+	GIT https://github.com/Ruberoid/npp_emoji_description.git
+	COMMIT 96229c12bbd60f754fc5acae18dd788333770467
+	SOURCES src/DockingFeature/GoToLineDlg.cpp src/DockingFeature/StaticDialog.cpp src/CharDetailsDialog.cpp src/EmojiDescription.cpp src/PluginDefinition.cpp src/UnicodeNames.cpp
+	RC_FILES src/DockingFeature/goLine.rc src/EmojiDescription.rc
+	INCLUDES vs.proj
+	DEFINES EMOJIDESCRIPTION_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(GitSCM
+	DISPLAY_NAME GitSCM
+	VERSION 1.4.10.1
+	GIT https://github.com/vinsworldcom/nppGitSCM.git
+	COMMIT 5210b315d0cdad7de18fb3ec855dfd39dc604489
+	SOURCES DockingFeature/ContextMenu.cpp DockingFeature/GitPanelDlg.cpp DockingFeature/Process.cpp DockingFeature/SettingsDlg.cpp DockingFeature/StaticDialog.cpp GitSCM.cpp PluginDefinition.cpp
+	RC_FILES DockingFeature/gitPanel.rc GitSCM.rc
+	INCLUDES .
+	DEFINES GitSCM_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(GotoLineCol
+	DISPLAY_NAME GotoLineCol
+	VERSION 2.4.5.1
+	GIT https://github.com/shriprem/Goto-Line-Col-NPP-Plugin.git
+	COMMIT f15785cb6f59b0bf8c98515724e90beafb4ec522
+	SOURCES src/CommandLineOptions.cpp src/Darkmode/DarkMode.cpp src/Darkmode/NppDarkMode.cpp src/Darkmode/NPP_Plugin_Darkmode.cpp src/Dialogs/AboutDialog.cpp src/Dialogs/GoToLineColPanel.cpp src/Dialogs/PreferencesDialog.cpp src/NameBlocks.cpp src/NPP/dpiManagerV2.cpp src/NPP/StaticDialog.cpp src/GotoLineColMain.cpp src/PluginDefinition.cpp src/PreferencesIO.cpp src/Utils.cpp
+	RC_FILES src/Resources/AboutUI.rc src/Resources/GotoLineColPlugin.rc src/Resources/GoToLineColUI.rc
+	INCLUDES vs.proj
+	DEFINES _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(MarkdownTableEditor
+	DISPLAY_NAME "Markdown Table Editor"
+	VERSION 11.2.0
+	GIT https://github.com/krotname/NppMarkdownTableEditor.git
+	COMMIT a1ed08ed8124b5793214058ac2ae743131c9faa4
+	SOURCES src/DockingFeature/GoToLineDlg.cpp src/DockingFeature/StaticDialog.cpp src/MarkdownTableCore.cpp src/MarkdownTableEditorPlugin.cpp src/PluginDefinition.cpp
+	RC_FILES src/DockingFeature/goLine.rc src/MarkdownTableEditor.rc
+	INCLUDES vs.proj
+	DEFINES MARKDOWNTABLEEDITOR_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1
+	RC_DEFINES MARKDOWN_TABLE_EDITOR_VERSION_MAJOR=11 MARKDOWN_TABLE_EDITOR_VERSION_MINOR=2 MARKDOWN_TABLE_EDITOR_VERSION_PATCH=2 MARKDOWN_TABLE_EDITOR_VERSION_BUILD=0)
+
+nppmac_add_external_plugin(NppExport
+	DISPLAY_NAME NppExport
+	VERSION 0.4.0.0
+	GIT https://github.com/chcg/NPP_ExportPlugin.git
+	COMMIT 174b17aefd9148c72bc857804adfe0aaf67200fc
+	SOURCES src/Exporter.cpp src/HTMLExporter.cpp src/NppExport.cpp src/RTFExporter.cpp src/stdafx.cpp src/TXTExporter.cpp
+	RC_FILES src/resource.rc
+	INCLUDES vs7project src/Notepad_specific
+	DEFINES NPPPLUGIN_EXPORTS)
+
+nppmac_add_external_plugin(NppFavorites
+	DISPLAY_NAME NppFavorites
+	VERSION 1.0.0.1
+	GIT https://github.com/heldersepu/nppfavorites.git
+	COMMIT 6f92721f92c6193a78f6fcf5b17fbeb73445b749
+	SOURCES NppFavorites.cpp PluginDefinition.cpp DockingFeature/StaticDialog.cpp
+	RC_FILES version_info.rc
+	INCLUDES .
+	DEFINES NppFavorites_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(QuickText
+	DISPLAY_NAME QuickText
+	VERSION 0.2.5.1
+	GIT https://github.com/vinsworldcom/nppQuickText.git
+	COMMIT fc21782d3b8d7553b5df4ce7936758af489fadd4
+	SOURCES lib/INIMap.cpp QuickText.cpp
+	RC_FILES QuickText.rc
+	INCLUDES .
+	DEFINES QUICKTXT_EXPORTS _CRT_SECURE_NO_DEPRECATE
+	FILES Config/QuickText.default.ini Config/QuickText.conf.default.ini)
+
+nppmac_add_external_plugin(SelectQuotedText
+	DISPLAY_NAME SelectQuotedText
+	VERSION 1.1.0
+	GIT https://github.com/ffes/selectquotedtext.git
+	COMMIT 67c1f6098fc31bc91d75d0031c71ae1afa9f9b7e
+	SOURCES DlgAbout.cpp NppMessenger.cpp SelectQuotedText.cpp
+	RC_FILES SelectQuotedText_res.rc
+	INCLUDES .
+	DEFINES SelectQuotedText_EXPORTS)
+
+nppmac_add_external_plugin(urlPlugin
+	DISPLAY_NAME "URL Encode/Decode Plugin"
+	VERSION 1.2.0.0
+	GIT https://github.com/SinghRajenM/nppURLPlugin.git
+	COMMIT 6b835e4fa7f0ff1f34d227fe07f94b3ef8dd3b70
+	SOURCES src/urlPlugin/AboutDlg.cpp src/urlPlugin/dllmain.cpp src/urlPlugin/external/npp/ControlsTab.cpp src/urlPlugin/external/npp/StaticDialog.cpp src/urlPlugin/external/npp/TabBar.cpp src/urlPlugin/external/npp/URLCtrl.cpp src/urlPlugin/PluginHelper.cpp src/urlPlugin/Profile.cpp src/urlPlugin/ScintillaEditor.cpp src/urlPlugin/SettingsDlg.cpp src/urlPlugin/ShortcutCommand.cpp src/utilityLib/Execute.cpp src/utilityLib/pch.cpp src/utilityLib/StringHelper.cpp src/utilityLib/Utility.cpp
+	RC_FILES src/urlPlugin/urlPlugin.rc
+	INCLUDES src/urlPlugin src/urlPlugin/external/npp src/utilityLib
+	DEFINES URLPLUGIN_EXPORTS)
+
+nppmac_add_external_plugin(XBrackets
+	DISPLAY_NAME "XBrackets Lite"
+	VERSION 2.0.4
+	GIT https://github.com/d0vgan/npp-XBracketsLite.git
+	COMMIT 76b12358e1f2cad082830b429e13033af61509b4
+	SOURCES XBrackets/src/CFileModificationWatcher.cpp XBrackets/src/core/NppMessager.cpp XBrackets/src/core/NppPlugin.cpp XBrackets/src/core/NppPluginMenu.cpp XBrackets/src/core/SciMessager.cpp XBrackets/src/json11/json11.cpp XBrackets/src/Main.cpp XBrackets/src/SettingsDlg.cpp XBrackets/src/XBracketsCommon.cpp XBrackets/src/XBracketsLogic.cpp XBrackets/src/XBracketsPlugin.cpp XBrackets/src/XBracketsMenu.cpp XBrackets/src/XBracketsOptions.cpp
+	RC_FILES XBrackets/src/XBrackets.rc
+	INCLUDES XBrackets
+	DEFINES XBRACKETS_EXPORTS
+	FILES XBrackets/XBrackets_Config.json)

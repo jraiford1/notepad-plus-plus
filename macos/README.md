@@ -135,8 +135,12 @@ A plugin's resources (dialogs, icons, strings) are its `.rc` files compiled into
 **The catalog.** [plugins/catalog.cmake](plugins/catalog.cmake) lists plugins of Notepad++'s official
 plugin list built for macOS, each fetched at configure time at a pinned commit and built from its own
 Visual Studio project. [import-plugins.py](plugins/import-plugins.py) writes an entry from a
-checkout of the plugin; a plugin is listed once it builds, and work in progress can sit in an
-uncommitted `plugins/catalog-local.cmake`. Code that many plugins share (their template) and that
+checkout of the plugin (with the static libraries the project links from its own repository, and its
+resource compiler's definitions, MSBuild properties resolved); `FILES` adds by hand what the plugin's
+Windows package has beside the DLL (a default configuration). A plugin is listed once it builds and
+loads, and work in progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written
+only for Windows itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech)
+are left out. Code that many plugins share (their template) and that
 clang reads differently from Visual C++ is adjusted by
 [plugins/plugin-text-rules.txt](plugins/plugin-text-rules.txt). Of the 220 plugins in the official
 list, 126 are C or C++ on GitHub (the others are .NET, Delphi and so on, which cannot be built here),

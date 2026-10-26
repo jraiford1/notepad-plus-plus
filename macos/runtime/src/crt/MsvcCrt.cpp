@@ -20,7 +20,10 @@
 #include <cerrno>
 #include <charconv>
 #include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <malloc/malloc.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <windows.h>
@@ -270,6 +273,37 @@ const char16_t* _com_error::ErrorMessage() const noexcept
 	thread_local char16_t message[64]{};
 	swprintf(message, 64, u"Unknown error 0x%08lX", static_cast<unsigned int>(_result));
 	return message;
+}
+
+errno_t fopen_s(FILE** file, const char* fileName, const char* mode)
+{
+	if (!file || !fileName || !mode)
+		return EINVAL;
+	*file = std::fopen(fileName, mode);
+	return *file ? 0 : errno;
+}
+
+errno_t _dupenv_s(char** buffer, size_t* size, const char* name)
+{
+	if (!buffer || !name)
+		return EINVAL;
+	*buffer = nullptr;
+	if (size)
+		*size = 0;
+	const char* value = std::getenv(name);
+	if (!value)
+		return 0;
+	*buffer = strdup(value);
+	if (!*buffer)
+		return ENOMEM;
+	if (size)
+		*size = std::strlen(value) + 1;
+	return 0;
+}
+
+size_t _msize(void* memory)
+{
+	return memory ? malloc_size(memory) : 0;
 }
 
 errno_t localtime_s(struct tm* result, const time_t* time)

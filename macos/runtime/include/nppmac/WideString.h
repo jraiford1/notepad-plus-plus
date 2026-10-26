@@ -250,6 +250,12 @@ namespace nppmac
 			return *this;
 		}
 
+		// A char16_t buffer (char16_t[N]), which the template below would otherwise take.
+		u16stringstream& operator<<(char16_t* text) {
+			_stream << toUtf8(text);
+			return *this;
+		}
+
 		u16stringstream& operator<<(char16_t ch) {
 			_stream << toUtf8(std::u16string_view{&ch, 1});
 			return *this;

@@ -15,9 +15,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # Packs the catalog's built plugins for Plugins Admin: each into Resources/plugins-catalog/<Name>.zip
-# (<Name>.dll and <Name>.res, as a plugin's zip holds them on Windows), and the plugin list Plugins
-# Admin reads, Resources/plugins/Config/nppPluginList.json: the official list's entries for them
-# (catalog-info.json) with each zip as its package and the zip's SHA-256 as its id.
+# (<Name>.dll, <Name>.res and the files listed in <Name>.files, as a plugin's zip holds them on
+# Windows), and the plugin list Plugins Admin reads, Resources/plugins/Config/nppPluginList.json: the
+# official list's entries for them (catalog-info.json) with each zip as its package and the zip's
+# SHA-256 as its id.
 #
 # Run by cmake -P with:
 #   NAMES       |-separated plugin names
@@ -39,6 +40,10 @@ foreach(name IN LISTS names)
 	set(files "${name}.dll")
 	if(EXISTS "${PLUGIN_DIR}/${name}/${name}.res")
 		list(APPEND files "${name}.res")
+	endif()
+	if(EXISTS "${PLUGIN_DIR}/${name}/${name}.files")
+		file(STRINGS "${PLUGIN_DIR}/${name}/${name}.files" dataFiles)
+		list(APPEND files ${dataFiles})
 	endif()
 	set(zip "${RESOURCES}/plugins-catalog/${name}.zip")
 	file(REMOVE "${zip}")

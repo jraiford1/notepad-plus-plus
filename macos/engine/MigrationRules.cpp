@@ -60,6 +60,16 @@ namespace nppmigrate
 			{"wstringstream", "nppmac::u16stringstream"},
 			{"wostringstream", "nppmac::u16ostringstream"},
 			{"wistringstream", "nppmac::u16istringstream"},
+			{"wstring_convert", "nppmac::wstring_convert"}, // UTF-8 to and from UTF-16 (nppmac/Convert.h)
+			{"wregex", "nppmac::wregex"},       // regular expressions on UTF-16 text (nppmac/Regex.h)
+			{"wcmatch", "nppmac::wcmatch"},
+			{"wsmatch", "nppmac::wsmatch"},
+			{"wcsub_match", "nppmac::wcsub_match"},
+			{"wssub_match", "nppmac::wssub_match"},
+			{"wcregex_iterator", "nppmac::wcregex_iterator"},
+			{"wsregex_iterator", "nppmac::wsregex_iterator"},
+			{"wcregex_token_iterator", "nppmac::wcregex_token_iterator"},
+			{"wsregex_token_iterator", "nppmac::wsregex_token_iterator"},
 			{"to_wstring", "nppmac::to_u16string"},
 			{"getline", "nppmac::getline"}, // forwards to std::getline for narrow streams
 			{"stoi", "nppmac::stoi"},       // the sto* family forwards to std for narrow strings

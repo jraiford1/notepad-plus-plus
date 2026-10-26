@@ -195,6 +195,22 @@ int main()
 	::QueueUserAPC([](ULONG_PTR) {}, ::GetCurrentThread(), 0);
 	CHECK(::SleepEx(INFINITE, TRUE) == WAIT_IO_COMPLETION);
 
+	// A change notification (FindFirstChangeNotification): set by a change, reset to wait for the next.
+	HANDLE notification = FindFirstChangeNotificationW(nppmac::toUtf16(folder).c_str(), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME);
+	CHECK(notification != INVALID_HANDLE_VALUE);
+	if (notification != INVALID_HANDLE_VALUE)
+	{
+		CHECK(WaitForSingleObject(notification, 0) == WAIT_TIMEOUT);
+		writeFile(folder + "/noticed.txt", "three");
+		CHECK(WaitForSingleObject(notification, 5000) == WAIT_OBJECT_0);
+		CHECK(FindNextChangeNotification(notification));
+		CHECK(WaitForSingleObject(notification, 0) == WAIT_TIMEOUT);
+		::unlink((folder + "/noticed.txt").c_str());
+		CHECK(WaitForSingleObject(notification, 5000) == WAIT_OBJECT_0);
+		CHECK(FindCloseChangeNotification(notification));
+	}
+	CHECK(FindFirstChangeNotificationW(u"/no/such/folder", FALSE, FILE_NOTIFY_CHANGE_FILE_NAME) == INVALID_HANDLE_VALUE);
+
 	std::system(("rm -rf '" + folder + "'").c_str());
 
 	std::cout << g_checks << " checks, " << g_failures << " failures\n";

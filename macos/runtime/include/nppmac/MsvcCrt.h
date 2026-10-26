@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
 #include <xlocale.h>
 
@@ -88,6 +89,15 @@ inline char* _strdup(const char* str)
 	return strdup(str);
 }
 
+// The Microsoft strtok_s takes the same arguments as POSIX strtok_r.
+inline char* strtok_s(char* str, const char* delimiters, char** context)
+{
+	return strtok_r(str, delimiters, context);
+}
+
+// An environment variable's value in a buffer of its own (malloc), or null when it is not set.
+errno_t _dupenv_s(char** buffer, size_t* size, const char* name);
+
 // Truncation marker for the _s functions' count argument, and their "truncated" result.
 #ifndef _TRUNCATE
 #define _TRUNCATE (static_cast<size_t>(-1))
@@ -96,7 +106,10 @@ inline char* _strdup(const char* str)
 #define STRUNCATE 80
 #endif
 
-// Path component limits of _splitpath.
+// Path limits: a whole path (stdlib.h's _MAX_PATH, MAX_PATH's twin), and the components of _splitpath.
+#ifndef _MAX_PATH
+#define _MAX_PATH 260
+#endif
 #ifndef _MAX_DRIVE
 #define _MAX_DRIVE 3
 #define _MAX_DIR 256
@@ -111,6 +124,9 @@ char* itoa(int value, char* buffer, int radix);
 errno_t _itoa_s(int value, char* buffer, size_t size, int radix);
 // The Microsoft forms of the thread-safe time conversions (the result first).
 errno_t localtime_s(struct tm* result, const time_t* time);
+errno_t fopen_s(FILE** file, const char* fileName, const char* mode);
+// The size of a block from malloc.
+size_t _msize(void* memory);
 errno_t gmtime_s(struct tm* result, const time_t* time);
 
 // Structured exception translation does not exist outside the Microsoft CRT: the runtime accepts

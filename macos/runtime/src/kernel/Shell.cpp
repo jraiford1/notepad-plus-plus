@@ -282,6 +282,26 @@ LPWSTR WINAPI PathCombineW(LPWSTR dest, LPCWSTR directory, LPCWSTR file)
 	return dest;
 }
 
+LPSTR WINAPI PathCombineA(LPSTR dest, LPCSTR directory, LPCSTR file)
+{
+	if (!dest)
+		return nullptr;
+	char16_t combined[MAX_PATH]{};
+	if (!PathCombineW(combined, directory ? nppmac::toUtf16(directory).c_str() : nullptr, file ? nppmac::toUtf16(file).c_str() : nullptr))
+	{
+		dest[0] = '\0';
+		return nullptr;
+	}
+	const std::string result = nppmac::toUtf8(combined);
+	if (result.size() >= MAX_PATH)
+	{
+		dest[0] = '\0';
+		return nullptr;
+	}
+	std::memcpy(dest, result.c_str(), result.size() + 1);
+	return dest;
+}
+
 BOOL WINAPI PathAppendW(LPWSTR path, LPCWSTR more)
 {
 	const std::u16string joined = joinPaths(path, more ? more : u"");
@@ -650,6 +670,145 @@ HRESULT WINAPI SHParseDisplayName(PCWSTR name, IBindCtx*, PIDLIST_ABSOLUTE* idLi
 void WINAPI ILFree(LPITEMIDLIST idList)
 {
 	CoTaskMemFree(idList);
+}
+
+namespace
+{
+	// An item ID list (a copy of the path, as SHParseDisplayName makes them).
+	LPITEMIDLIST copyIdList(const std::u16string& path)
+	{
+		const size_t bytes = (path.size() + 1) * sizeof(char16_t);
+		auto* copy = static_cast<char16_t*>(CoTaskMemAlloc(bytes));
+		std::memcpy(copy, path.c_str(), bytes);
+		return reinterpret_cast<LPITEMIDLIST>(copy);
+	}
+
+	// The folder SHBrowseForFolder starts in, as its callback chooses it (BFFM_SETSELECTION) when told
+	// the dialog is there (BFFM_INITIALIZED): sent to a window that only takes that message.
+	std::u16string* g_browseSelection = nullptr;
+
+	LRESULT CALLBACK browseWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		if (g_browseSelection && lParam && (message == BFFM_SETSELECTIONW || message == BFFM_SETSELECTIONA))
+		{
+			// A path, or an item ID list: here those are paths too.
+			if (message == BFFM_SETSELECTIONA && wParam)
+				*g_browseSelection = nppmac::toUtf16(reinterpret_cast<const char*>(lParam));
+			else
+				*g_browseSelection = reinterpret_cast<const char16_t*>(lParam);
+			return TRUE;
+		}
+		return DefWindowProcW(hwnd, message, wParam, lParam);
+	}
+
+	HWND browseWindow()
+	{
+		static HWND window = []
+		{
+			WNDCLASSW windowClass{};
+			windowClass.lpfnWndProc = browseWindowProc;
+			windowClass.lpszClassName = u"nppmacBrowseForFolder";
+			RegisterClassW(&windowClass);
+			return CreateWindowExW(0, windowClass.lpszClassName, u"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, nullptr, nullptr);
+		}();
+		return window;
+	}
+
+	// IMalloc on the CoTaskMem functions, which free item ID lists (SHGetMalloc).
+	class TaskMalloc final : public IMalloc
+	{
+	public:
+		HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** object) override
+		{
+			if (!object)
+				return E_POINTER;
+			if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IMalloc))
+			{
+				*object = static_cast<IMalloc*>(this);
+				return S_OK;
+			}
+			*object = nullptr;
+			return E_NOINTERFACE;
+		}
+		ULONG STDMETHODCALLTYPE AddRef() override { return 2; }
+		ULONG STDMETHODCALLTYPE Release() override { return 1; }
+		void* STDMETHODCALLTYPE Alloc(SIZE_T bytes) override { return CoTaskMemAlloc(bytes); }
+		void* STDMETHODCALLTYPE Realloc(void* memory, SIZE_T bytes) override { return CoTaskMemRealloc(memory, bytes); }
+		void STDMETHODCALLTYPE Free(void* memory) override { CoTaskMemFree(memory); }
+		SIZE_T STDMETHODCALLTYPE GetSize(void*) override { return static_cast<SIZE_T>(-1); }
+		INT STDMETHODCALLTYPE DidAlloc(void*) override { return -1; }
+		void STDMETHODCALLTYPE HeapMinimize() override {}
+	};
+}
+
+// The folder chooser of older programs (plugins): the Open panel, choosing a folder.
+LPITEMIDLIST WINAPI SHBrowseForFolderW(LPBROWSEINFOW info)
+{
+	if (!info)
+		return nullptr;
+	std::u16string start;
+	if (info->lpfn)
+	{
+		g_browseSelection = &start;
+		info->lpfn(browseWindow(), BFFM_INITIALIZED, 0, info->lParam);
+		g_browseSelection = nullptr;
+	}
+	nppmac::platform::FilePanelRequest request;
+	request._pickFolders = true;
+	if (info->lpszTitle)
+		request._title = nppmac::toUtf8(info->lpszTitle);
+	if (!start.empty())
+		request._directory = toPosixPath(start);
+
+	// Modal, like the Windows dialog: the owner is disabled meanwhile.
+	const bool ownerWasEnabled = info->hwndOwner && IsWindowEnabled(info->hwndOwner);
+	if (ownerWasEnabled)
+		EnableWindow(info->hwndOwner, FALSE);
+	const nppmac::platform::FilePanelResult result = nppmac::platform::runFilePanel(request);
+	if (ownerWasEnabled)
+		EnableWindow(info->hwndOwner, TRUE);
+	if (!result._ok || result._paths.empty())
+		return nullptr;
+
+	const std::u16string path = nppmac::kernel::fromPosixPath(result._paths[0]);
+	if (info->pszDisplayName)
+	{
+		const size_t separator = path.find_last_of(u'/');
+		const std::u16string name = separator == std::u16string::npos || separator + 1 == path.size() ? path : path.substr(separator + 1);
+		const size_t count = std::min<size_t>(name.size(), MAX_PATH - 1);
+		std::copy_n(name.begin(), count, info->pszDisplayName);
+		info->pszDisplayName[count] = u'\0';
+	}
+	return copyIdList(path);
+}
+
+BOOL WINAPI SHGetPathFromIDListW(PCIDLIST_ABSOLUTE idList, LPWSTR path)
+{
+	if (!idList || !path)
+		return FALSE;
+	const std::u16string_view text{reinterpret_cast<const char16_t*>(idList)};
+	if (text.size() >= MAX_PATH)
+		return FALSE;
+	std::copy(text.begin(), text.end(), path);
+	path[text.size()] = u'\0';
+	return TRUE;
+}
+
+// The shell namespace's root, for Explorer's own interfaces (its context menus): there is none here.
+HRESULT WINAPI SHGetDesktopFolder(IShellFolder** folder)
+{
+	if (folder)
+		*folder = nullptr;
+	return E_NOTIMPL;
+}
+
+HRESULT WINAPI SHGetMalloc(LPMALLOC* allocator)
+{
+	if (!allocator)
+		return E_POINTER;
+	static TaskMalloc malloc;
+	*allocator = &malloc;
+	return S_OK;
 }
 
 namespace
