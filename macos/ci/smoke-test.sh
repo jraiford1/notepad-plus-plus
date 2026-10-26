@@ -232,6 +232,19 @@ if [ -n "$catalog" ] && [ -d "$catalog" ]; then
 	catalogInstalled=()
 fi
 
+# Plugins Admin (IDM_SETTING_PLUGINADM) opens with the app's plugin list, without an error.
+files=()
+mkdir -p "$work/plugins-admin-settings"
+if runSettings="$work/plugins-admin-settings" run plugins-admin NPPMAC_TEST_COMMAND=48015 NPPMAC_DUMP_TREE=1; then
+	if grep -q 'text="Plugins Admin"' "$work/plugins-admin.log" && ! grep -q 'NPPMAC alert' "$work/plugins-admin.log"; then
+		echo "ok   plugins-admin"
+	else
+		echo "FAIL plugins-admin: no Plugins Admin window, or an alert"
+		grep 'NPPMAC alert\|Plugins Admin' "$work/plugins-admin.log" | head -5
+		failures=$((failures + 1))
+	fi
+fi
+
 # Dark mode, following the system.
 files=()
 runSettings="$darkSettings" run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"

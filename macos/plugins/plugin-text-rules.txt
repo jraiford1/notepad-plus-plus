@@ -9,3 +9,10 @@
 files: *PluginDefinition.*
 line: setCommand(
 regex: ([(,]\s*)(TCHAR|WCHAR|wchar_t)\s*\*\s*cmdName => $1const $2 *cmdName
+
+# --- Single plugins: rules for one plugin's own files (its name, then its path) ---
+
+# BigFiles' message helper takes the message as wchar_t *, and is given literals.
+files: BigFiles/src/Support.*
+line: msgBox_int(
+replace: wchar_t* str => const wchar_t* str

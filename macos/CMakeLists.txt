@@ -81,5 +81,6 @@ set(NPPMAC_APP_NAME "Notepad++" CACHE STRING "The app's name")
 set(NPPMAC_BUNDLE_ID "io.github.jraiford1.notepad-plus-plus-macos" CACHE STRING "The app's bundle identifier")
 set(NPPMAC_APP_ICON "${NPP_ROOT}/PowerEditor/src/icons/npp.ico" CACHE FILEPATH "The app's icon (.ico, .png or anything sips reads)")
 
+add_subdirectory(gup)
 add_subdirectory(app)
 add_subdirectory(plugins)
