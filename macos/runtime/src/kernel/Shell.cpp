@@ -768,6 +768,28 @@ namespace
 	};
 }
 
+// A COM object's QueryInterface from its table (QITAB): the interface's place in the object.
+HRESULT WINAPI QISearch(void* base, const QITAB* table, REFIID riid, void** object)
+{
+	if (!object)
+		return E_POINTER;
+	*object = nullptr;
+	if (!base || !table)
+		return E_NOINTERFACE;
+	for (const QITAB* entry = table; entry->piid; ++entry)
+	{
+		// IUnknown is the first interface's.
+		if (IsEqualIID(riid, *entry->piid) || (entry == table && IsEqualIID(riid, IID_IUnknown)))
+		{
+			auto* found = reinterpret_cast<IUnknown*>(static_cast<char*>(base) + entry->dwOffset);
+			found->AddRef();
+			*object = found;
+			return S_OK;
+		}
+	}
+	return E_NOINTERFACE;
+}
+
 // The folder chooser of older programs (plugins): the Open panel, choosing a folder.
 LPITEMIDLIST WINAPI SHBrowseForFolderW(LPBROWSEINFOW info)
 {
@@ -819,6 +841,37 @@ BOOL WINAPI SHGetPathFromIDListW(PCIDLIST_ABSOLUTE idList, LPWSTR path)
 	std::copy(text.begin(), text.end(), path);
 	path[text.size()] = u'\0';
 	return TRUE;
+}
+
+BOOL WINAPI SHGetPathFromIDListA(PCIDLIST_ABSOLUTE idList, LPSTR path)
+{
+	char16_t wide[MAX_PATH]{};
+	if (!path || !SHGetPathFromIDListW(idList, wide))
+		return FALSE;
+	const std::string narrow = nppmac::toUtf8(wide);
+	if (narrow.size() >= MAX_PATH)
+		return FALSE;
+	std::memcpy(path, narrow.c_str(), narrow.size() + 1);
+	return TRUE;
+}
+
+// WinHelp's .hlp files, which Windows itself no longer opens.
+BOOL WINAPI WinHelpW(HWND, LPCWSTR, UINT, ULONG_PTR)
+{
+	SetLastError(ERROR_NOT_SUPPORTED);
+	return FALSE;
+}
+
+HRESULT WINAPI SHGetSpecialFolderLocation(HWND, int csidl, PIDLIST_ABSOLUTE* idList)
+{
+	const std::string folder = folderForCsidl(csidl);
+	if (folder.empty())
+	{
+		*idList = nullptr;
+		return E_INVALIDARG;
+	}
+	*idList = copyIdList(fromPosixPath(folder));
+	return S_OK;
 }
 
 // The shell namespace's root, for Explorer's own interfaces (its context menus): there is none here.

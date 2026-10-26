@@ -385,6 +385,13 @@ HWND WINAPI CreateDialogParamW(HINSTANCE instance, LPCWSTR name, HWND parent, DL
 	return createDialog(instance, data.data(), parent, proc, parameter, false);
 }
 
+HWND WINAPI CreateDialogParamA(HINSTANCE instance, LPCSTR name, HWND parent, DLGPROC proc, LPARAM parameter)
+{
+	if (IS_INTRESOURCE(name))
+		return CreateDialogParamW(instance, reinterpret_cast<LPCWSTR>(name), parent, proc, parameter);
+	return CreateDialogParamW(instance, nppmac::toUtf16(name).c_str(), parent, proc, parameter);
+}
+
 INT_PTR WINAPI DialogBoxIndirectParamW(HINSTANCE instance, LPCDLGTEMPLATEW dialogTemplate, HWND parent, DLGPROC proc, LPARAM parameter)
 {
 	HWND owner = parent ? GetAncestor(parent, GA_ROOT) : nullptr;

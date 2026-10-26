@@ -9,7 +9,7 @@ target_link_libraries(nppMigrationRules PUBLIC clang-cpp LLVM)
 target_compile_features(nppMigrationRules PUBLIC cxx_std_20)
 
 add_executable(npp-migrate NppMigrate.cpp)
-target_link_libraries(npp-migrate PRIVATE nppMigrationRules)
+target_link_libraries(npp-migrate PRIVATE nppMigrationRules iconv)
 
 add_executable(nppMigrationRulesTest MigrationRulesTest.cpp)
 target_link_libraries(nppMigrationRulesTest PRIVATE nppMigrationRules)

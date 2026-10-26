@@ -20,13 +20,19 @@
 #include "Handles.h"
 #include "Internal.h"
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <memory>
+#include <mutex>
 #include <pthread.h>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
+#include <vector>
 
 using nppmac::kernel::KernelObject;
 
@@ -638,4 +644,162 @@ BOOL WINAPI TerminateProcess(HANDLE process, UINT exitCode)
 		return TRUE;
 	SetLastError(ERROR_ACCESS_DENIED);
 	return FALSE;
+}
+
+// --- Timer queues ---------------------------------------------------------------------------------
+
+namespace
+{
+	// A timer of a timer queue: a thread of its own waits for the due time and calls the callback, then
+	// again every period until the timer is deleted; the callback runs off the main thread, as it does
+	// in the thread pool.
+	class QueueTimer : public std::enable_shared_from_this<QueueTimer>
+	{
+	public:
+		QueueTimer(WAITORTIMERCALLBACK callback, PVOID parameter, DWORD dueTime, DWORD period)
+			: _callback{callback}, _parameter{parameter}, _dueTime{dueTime}, _period{period}
+		{
+		}
+
+		void start()
+		{
+			_thread = std::thread{[timer = shared_from_this()] { timer->run(); }};
+		}
+
+		// Stops the timer, completion as DeleteTimerQueueTimer's: INVALID_HANDLE_VALUE waits for a
+		// callback running now (but not from the callback), an event is set once it has returned.
+		void stop(HANDLE completion)
+		{
+			{
+				std::scoped_lock lock{_mutex};
+				_stopped = true;
+				if (completion && completion != INVALID_HANDLE_VALUE)
+				{
+					if (_finished)
+						SetEvent(completion);
+					else
+						_completion = completion;
+				}
+			}
+			_wake.notify_all();
+			if (completion == INVALID_HANDLE_VALUE && _thread.get_id() != std::this_thread::get_id())
+				_thread.join();
+			else
+				_thread.detach();
+		}
+
+	private:
+		void run()
+		{
+			std::unique_lock lock{_mutex};
+			auto due = std::chrono::steady_clock::now() + std::chrono::milliseconds{_dueTime};
+			while (!_wake.wait_until(lock, due, [this] { return _stopped; }))
+			{
+				lock.unlock();
+				_callback(_parameter, TRUE);
+				lock.lock();
+				if (_period == 0)
+					break;
+				due += std::chrono::milliseconds{_period};
+			}
+			_finished = true;
+			if (_completion)
+				SetEvent(_completion);
+		}
+
+		WAITORTIMERCALLBACK _callback;
+		PVOID _parameter;
+		DWORD _dueTime;
+		DWORD _period;
+		std::thread _thread;
+		std::mutex _mutex;
+		std::condition_variable _wake;
+		bool _stopped = false;
+		bool _finished = false;
+		HANDLE _completion = nullptr;
+	};
+
+	struct TimerQueue
+	{
+		std::mutex _mutex;
+		std::vector<std::shared_ptr<QueueTimer>> _timers;
+	};
+
+	nppmac::Immortal<TimerQueue> g_defaultTimerQueue;
+
+	TimerQueue& toTimerQueue(HANDLE queue)
+	{
+		return queue ? *static_cast<TimerQueue*>(queue) : g_defaultTimerQueue._value;
+	}
+}
+
+HANDLE WINAPI CreateTimerQueue()
+{
+	return new TimerQueue;
+}
+
+BOOL WINAPI CreateTimerQueueTimer(PHANDLE timer, HANDLE queue, WAITORTIMERCALLBACK callback, PVOID parameter, DWORD dueTime, DWORD period, ULONG flags)
+{
+	if (!timer || !callback)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	auto created = std::make_shared<QueueTimer>(callback, parameter, dueTime, (flags & WT_EXECUTEONLYONCE) ? 0 : period);
+	TimerQueue& timers = toTimerQueue(queue);
+	{
+		std::scoped_lock lock{timers._mutex};
+		timers._timers.push_back(created);
+	}
+	*timer = created.get();
+	created->start();
+	return TRUE;
+}
+
+BOOL WINAPI DeleteTimerQueueTimer(HANDLE queue, HANDLE timer, HANDLE completion)
+{
+	TimerQueue& timers = toTimerQueue(queue);
+	std::shared_ptr<QueueTimer> found;
+	{
+		std::scoped_lock lock{timers._mutex};
+		auto it = std::find_if(timers._timers.begin(), timers._timers.end(), [timer](const auto& t) { return t.get() == timer; });
+		if (it == timers._timers.end())
+		{
+			SetLastError(ERROR_INVALID_PARAMETER);
+			return FALSE;
+		}
+		found = *it;
+		timers._timers.erase(it);
+	}
+	found->stop(completion);
+	return TRUE;
+}
+
+BOOL WINAPI DeleteTimerQueueEx(HANDLE queue, HANDLE completion)
+{
+	if (!queue)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	auto* timers = static_cast<TimerQueue*>(queue);
+	std::vector<std::shared_ptr<QueueTimer>> stopping;
+	{
+		std::scoped_lock lock{timers->_mutex};
+		stopping.swap(timers->_timers);
+	}
+	delete timers;
+	if (completion == INVALID_HANDLE_VALUE || !completion)
+	{
+		for (const auto& timer : stopping)
+			timer->stop(completion);
+		return TRUE;
+	}
+	// An event to set once every callback has returned: waited for on a thread of its own.
+	std::thread{[stopping = std::move(stopping), completion] {
+		for (const auto& timer : stopping)
+			timer->stop(INVALID_HANDLE_VALUE);
+		SetEvent(completion);
+	}}.detach();
+	return TRUE;
 }

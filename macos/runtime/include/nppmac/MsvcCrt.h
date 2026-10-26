@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -88,6 +89,34 @@ inline char* _strdup(const char* str)
 {
 	return strdup(str);
 }
+
+// Compares bytes ignoring ASCII case.
+inline int _memicmp(const void* lhs, const void* rhs, size_t count)
+{
+	const auto* a = static_cast<const unsigned char*>(lhs);
+	const auto* b = static_cast<const unsigned char*>(rhs);
+	for (size_t i = 0; i < count; ++i)
+	{
+		const int difference = std::tolower(a[i]) - std::tolower(b[i]);
+		if (difference != 0)
+			return difference;
+	}
+	return 0;
+}
+
+inline int memicmp(const void* lhs, const void* rhs, size_t count)
+{
+	return _memicmp(lhs, rhs, count);
+}
+
+// Visual C++'s keyword and macros of <stdlib.h>.
+#ifndef _inline
+#define _inline inline
+#endif
+#ifndef __max
+#define __max(a, b) (((a) > (b)) ? (a) : (b))
+#define __min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
 
 // The Microsoft strtok_s takes the same arguments as POSIX strtok_r.
 inline char* strtok_s(char* str, const char* delimiters, char** context)

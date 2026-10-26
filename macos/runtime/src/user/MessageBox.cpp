@@ -17,6 +17,7 @@
 // user32 MessageBox on NSAlert.
 
 #include <windows.h>
+#include <commctrl.h>
 
 #include <string>
 #include <vector>
@@ -99,4 +100,33 @@ BOOL WINAPI MessageBeep(UINT)
 {
 	nppmac::platform::beep();
 	return TRUE;
+}
+
+// The task dialog's common form (comctl32's TaskDialog), as a message box: the main instruction and
+// the content as its text, its common buttons as the message box's.
+HRESULT WINAPI TaskDialog(HWND owner, HINSTANCE, PCWSTR title, PCWSTR mainInstruction, PCWSTR content, TASKDIALOG_COMMON_BUTTON_FLAGS buttons,
+	PCWSTR icon, int* pressed)
+{
+	std::u16string text = mainInstruction ? mainInstruction : u"";
+	if (content && *content)
+		text += (text.empty() ? u"" : u"\n\n") + std::u16string{content};
+	UINT type = MB_OK;
+	const bool yes = buttons & TDCBF_YES_BUTTON;
+	const bool cancel = buttons & TDCBF_CANCEL_BUTTON;
+	if (yes)
+		type = cancel ? MB_YESNOCANCEL : MB_YESNO;
+	else if (buttons & TDCBF_RETRY_BUTTON)
+		type = MB_RETRYCANCEL;
+	else if (cancel)
+		type = MB_OKCANCEL;
+	if (icon == TD_ERROR_ICON)
+		type |= MB_ICONERROR;
+	else if (icon == TD_WARNING_ICON)
+		type |= MB_ICONWARNING;
+	else if (icon == TD_INFORMATION_ICON)
+		type |= MB_ICONINFORMATION;
+	const int result = MessageBoxW(owner, text.c_str(), title, type);
+	if (pressed)
+		*pressed = result;
+	return S_OK;
 }

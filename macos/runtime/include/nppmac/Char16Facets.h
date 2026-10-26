@@ -26,6 +26,7 @@
 #pragma once
 
 #include <locale>
+#include <string>
 
 namespace std
 {
@@ -55,4 +56,40 @@ namespace std
 	protected:
 		~ctype() override = default;
 	};
+
+	// Numbers in char16_t streams (std::basic_stringstream<TCHAR> in plugins): the classic locale's
+	// punctuation, as numpunct<wchar_t> has it. With ctype<char16_t>, num_get and num_put for char16_t,
+	// the runtime puts it in the global locale (nppmac::installChar16Facets), which streams take.
+	template <>
+	class numpunct<char16_t> : public locale::facet
+	{
+	public:
+		using char_type = char16_t;
+		using string_type = basic_string<char16_t>;
+
+		explicit numpunct(size_t refs = 0) : locale::facet(refs) {}
+
+		char_type decimal_point() const { return do_decimal_point(); }
+		char_type thousands_sep() const { return do_thousands_sep(); }
+		string grouping() const { return do_grouping(); }
+		string_type truename() const { return do_truename(); }
+		string_type falsename() const { return do_falsename(); }
+
+		static locale::id id;
+
+	protected:
+		~numpunct() override = default;
+
+		virtual char_type do_decimal_point() const { return u'.'; }
+		virtual char_type do_thousands_sep() const { return u','; }
+		virtual string do_grouping() const { return {}; }
+		virtual string_type do_truename() const { return u"true"; }
+		virtual string_type do_falsename() const { return u"false"; }
+	};
+}
+
+namespace nppmac
+{
+	// Puts the char16_t facets in the global locale (at start-up), so that char16_t streams work.
+	void installChar16Facets();
 }

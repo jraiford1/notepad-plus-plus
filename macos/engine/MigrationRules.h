@@ -41,6 +41,8 @@ namespace nppmigrate
 		wideStdFilesystem,  // std::filesystem -> nppmac::filesystem (UTF-16 paths, as on Windows)
 		includeSeparator,   // #include "a\b.h" -> #include "a/b.h"
 		integerSuffix,      // Visual C++'s 1i64 / 1ui64 -> 1LL / 1ULL (and i32, i16, i8)
+		selectAny,          // __declspec(selectany) -> inline (one definition of a variable defined in a header)
+		pathWideString,     // path.wstring() -> path.u16string() (a path's UTF-16 form)
 		ruleCount           // keep last
 	};
 

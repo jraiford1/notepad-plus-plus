@@ -19,7 +19,7 @@
 //
 //     npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>]
 //                 [--text-rules <file> --text-base <path of sourceRoot under PowerEditor/>]
-//                 [--plugin-text-rules <file>]
+//                 [--plugin-text-rules <file>] [--source-encoding <encoding>]
 //     npp-migrate --rc-wide-strings <preprocessed .rc> <output .rc>
 //
 // The second form is for a plugin's resources: its .rc includes the plugin's migrated headers, whose
@@ -64,6 +64,7 @@
 #include <filesystem>
 #include <fnmatch.h>
 #include <fstream>
+#include <iconv.h>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -104,11 +105,40 @@ namespace
 		bool _matchedFile = false;
 	};
 
+	// A file's extension in lower case: Windows does not tell .H from .h, nor .CPP from .cpp.
+	std::string extensionOf(const fs::path& path)
+	{
+		std::string ext = path.extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return ext;
+	}
+
 	bool isCodeFile(const fs::path& path)
 	{
 		static const std::vector<std::string> codeExtensions = {".h", ".hpp", ".hxx", ".inl", ".inc", ".c", ".cpp", ".cxx", ".cc"};
-		const std::string ext = path.extension().string();
+		const std::string ext = extensionOf(path);
 		return std::find(codeExtensions.begin(), codeExtensions.end(), ext) != codeExtensions.end();
+	}
+
+	// A code file's language: C for .c files, and for the headers in a folder of C sources only (Lua's,
+	// for one), which C++ files that include them read with the C library's names too. C++ otherwise.
+	nppmigrate::Language languageOf(const fs::path& path)
+	{
+		const std::string ext = extensionOf(path);
+		if (ext == ".c")
+			return nppmigrate::Language::c;
+		if (ext != ".h")
+			return nppmigrate::Language::cpp;
+		bool hasC = false;
+		std::error_code error;
+		for (const fs::directory_entry& entry : fs::directory_iterator{path.parent_path(), error})
+		{
+			const std::string siblingExt = extensionOf(entry.path());
+			if (siblingExt == ".cpp" || siblingExt == ".cxx" || siblingExt == ".cc")
+				return nppmigrate::Language::cpp;
+			hasC = hasC || siblingExt == ".c";
+		}
+		return hasC ? nppmigrate::Language::c : nppmigrate::Language::cpp;
 	}
 
 	bool readFile(const fs::path& path, std::string& content)
@@ -119,6 +149,49 @@ namespace
 		std::ostringstream buffer;
 		buffer << in.rdbuf();
 		content = buffer.str();
+		return true;
+	}
+
+	bool isUtf8(const std::string& content)
+	{
+		size_t i = 0;
+		while (i < content.size())
+		{
+			const auto byte = static_cast<unsigned char>(content[i]);
+			const size_t length = byte < 0x80 ? 1 : (byte >> 5) == 0x6 ? 2 : (byte >> 4) == 0xE ? 3 : (byte >> 3) == 0x1E ? 4 : 0;
+			if (length == 0 || i + length > content.size())
+				return false;
+			for (size_t k = 1; k < length; ++k)
+			{
+				if ((static_cast<unsigned char>(content[i + k]) >> 6) != 0x2)
+					return false;
+			}
+			i += length;
+		}
+		return true;
+	}
+
+	// Visual C++ reads a source that is not Unicode in the system's code page: a plugin written on a
+	// Chinese or Japanese Windows has its strings in GBK or Shift JIS. A file that is not UTF-8 is
+	// converted from the plugin's encoding (--source-encoding, an iconv name).
+	bool convertFromEncoding(std::string& content, const std::string& encoding)
+	{
+		if (encoding.empty() || isUtf8(content))
+			return false;
+		iconv_t converter = iconv_open("UTF-8", encoding.c_str());
+		if (converter == reinterpret_cast<iconv_t>(-1))
+			return false;
+		std::string result(content.size() * 4 + 16, '\0');
+		char* in = content.data();
+		size_t inLeft = content.size();
+		char* out = result.data();
+		size_t outLeft = result.size();
+		const size_t converted = iconv(converter, &in, &inLeft, &out, &outLeft);
+		iconv_close(converter);
+		if (converted == static_cast<size_t>(-1))
+			return false;
+		result.resize(result.size() - outLeft);
+		content = std::move(result);
 		return true;
 	}
 
@@ -175,8 +248,8 @@ namespace
 
 	bool isResourceScript(const fs::path& path)
 	{
-		const std::string ext = path.extension().string();
-		return ext == ".rc" || ext == ".rc2" || ext == ".RC";
+		const std::string ext = extensionOf(path);
+		return ext == ".rc" || ext == ".rc2";
 	}
 
 	// In a resource script, the files of ICON, BITMAP and other statements, and #include, are named with
@@ -555,7 +628,7 @@ int main(int argc, char* argv[])
 	}
 	if (argc < 3 || argc % 2 == 0)
 	{
-		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>]\n";
+		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>] [--source-encoding <encoding>]\n";
 		return exitUsage;
 	}
 
@@ -566,6 +639,7 @@ int main(int argc, char* argv[])
 	fs::path textRulesPath;
 	fs::path pluginTextRulesPath;
 	std::string textBase;
+	std::string sourceEncoding;
 	for (int i = 3; i + 1 < argc; i += 2)
 	{
 		const std::string option{argv[i]};
@@ -579,6 +653,8 @@ int main(int argc, char* argv[])
 			textBase = argv[i + 1];
 		else if (option == "--plugin-text-rules")
 			pluginTextRulesPath = argv[i + 1];
+		else if (option == "--source-encoding")
+			sourceEncoding = argv[i + 1];
 		else
 		{
 			std::cerr << "unknown option: " << option << "\n";
@@ -620,6 +696,7 @@ int main(int argc, char* argv[])
 	size_t totalRewrites = 0;
 	size_t appliedFixups = 0;
 	size_t utf16Files = 0;
+	size_t reencodedFiles = 0;
 	size_t resourcePaths = 0;
 	for (const fs::path& file : files)
 	{
@@ -633,6 +710,8 @@ int main(int argc, char* argv[])
 
 		if (convertFromUtf16(content))
 			++utf16Files;
+		else if ((isCodeFile(file) || isResourceScript(file)) && convertFromEncoding(content, sourceEncoding))
+			++reencodedFiles;
 		if (isResourceScript(file))
 			resourcePaths += fixResourcePaths(content) + joinResourceStringLines(content);
 		applyTextRules(textRules, textBase + "/" + relative.generic_string(), content);
@@ -640,8 +719,7 @@ int main(int argc, char* argv[])
 		{
 			if (!applyFixups(fixups, relative.generic_string(), fixupPath, content, appliedFixups))
 				return exitFixupError;
-			const nppmigrate::Language language = file.extension() == ".c" ? nppmigrate::Language::c : nppmigrate::Language::cpp;
-			const nppmigrate::MigrationResult result = nppmigrate::migrateSource(content, language);
+			const nppmigrate::MigrationResult result = nppmigrate::migrateSource(content, languageOf(file));
 			content = result._text;
 			++migratedFiles;
 			if (result.totalRewrites() != 0)
@@ -700,6 +778,7 @@ int main(int argc, char* argv[])
 
 	std::cout << "npp-migrate: " << files.size() << " files, " << migratedFiles << " migrated, "
 		<< changedFiles << " changed, " << totalRewrites << " rewrites, " << appliedFixups << " fixups, "
-		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource script fixes" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{}) << "\n";
+		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource script fixes" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{})
+		<< (reencodedFiles ? ", " + std::to_string(reencodedFiles) + " files converted from " + sourceEncoding : std::string{}) << "\n";
 	return exitOk;
 }

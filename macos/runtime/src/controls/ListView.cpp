@@ -858,8 +858,10 @@ namespace nppmac::controls
 				case WM_ERASEBKGND:
 					return 1;
 				case WM_SIZE:
+					// The scroll positions stay within what there is to scroll as the window changes size.
 					layoutHeader(hwnd, *list);
 					setTop(hwnd, *list, list->_top);
+					setScrollX(hwnd, *list, list->_scrollX);
 					InvalidateRect(hwnd, nullptr, FALSE);
 					return 0;
 				case WM_SETFONT:
@@ -1068,6 +1070,7 @@ namespace nppmac::controls
 						if (wParam < item._texts.size())
 							item._texts.erase(item._texts.begin() + static_cast<std::ptrdiff_t>(wParam));
 					}
+					setScrollX(hwnd, *list, list->_scrollX);
 					InvalidateRect(hwnd, nullptr, FALSE);
 					return result;
 				}

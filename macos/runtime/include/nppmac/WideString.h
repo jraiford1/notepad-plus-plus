@@ -22,6 +22,7 @@
 #pragma once
 
 #include "nppmac/Char16Facets.h"
+#include "nppmac/WideCrt.h"
 
 #include <cstdarg>
 #include <cstddef>
@@ -33,6 +34,7 @@
 #include <iomanip>
 #include <istream>
 #include <locale>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -62,11 +64,18 @@ char16_t* wcspbrk(char16_t* str, const char16_t* charSet);
 size_t wcsspn(const char16_t* str, const char16_t* charSet);
 size_t wcscspn(const char16_t* str, const char16_t* charSet);
 char16_t* wcstok(char16_t* str, const char16_t* delimiters, char16_t** context);
+// Visual C++'s older wcstok, without a context (it keeps one per thread), and its _wcstok name.
+char16_t* _wcstok(char16_t* str, const char16_t* delimiters);
+inline char16_t* wcstok(char16_t* str, const char16_t* delimiters)
+{
+	return _wcstok(str, delimiters);
+}
 long wcstol(const char16_t* str, char16_t** end, int base);
 unsigned long wcstoul(const char16_t* str, char16_t** end, int base);
 long long wcstoll(const char16_t* str, char16_t** end, int base);
 unsigned long long wcstoull(const char16_t* str, char16_t** end, int base);
 double wcstod(const char16_t* str, char16_t** end);
+long double wcstold(const char16_t* str, char16_t** end);
 float wcstof(const char16_t* str, char16_t** end);
 char16_t* wmemcpy(char16_t* dest, const char16_t* src, size_t count);
 char16_t* wmemmove(char16_t* dest, const char16_t* src, size_t count);
@@ -94,6 +103,14 @@ inline char16_t* wcsdup(const char16_t* str)
 }
 char16_t* _wcslwr(char16_t* str);
 char16_t* _wcsupr(char16_t* str);
+inline char16_t* wcslwr(char16_t* str)
+{
+	return _wcslwr(str);
+}
+inline char16_t* wcsupr(char16_t* str)
+{
+	return _wcsupr(str);
+}
 int _wtoi(const char16_t* str);
 long _wtol(const char16_t* str);
 long long _wtoi64(const char16_t* str);
@@ -107,11 +124,11 @@ int _snwprintf(char16_t* buffer, size_t count, const char16_t* format, ...);
 int _vsnwprintf(char16_t* buffer, size_t count, const char16_t* format, va_list args);
 int _scwprintf(const char16_t* format, ...);
 int _vscwprintf(const char16_t* format, va_list args);
-FILE* _wfopen(const char16_t* fileName, const char16_t* mode);
 int _wcsnicmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int wcsnicmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int wcsicmp(const char16_t* lhs, const char16_t* rhs);
 size_t wcsftime(char16_t* buffer, size_t size, const char16_t* format, const struct tm* time);
+size_t wcsftime_l(char16_t* buffer, size_t size, const char16_t* format, const struct tm* time, locale_t locale);
 size_t wcstombs(char* dest, const char16_t* src, size_t count);
 size_t mbstowcs(char16_t* dest, const char* src, size_t count);
 errno_t _wsplitpath_s(const char16_t* path, char16_t* drive, size_t driveSize, char16_t* dir, size_t dirSize,
@@ -148,6 +165,13 @@ errno_t _wcslwr_s(char16_t* str, size_t size);
 errno_t _wcsupr_s(char16_t* str, size_t size);
 errno_t _itow_s(int value, char16_t* buffer, size_t size, int radix);
 errno_t _wfopen_s(FILE** file, const char16_t* fileName, const char16_t* mode);
+// The C library's message for an error number (strerror), cut to fit the buffer.
+errno_t _wcserror_s(char16_t* buffer, size_t size, int error);
+template <size_t size>
+errno_t _wcserror_s(char16_t (&buffer)[size], int error)
+{
+	return _wcserror_s(buffer, size, error);
+}
 int swprintf_s(char16_t* buffer, size_t size, const char16_t* format, ...);
 int _snwprintf_s(char16_t* buffer, size_t size, size_t count, const char16_t* format, ...);
 errno_t strcpy_s(char* dest, size_t destSize, const char* src);
@@ -221,11 +245,37 @@ namespace nppmac
 	FILE* fopen(const char* path, const char* mode);
 
 	template <typename T>
-	std::u16string to_u16string(T value)
+	std::u16string numberToU16string(T value)
 	{
 		const std::string narrow = std::to_string(value);
 		return std::u16string(narrow.begin(), narrow.end());
 	}
+
+	// std::to_wstring's overloads, one per number type: a value that converts to a number is taken too.
+	inline std::u16string to_u16string(int value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(unsigned value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(long value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(unsigned long value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(long long value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(unsigned long long value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(float value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(double value) { return numberToU16string(value); }
+	inline std::u16string to_u16string(long double value) { return numberToU16string(value); }
+
+	// The rest of a UTF-8 stream as a UTF-16 stream buffer: read whole the first time it is asked.
+	class Utf16RestBuffer : public std::basic_streambuf<char16_t>
+	{
+	public:
+		explicit Utf16RestBuffer(std::istream& source) : _source{source} {}
+
+	protected:
+		int_type underflow() override;
+
+	private:
+		std::istream& _source;
+		std::u16string _text;
+		bool _read = false;
+	};
 
 	// A stringstream for char16_t text. libc++ has no ctype/num_put facets for char16_t, so
 	// formatting is done by a narrow (UTF-8) stream and converted at the boundary.
@@ -257,6 +307,26 @@ namespace nppmac
 
 		bool eof() const {
 			return _stream.eof();
+		}
+
+		void clear() {
+			_stream.clear();
+		}
+
+		// Positions in the UTF-8 text: what tellg gives, seekg takes back.
+		std::streampos tellg() {
+			return _stream.tellg();
+		}
+
+		u16stringstream& seekg(std::streampos position) {
+			_stream.seekg(position);
+			return *this;
+		}
+
+		// The text not read yet, as UTF-16 (for std::istreambuf_iterator<char16_t>).
+		std::basic_streambuf<char16_t>* rdbuf() {
+			_rest = std::make_unique<Utf16RestBuffer>(_stream);
+			return _rest.get();
 		}
 
 		std::stringstream& narrow() {
@@ -318,6 +388,7 @@ namespace nppmac
 
 	private:
 		std::stringstream _stream;
+		std::unique_ptr<Utf16RestBuffer> _rest;
 	};
 
 	// <locale> character classification. For char16_t the classic C rules apply to the BMP code unit

@@ -103,6 +103,7 @@ namespace nppmac
 	void startup(int argc, char* argv[])
 	{
 		installTestCrashHandler();
+		nppmac::installChar16Facets();
 		__argc = argc;
 		__argv = argv;
 

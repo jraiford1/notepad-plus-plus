@@ -24,6 +24,9 @@
 #include <cstring>
 #include <ctime>
 #include <cwctype>
+#include <map>
+#include <mutex>
+#include <sys/stat.h>
 #include <xlocale.h>
 
 #include "nppmac/WideString.h"
@@ -306,6 +309,17 @@ unsigned long long wcstoull(const char16_t* str, char16_t** end, int base)
 double wcstod(const char16_t* str, char16_t** end)
 {
 	return parseNumber<double>(str, end, [](const char* s, char** e) { return strtod_l(s, e, classicLocale()); });
+}
+
+long double wcstold(const char16_t* str, char16_t** end)
+{
+	return parseNumber<long double>(str, end, [](const char* s, char** e) { return strtold_l(s, e, classicLocale()); });
+}
+
+char16_t* _wcstok(char16_t* str, const char16_t* delimiters)
+{
+	thread_local char16_t* context = nullptr;
+	return wcstok(str, delimiters, &context);
 }
 
 float wcstof(const char16_t* str, char16_t** end)
@@ -669,16 +683,81 @@ errno_t _itow_s(int value, char16_t* buffer, size_t size, int radix)
 	return wcscpy_s(buffer, size, temp);
 }
 
+namespace
+{
+	// A CRT mode string without its CRT-only parts: "t" (text) and ", ccs=..." (encoding); for pipes,
+	// "b" (binary) too.
+	template <typename Char>
+	std::string posixMode(const Char* mode, bool pipe)
+	{
+		std::string result;
+		for (const Char* p = mode; *p != '\0' && *p != ','; ++p)
+		{
+			if (*p != 't' && *p != ' ' && !(pipe && *p == 'b'))
+				result.push_back(static_cast<char>(*p));
+		}
+		return result;
+	}
+}
+
 FILE* _wfopen(const char16_t* fileName, const char16_t* mode)
 {
-	// Drop the CRT-only parts of the mode: "t" (text) and ", ccs=..." (encoding).
-	std::string narrowMode;
-	for (const char16_t* p = mode; *p != u'\0' && *p != u','; ++p)
-	{
-		if (*p != u't' && *p != u' ')
-			narrowMode.push_back(static_cast<char>(*p));
-	}
-	return std::fopen(nppmac::nativePath(std::u16string_view{fileName}).c_str(), narrowMode.c_str());
+	return std::fopen(nppmac::nativePath(std::u16string_view{fileName}).c_str(), posixMode(mode, false).c_str());
+}
+
+errno_t _wcserror_s(char16_t* buffer, size_t size, int error)
+{
+	if (!buffer || size == 0)
+		return EINVAL;
+	wcsncpy_s(buffer, size, nppmac::toUtf16(std::strerror(error)).c_str(), _TRUNCATE);
+	return 0;
+}
+
+FILE* _wfreopen(const char16_t* fileName, const char16_t* mode, FILE* file)
+{
+	return std::freopen(nppmac::nativePath(std::u16string_view{fileName}).c_str(), posixMode(mode, false).c_str(), file);
+}
+
+FILE* _popen(const char* command, const char* mode)
+{
+	return popen(command, posixMode(mode, true).c_str());
+}
+
+FILE* _wpopen(const char16_t* command, const char16_t* mode)
+{
+	return popen(nppmac::toUtf8(command).c_str(), posixMode(mode, true).c_str());
+}
+
+int _pclose(FILE* file)
+{
+	return pclose(file);
+}
+
+int _wsystem(const char16_t* command)
+{
+	return std::system(command ? nppmac::toUtf8(command).c_str() : nullptr);
+}
+
+char16_t* _wgetenv(const char16_t* name)
+{
+	// The CRT keeps a wide copy of the environment; here, each variable asked for, kept until it changes.
+	static std::mutex mutex;
+	static std::map<std::u16string, std::u16string> values;
+
+	const char* value = std::getenv(nppmac::toUtf8(name).c_str());
+	if (!value)
+		return nullptr;
+	std::scoped_lock lock{mutex};
+	std::u16string& wide = values[name];
+	const std::u16string current = nppmac::toUtf16(value);
+	if (wide != current)
+		wide = current;
+	return wide.data();
+}
+
+int _wstati64(const char16_t* path, struct stat* buffer)
+{
+	return stat(nppmac::nativePath(std::u16string_view{path}).c_str(), buffer);
 }
 
 errno_t _wfopen_s(FILE** file, const char16_t* fileName, const char16_t* mode)
@@ -689,18 +768,34 @@ errno_t _wfopen_s(FILE** file, const char16_t* fileName, const char16_t* mode)
 	return *file ? 0 : errno;
 }
 
+namespace
+{
+	// strftime's text as UTF-16, when it fits the buffer with its terminator; 0 otherwise.
+	size_t copyTime(char16_t* buffer, size_t size, std::string_view narrow)
+	{
+		if (narrow.empty())
+			return 0;
+		const std::u16string wide = nppmac::toUtf16(narrow);
+		if (wide.size() >= size)
+			return 0;
+		std::copy(wide.begin(), wide.end(), buffer);
+		buffer[wide.size()] = u'\0';
+		return wide.size();
+	}
+}
+
 size_t wcsftime(char16_t* buffer, size_t size, const char16_t* format, const struct tm* time)
 {
 	char narrow[1024]{};
 	const size_t length = std::strftime(narrow, sizeof(narrow), nppmac::toUtf8(format).c_str(), time);
-	if (length == 0)
-		return 0;
-	const std::u16string wide = nppmac::toUtf16(std::string_view{narrow, length});
-	if (wide.size() >= size)
-		return 0;
-	std::copy(wide.begin(), wide.end(), buffer);
-	buffer[wide.size()] = u'\0';
-	return wide.size();
+	return copyTime(buffer, size, std::string_view{narrow, length});
+}
+
+size_t wcsftime_l(char16_t* buffer, size_t size, const char16_t* format, const struct tm* time, locale_t locale)
+{
+	char narrow[1024]{};
+	const size_t length = strftime_l(narrow, sizeof(narrow), nppmac::toUtf8(format).c_str(), time, locale);
+	return copyTime(buffer, size, std::string_view{narrow, length});
 }
 
 size_t wcstombs(char* dest, const char16_t* src, size_t count)
@@ -966,6 +1061,18 @@ namespace nppmac
 		return nativePath(std::string_view{toUtf8(path)});
 	}
 
+	Utf16RestBuffer::int_type Utf16RestBuffer::underflow()
+	{
+		if (gptr() < egptr())
+			return traits_type::to_int_type(*gptr());
+		if (_read)
+			return traits_type::eof();
+		_read = true;
+		_text = toUtf16(std::string{std::istreambuf_iterator<char>{_source}, std::istreambuf_iterator<char>{}});
+		setg(_text.data(), _text.data(), _text.data() + _text.size());
+		return _text.empty() ? traits_type::eof() : traits_type::to_int_type(_text.front());
+	}
+
 	FILE* fopen(const char* path, const char* mode)
 	{
 		return std::fopen(nativePath(std::string_view{path}).c_str(), mode);
@@ -1197,6 +1304,7 @@ namespace nppmac
 namespace std
 {
 	locale::id ctype<char16_t>::id;
+	locale::id numpunct<char16_t>::id;
 
 	bool ctype<char16_t>::is(mask m, char16_t ch) const
 	{
@@ -1285,4 +1393,14 @@ namespace std
 			*dest = narrow(*low, defaultChar);
 		return high;
 	}
+}
+
+void nppmac::installChar16Facets()
+{
+	std::locale withFacets{std::locale{}, new std::ctype<char16_t>};
+	withFacets = std::locale{withFacets, new std::numpunct<char16_t>};
+	withFacets = std::locale{withFacets, new std::num_get<char16_t>};
+	withFacets = std::locale{withFacets, new std::num_put<char16_t>};
+	// An unnamed locale: the C library's locale stays as it is.
+	std::locale::global(withFacets);
 }
