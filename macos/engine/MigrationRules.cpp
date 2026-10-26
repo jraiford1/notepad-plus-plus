@@ -16,6 +16,8 @@
 
 #include "MigrationRules.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -202,6 +204,8 @@ namespace nppmigrate
 				return "wideStdFilesystem";
 			case RuleId::includeSeparator:
 				return "includeSeparator";
+			case RuleId::integerSuffix:
+				return "integerSuffix";
 			case RuleId::ruleCount:
 				break;
 		}
@@ -248,6 +252,26 @@ namespace nppmigrate
 							name += '/';
 					}
 					edits.push_back({token._offset, token._length, name, RuleId::includeSeparator});
+				}
+				continue;
+			}
+
+			if (token._kind == clang::tok::numeric_constant)
+			{
+				// Visual C++'s sized integer suffixes: i64 and ui64 become LL and ULL, the narrower ones
+				// the standard suffix of their type (none, or U).
+				static const std::pair<std::string_view, std::string_view> suffixes[] = {
+					{"ui64", "ULL"}, {"i64", "LL"}, {"ui32", "U"}, {"i32", ""}, {"ui16", "U"}, {"i16", ""}, {"ui8", "U"}, {"i8", ""},
+				};
+				for (const auto& [suffix, replacement] : suffixes)
+				{
+					const std::string_view text = token._text;
+					if (text.size() > suffix.size() && std::equal(suffix.rbegin(), suffix.rend(), text.rbegin(),
+						[](char a, char b) { return a == std::tolower(static_cast<unsigned char>(b)); }))
+					{
+						edits.push_back({token._offset + text.size() - suffix.size(), suffix.size(), std::string{replacement}, RuleId::integerSuffix});
+						break;
+					}
 				}
 				continue;
 			}

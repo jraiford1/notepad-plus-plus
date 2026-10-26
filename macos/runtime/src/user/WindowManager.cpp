@@ -920,6 +920,25 @@ BOOL WINAPI DestroyWindow(HWND hwnd)
 	return TRUE;
 }
 
+BOOL WINAPI GetGUIThreadInfo(DWORD, PGUITHREADINFO info)
+{
+	if (!info || info->cbSize < sizeof(GUITHREADINFO))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	POINT caret{};
+	info->flags = 0;
+	info->hwndActive = GetActiveWindow();
+	info->hwndFocus = GetFocus();
+	info->hwndCapture = GetCapture();
+	info->hwndMenuOwner = nullptr;
+	info->hwndMoveSize = nullptr;
+	info->hwndCaret = nppmac::user::caretWindow(caret);
+	info->rcCaret = {caret.x, caret.y, caret.x + 1, caret.y + 16};
+	return TRUE;
+}
+
 BOOL WINAPI IsWindow(HWND hwnd)
 {
 	return fromHandle(hwnd) ? TRUE : FALSE;

@@ -20,6 +20,7 @@
 #include "Handles.h"
 #include "Internal.h"
 #include "platform/DirectoryWatcher.h"
+#include "platform/Platform.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -1281,6 +1282,79 @@ DWORD WINAPI GetFullPathNameW(LPCWSTR fileName, DWORD size, LPWSTR buffer, LPWST
 		*filePart = (slash == std::u16string::npos || slash + 1 == result.size()) ? nullptr : buffer + slash + 1;
 	}
 	return length;
+}
+
+// A file looked for in a list of folders (';' separated), or in the program's folder, the current one
+// and PATH; the extension is added when the name has none.
+DWORD WINAPI SearchPathW(LPCWSTR path, LPCWSTR fileName, LPCWSTR extension, DWORD size, LPWSTR buffer, LPWSTR* filePart)
+{
+	if (!fileName || !*fileName)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return 0;
+	}
+	std::u16string name{fileName};
+	const size_t nameStart = name.find_last_of(u"/\\");
+	if (extension && *extension && name.find(u'.', nameStart == std::u16string::npos ? 0 : nameStart) == std::u16string::npos)
+		name += extension;
+
+	std::vector<std::string> folders;
+	auto addFolders = [&folders](const std::string& list, char separator)
+	{
+		size_t start = 0;
+		while (start <= list.size())
+		{
+			const size_t end = std::min(list.find(separator, start), list.size());
+			if (end > start)
+				folders.push_back(list.substr(start, end - start));
+			start = end + 1;
+		}
+	};
+	const std::string file = toPosixPath(name);
+	if (!file.empty() && file[0] == '/')
+	{
+		folders.push_back("");
+	}
+	else if (path)
+	{
+		addFolders(toPosixPath(path), ';');
+	}
+	else
+	{
+		folders.push_back(nppmac::platform::resourcesDirectory()); // the program's folder
+		char cwd[PATH_MAX]{};
+		if (::getcwd(cwd, sizeof(cwd)))
+			folders.push_back(cwd);
+		if (const char* environmentPath = std::getenv("PATH"))
+			addFolders(environmentPath, ':');
+	}
+
+	for (const std::string& folder : folders)
+	{
+		const std::string candidate = folder.empty() ? file : folder + "/" + file;
+		struct stat info{};
+		if (::stat(candidate.c_str(), &info) != 0 || S_ISDIR(info.st_mode))
+			continue;
+		char16_t full[MAX_PATH * 4]{};
+		const DWORD length = GetFullPathNameW(fromPosixPath(candidate).c_str(), MAX_PATH * 4, full, nullptr);
+		if (length == 0)
+			continue;
+		if (length + 1 > size || !buffer)
+			return length + 1;
+		std::copy_n(full, length + 1, buffer);
+		if (filePart)
+		{
+			*filePart = buffer;
+			for (LPWSTR p = buffer; *p; ++p)
+			{
+				if (*p == u'/' || *p == u'\\')
+					*filePart = p + 1;
+			}
+		}
+		return length;
+	}
+	SetLastError(ERROR_FILE_NOT_FOUND);
+	return 0;
 }
 
 char16_t* _wfullpath(char16_t* absolute, const char16_t* relative, size_t size)

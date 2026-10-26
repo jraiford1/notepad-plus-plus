@@ -189,6 +189,9 @@ namespace nppmac::user
 	// dead keys), as Windows' IME does. It gets the text being composed as imeComposition and is
 	// asked where its caret is with imeCaretRect.
 	void setClassEditsText(const char16_t* className);
+
+	// The window the caret was made for (CreateCaret), and where SetCaretPos put it.
+	HWND caretWindow(POINT& position);
 	// wParam: the caret's place in the text being composed; lParam: const std::u16string* (empty when
 	// composing ends).
 	constexpr UINT imeComposition = WM_APP + 0x3F03;

@@ -447,6 +447,58 @@ namespace nppmac::platform
 		return true;
 	}
 
+	bool chooseFont(FontChoice& choice)
+	{
+		if (const char* testFont = std::getenv("NPPMAC_TEST_FONT"))
+		{
+			const std::string text{testFont};
+			const size_t first = text.find(':');
+			choice._family = text.substr(0, first);
+			choice._size = first == std::string::npos ? choice._size : std::atof(text.c_str() + first + 1);
+			choice._bold = text.find(":bold") != std::string::npos;
+			choice._italic = text.find(":italic") != std::string::npos;
+			return !choice._family.empty();
+		}
+
+		NSFontManager* manager = NSFontManager.sharedFontManager;
+		NSFont* initial = [NSFont fontWithName:toNSString(choice._family) size:choice._size] ?: [NSFont userFontOfSize:choice._size];
+		if (choice._bold)
+			initial = [manager convertFont:initial toHaveTrait:NSBoldFontMask];
+		if (choice._italic)
+			initial = [manager convertFont:initial toHaveTrait:NSItalicFontMask];
+		[manager setSelectedFont:initial isMultiple:NO];
+		NSFontPanel* panel = [manager fontPanel:YES];
+
+		// The panel has no buttons of its own; a modal run needs OK and Cancel.
+		NppMacColorPanelButtons* target = [[NppMacColorPanelButtons alloc] init];
+		NSButton* cancel = [NSButton buttonWithTitle:@"Cancel" target:target action:@selector(cancel:)];
+		cancel.keyEquivalent = @"\033";
+		NSButton* ok = [NSButton buttonWithTitle:@"OK" target:target action:@selector(ok:)];
+		ok.keyEquivalent = @"\r";
+		NSStackView* buttons = [NSStackView stackViewWithViews:@[cancel, ok]];
+		buttons.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
+		buttons.frame = NSMakeRect(0, 0, 220, buttons.fittingSize.height);
+		NSView* previousAccessory = panel.accessoryView;
+		panel.accessoryView = buttons;
+
+		activateApplication();
+		const NSModalResponse response = [NSApp runModalForWindow:panel];
+		[panel orderOut:nil];
+		panel.accessoryView = previousAccessory;
+		if (response != NSModalResponseOK)
+			return false;
+		// What the panel's choices make of the initial font.
+		NSFont* chosen = [manager convertFont:initial];
+		if (!chosen)
+			return false;
+		const NSFontTraitMask traits = [manager traitsOfFont:chosen];
+		choice._family = toString(chosen.familyName);
+		choice._size = chosen.pointSize;
+		choice._bold = (traits & NSBoldFontMask) != 0;
+		choice._italic = (traits & NSItalicFontMask) != 0;
+		return true;
+	}
+
 	namespace
 	{
 		NSPrintInfo* g_printInfo = nil; // the settings the last print panel chose
