@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <copyfile.h>
 #include <cstddef>
 #include <cstring>
@@ -1280,6 +1281,31 @@ DWORD WINAPI GetFullPathNameW(LPCWSTR fileName, DWORD size, LPWSTR buffer, LPWST
 		*filePart = (slash == std::u16string::npos || slash + 1 == result.size()) ? nullptr : buffer + slash + 1;
 	}
 	return length;
+}
+
+char16_t* _wfullpath(char16_t* absolute, const char16_t* relative, size_t size)
+{
+	const char16_t* path = relative && *relative ? relative : u".";
+	const DWORD needed = GetFullPathNameW(path, 0, nullptr, nullptr);
+	if (needed == 0)
+		return nullptr;
+	if (!absolute)
+	{
+		absolute = static_cast<char16_t*>(std::malloc(needed * sizeof(char16_t)));
+		size = needed;
+		if (!absolute)
+		{
+			errno = ENOMEM;
+			return nullptr;
+		}
+	}
+	else if (needed > size)
+	{
+		errno = ERANGE;
+		return nullptr;
+	}
+	GetFullPathNameW(path, static_cast<DWORD>(size), absolute, nullptr);
+	return absolute;
 }
 
 DWORD WINAPI GetLongPathNameW(LPCWSTR shortPath, LPWSTR longPath, DWORD size)

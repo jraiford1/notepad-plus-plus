@@ -225,5 +225,7 @@ if(NPPMAC_BUILD_PLUGINS)
 		)
 		# Plugins being ported may not build: only the catalog's committed plugins are waited for.
 		add_dependencies(nppPluginCatalog NotepadPlusPlus ${committedPlugins})
+		add_test(NAME pluginList COMMAND "${CMAKE_COMMAND}" "-DRESOURCES=$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources"
+			-P "${CMAKE_CURRENT_SOURCE_DIR}/CheckPluginList.cmake")
 	endif()
 endif()

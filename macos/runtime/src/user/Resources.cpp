@@ -738,6 +738,45 @@ HRESULT WINAPI LoadIconMetric(HINSTANCE instance, PCWSTR name, int metric, HICON
 	return LoadIconWithScaleDown(instance, name, size, size, icon);
 }
 
+// A bitmap resource with some colors replaced (comctl32): by default the button colors of the
+// classic look, black, gray, light gray and white, become the system's.
+HBITMAP WINAPI CreateMappedBitmap(HINSTANCE instance, INT_PTR id, UINT, LPCOLORMAP maps, INT count)
+{
+	HBITMAP bitmap = LoadBitmapW(instance, MAKEINTRESOURCEW(id));
+	auto* object = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(bitmap, nppmac::gdi::ObjectType::bitmap);
+	if (!object)
+		return bitmap;
+	COLORMAP standard[] = {
+		{RGB(0, 0, 0), GetSysColor(COLOR_BTNTEXT)},
+		{RGB(128, 128, 128), GetSysColor(COLOR_BTNSHADOW)},
+		{RGB(192, 192, 192), GetSysColor(COLOR_BTNFACE)},
+		{RGB(255, 255, 255), GetSysColor(COLOR_BTNHIGHLIGHT)},
+	};
+	if (!maps || count <= 0)
+	{
+		maps = standard;
+		count = static_cast<INT>(std::size(standard));
+	}
+	// Pixels are 0xAARRGGBB, a COLORREF 0x00BBGGRR.
+	auto toPixel = [](COLORREF color) { return 0xFF000000u | (static_cast<uint32_t>(GetRValue(color)) << 16) | (static_cast<uint32_t>(GetGValue(color)) << 8) | GetBValue(color); };
+	for (int y = 0; y < object->_height; ++y)
+	{
+		uint32_t* row = object->rowPointer(y);
+		for (int x = 0; x < object->_width; ++x)
+		{
+			for (INT i = 0; i < count; ++i)
+			{
+				if (row[x] == toPixel(maps[i].from))
+				{
+					row[x] = toPixel(maps[i].to);
+					break;
+				}
+			}
+		}
+	}
+	return bitmap;
+}
+
 HBITMAP WINAPI LoadBitmapW(HINSTANCE instance, LPCWSTR name)
 {
 	return instance ? loadBitmapResource(name, instance) : nullptr;

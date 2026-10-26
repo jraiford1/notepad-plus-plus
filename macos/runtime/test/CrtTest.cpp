@@ -24,6 +24,7 @@
 #include <iostream>
 #include <regex>
 #include <string>
+#include <unistd.h>
 
 namespace
 {
@@ -228,6 +229,25 @@ namespace
 		CHECK(utf16.to_bytes(u"caf\u00E9") == "caf\xC3\xA9");
 		nppmac::wstring_convert<std::codecvt_utf8<char16_t>, char16_t> ucs(new std::codecvt_utf8<char16_t>);
 		CHECK_EQUAL(ucs.from_bytes(std::string{"\xF0\x9F\x98\x80"}), u"\U0001F600");
+
+		// Wide file streams (std::wifstream once migrated): byte for byte, as Windows' classic locale
+		// reads (a BOM through get()), or UTF-16 with codecvt_utf16 imbued. (libc++'s consume_header only
+		// takes a big-endian BOM, Microsoft's either: little-endian text says so.)
+		{
+			char path[] = "/tmp/npp-wide-stream-XXXXXX";
+			const int fd = mkstemp(path);
+			const char bytes[] = "\xFF\xFE" "h\0" "\xE9\0" "\n\0" "x\0";
+			write(fd, bytes, sizeof(bytes) - 1);
+			close(fd);
+			nppmac::wifstream bom{std::string{path}, std::ios::binary};
+			CHECK(bom.get() == 0xFF && bom.get() == 0xFE && bom.get() == u'h');
+			nppmac::wifstream utf16{nppmac::toUtf16(path), std::ios::binary};
+			utf16.imbue(std::locale(utf16.getloc(), new std::codecvt_utf16<char16_t, 0x10FFFF, std::codecvt_mode(std::consume_header | std::little_endian)>));
+			std::u16string line;
+			CHECK(static_cast<bool>(nppmac::getline(utf16, line)) && line == u"h\u00E9");
+			CHECK(static_cast<bool>(nppmac::getline(utf16, line)) && line == u"x");
+			unlink(path);
+		}
 
 		// Regular expressions on UTF-16 text (std::wregex once migrated).
 		const std::u16string sentence = u"Hello World, hello again 123";

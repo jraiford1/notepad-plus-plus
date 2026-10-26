@@ -83,6 +83,16 @@
 		"author": "leonardchai@gmail.com",
 		"homepage": "https://github.com/leonardchai/FoldingLineHider"
 	},
+	"FWDataViz": {
+		"folder-name": "FWDataViz",
+		"display-name": "Fixed-width Data Visualizer",
+		"version": "2.6.7.0",
+		"npp-compatible-versions": "[8.4.1,]",
+		"old-versions-compatibility": "[,2.4.0.1][8,8.2.1]",
+		"description": "Fixed Width Data Visualizer adds Excel-like features for fixed-width data files in Notepad++. Displays cursor position data. Foldable Record Blocks; Hop & Jump to specific fields. Field Copy & Field Paste. Data Extraction. Builtin dialogs to configure file-type, record-type & fields; and themes & colors. Automatic File Type Detection. Handles homogenous, mixed & multi-line records. Full Multi-byte character support. Darkmode enabled.",
+		"author": "Shridhar Kumar",
+		"homepage": "https://github.com/shriprem/FWDataViz"
+	},
 	"GitSCM": {
 		"folder-name": "GitSCM",
 		"display-name": "GitSCM",
@@ -135,6 +145,14 @@
 		"description": "Implements several main functionalities defined in MIME (Multipurpose Internet Mail Extensions): Base64, Quoted-printable and URL encode/decode",
 		"author": "Don HO",
 		"homepage": "https://github.com/npp-plugins/mimetools"
+	},
+	"NestedDSV": {
+		"folder-name": "NestedDSV",
+		"display-name": "NestedDSV Data Visualizer",
+		"version": "1.1.0.1",
+		"description": "Plugin for visualizing hierarchical (nested) delimiter-separated values (DSV) data in Notepad++. Displays cursor position data. Jumps to specific fields. Folding Record Blocks. Extracts Data. Builtin dialogs to configure file-type, record-type & fields; Themes & Colors; and Folding.",
+		"author": "Shridhar Kumar",
+		"homepage": "https://github.com/shriprem/NestedDSV"
 	},
 	"nppAutoDetectIndent": {
 		"folder-name": "nppAutoDetectIndent",
@@ -222,6 +240,14 @@
 		"author": "Dmitry Budik",
 		"homepage": "https://github.com/DIMOSUS/NppRgaIsaPlugin"
 	},
+	"NppSnippets": {
+		"folder-name": "NppSnippets",
+		"display-name": "Snippets",
+		"version": "1.7.1",
+		"description": "Adds the possibility to add code snippets to the current document by selecting them from a simple list.",
+		"author": "Frank Fesevur",
+		"homepage": "https://www.fesevur.com/nppsnippets"
+	},
 	"NppStripIpAndHost": {
 		"folder-name": "NppStripIpAndHost",
 		"display-name": "NppStripIpAndHost",
@@ -229,6 +255,14 @@
 		"description": "Strips out sensitive IP addresses (IPv4 & IPv6) and hostnames from text files and server logs. Features a custom replacement UI and safe per-document undo.",
 		"author": "Tomas Larsson",
 		"homepage": "https://github.com/larreblarsson/NppStripIpAndHost.git"
+	},
+	"NppTags": {
+		"folder-name": "NppTags",
+		"display-name": "NppTags",
+		"version": "0.9.1",
+		"description": "NppTags is a Universal Ctags plug-in to browse through your sources easily and lets you jump to a selected function / variable / class / etc in your code by pressing just one key.",
+		"author": "Frank Fesevur",
+		"homepage": "https://www.fesevur.com/npptags"
 	},
 	"NppTaskList": {
 		"folder-name": "NppTaskList",

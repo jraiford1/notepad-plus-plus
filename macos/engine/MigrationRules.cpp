@@ -82,6 +82,9 @@ namespace nppmigrate
 			{"fopen", "nppmac::fopen"},         // reads '\\' in paths as a separator
 			{"ifstream", "nppmac::ifstream"},   // file streams that also open UTF-16 paths
 			{"ofstream", "nppmac::ofstream"},
+			{"wifstream", "nppmac::wifstream"}, // wide file streams on char16_t, byte for byte by default
+			{"wofstream", "nppmac::wofstream"},
+			{"wfstream", "nppmac::wfstream"},
 			// The narrow printf family formats as on Windows (LLP64: %ld and %lu are 32-bit, %I64d, ...).
 			{"sprintf", "nppmac::sprintf"},
 			{"snprintf", "nppmac::snprintf"},
@@ -90,6 +93,7 @@ namespace nppmigrate
 			{"vsnprintf", "nppmac::vsnprintf"},
 			{"_vsnprintf", "nppmac::vsnprintf"},
 			{"sprintf_s", "nppmac::sprintf_s"},
+			{"vsprintf_s", "nppmac::vsprintf_s"},
 			{"_snprintf_s", "nppmac::snprintf_s"},
 		};
 
@@ -212,7 +216,7 @@ namespace nppmigrate
 		return total;
 	}
 
-	MigrationResult migrateSource(const std::string& source)
+	MigrationResult migrateSource(const std::string& source, Language language)
 	{
 		const std::vector<RawToken> tokens = lexFile(source);
 		std::vector<Edit> edits;
@@ -289,6 +293,10 @@ namespace nppmigrate
 				edits.push_back({token._offset, token._length, std::string{it->second}, RuleId::wideStdType});
 				continue;
 			}
+
+			// The runtime's C++ replacements, which C code does not have.
+			if (language == Language::c)
+				continue;
 
 			if (auto it = g_stdQualifiedReplacements.find(token._text); isStdQualified && it != g_stdQualifiedReplacements.end())
 			{
