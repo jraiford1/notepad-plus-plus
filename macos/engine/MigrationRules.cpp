@@ -53,6 +53,10 @@ namespace nppmigrate
 		const std::unordered_map<std::string_view, std::string_view> g_stdTypeRenames = {
 			{"wstring", "u16string"},
 			{"wstring_view", "u16string_view"},
+			// The streams of char16_t, as the runtime's wide file streams are (nppmac::wofstream...).
+			{"wostream", "basic_ostream<char16_t>"},
+			{"wistream", "basic_istream<char16_t>"},
+			{"wiostream", "basic_iostream<char16_t>"},
 		};
 
 		// std names that libc++ cannot provide for char16_t (no ctype<char16_t> facet, no to_u16string):
@@ -110,7 +114,7 @@ namespace nppmigrate
 		const std::unordered_set<std::string_view> g_wideCFunctions = {
 			"wcslen", "wcsnlen", "wcscmp", "wcsncmp", "wcscpy", "wcsncpy", "wcscat", "wcsncat",
 			"wcschr", "wcsrchr", "wcsstr", "wcspbrk", "wcsspn", "wcscspn", "wcstok", "wcscoll",
-			"wcstol", "wcstoul", "wcstoll", "wcstoull", "wcstod", "wcstof",
+			"wcstol", "wcstoul", "wcstoll", "wcstoull", "wcstod", "wcstold", "wcstof", "wcsftime",
 			"wmemcpy", "wmemmove", "wmemset", "wmemcmp", "wmemchr",
 		};
 
@@ -163,7 +167,24 @@ namespace nppmigrate
 			return tokens;
 		}
 
-		bool isIdentifier(const RawToken& token, std::string_view text = {})
+		bool isIdentifier(const RawToken& token, std::string_view text = {});
+
+		// Whether a function name is declared rather than called: after a type ("FILE* fopen(", "int
+		// sprintf("), a class's own function of that name keeps it. Keywords before it make a call
+		// ("return fopen(").
+		bool declaresName(const RawToken* prev)
+		{
+			static const std::unordered_set<std::string_view> uses = {
+				"return", "else", "do", "case", "throw", "co_return", "co_yield", "co_await", "new", "delete", "sizeof", "decltype",
+			};
+			if (!prev)
+				return false;
+			if (prev->_kind == clang::tok::star || prev->_kind == clang::tok::amp)
+				return true;
+			return isIdentifier(*prev) && uses.count(prev->_text) == 0;
+		}
+
+		bool isIdentifier(const RawToken& token, std::string_view text)
 		{
 			return token._kind == clang::tok::raw_identifier && (text.empty() || token._text == text);
 		}
@@ -206,6 +227,10 @@ namespace nppmigrate
 				return "includeSeparator";
 			case RuleId::integerSuffix:
 				return "integerSuffix";
+			case RuleId::selectAny:
+				return "selectAny";
+			case RuleId::pathWideString:
+				return "pathWideString";
 			case RuleId::ruleCount:
 				break;
 		}
@@ -224,6 +249,16 @@ namespace nppmigrate
 	{
 		const std::vector<RawToken> tokens = lexFile(source);
 		std::vector<Edit> edits;
+
+		// The names of the file's own classes (exprtk's "class getline", for one): bare, they are never
+		// the standard library's.
+		std::unordered_set<std::string_view> ownClasses;
+		for (size_t i = 0; i + 1 < tokens.size(); ++i)
+		{
+			if ((isIdentifier(tokens[i], "class") || isIdentifier(tokens[i], "struct") || isIdentifier(tokens[i], "union"))
+				&& isIdentifier(tokens[i + 1]))
+				ownClasses.insert(tokens[i + 1]._text);
+		}
 
 		bool inIncludeDirective = false;
 		for (size_t i = 0; i < tokens.size(); ++i)
@@ -292,9 +327,25 @@ namespace nppmigrate
 			const RawToken* prev2 = i >= 2 ? &tokens[i - 2] : nullptr;
 			const RawToken* next = i + 1 < tokens.size() ? &tokens[i + 1] : nullptr;
 
+			// A macro's own name (#define sprintf sprintf_unsafe, #ifndef...) stays what the code names it.
+			if (prev && prev2 && prev2->_kind == clang::tok::hash && (isIdentifier(*prev, "define") || isIdentifier(*prev, "undef")
+				|| isIdentifier(*prev, "ifdef") || isIdentifier(*prev, "ifndef")))
+				continue;
+
 			if (token._text == "L" && next && next->_kind == clang::tok::hashhash)
 			{
 				edits.push_back({token._offset, token._length, "u", RuleId::wideTokenPaste});
+				continue;
+			}
+
+			// __declspec(selectany): the linker keeps one of a variable's definitions in headers; clang
+			// does not have it outside Windows, and C++17's inline variables are the same.
+			if (token._text == "__declspec" && i + 3 < tokens.size() && tokens[i + 1]._kind == clang::tok::l_paren
+				&& isIdentifier(tokens[i + 2], "selectany") && tokens[i + 3]._kind == clang::tok::r_paren)
+			{
+				const RawToken& close = tokens[i + 3];
+				edits.push_back({token._offset, close._offset + close._length - token._offset, "inline", RuleId::selectAny});
+				i += 3;
 				continue;
 			}
 
@@ -309,6 +360,13 @@ namespace nppmigrate
 			const bool isStdQualified = isQualified && prev2 && isIdentifier(*prev2, "std");
 			const bool isGlobalQualified = isQualified && (!prev2 || (!isIdentifier(*prev2) && prev2->_kind != clang::tok::greater));
 			const bool isOtherQualified = isQualified && !isStdQualified && !isGlobalQualified;
+			// A path's UTF-16 form is path::wstring() on Windows, path::u16string() here: std::filesystem's
+			// own paths (from directory iterators, canonical()...) give wchar_t's std::wstring.
+			if (isMember && token._text == "wstring" && next && next->_kind == clang::tok::l_paren)
+			{
+				edits.push_back({token._offset, token._length, "u16string", RuleId::pathWideString});
+				continue;
+			}
 			if (isMember || isOtherQualified)
 				continue;
 
@@ -328,7 +386,9 @@ namespace nppmigrate
 				continue;
 			}
 
-			if (auto it = g_stdReplacements.find(token._text); it != g_stdReplacements.end())
+			if (auto it = g_stdReplacements.find(token._text); it != g_stdReplacements.end()
+				&& !(!isStdQualified && next && next->_kind == clang::tok::l_paren && declaresName(prev))
+				&& !(!isStdQualified && ownClasses.count(token._text) != 0))
 			{
 				// Replace "std::name" as a whole, or a bare "name" brought in by "using namespace std".
 				const size_t start = isStdQualified ? prev2->_offset : token._offset;

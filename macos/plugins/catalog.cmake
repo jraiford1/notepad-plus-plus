@@ -465,3 +465,93 @@ nppmac_add_external_plugin(NppJavaPlugin
 	RC_FILES src/NppJavaPlugin.rc src/PluginInfrastructure/NppPluginMain.rc
 	INCLUDES vs.proj src
 	DEFINES NppJavaPlugin_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(Compose
+	DISPLAY_NAME Compose
+	VERSION 1.1.1
+	GIT https://github.com/Coises/Compose-for-NotepadPlusPlus.git
+	COMMIT 92e427968c88c00f64518863b4f50a3880b29779
+	SOURCES src/About.cpp src/ComposeKeyDialog.cpp src/Configuration.cpp src/Framework/PluginFramework.cpp src/Framework/ScintillaCallEx.cpp src/LoadSequenceDefinitions.cpp src/ProcessCommands.cpp src/ProcessCompose.cpp src/Plugin.cpp src/ProcessNotifications.cpp
+	RC_FILES src/resource.rc
+	INCLUDES .
+	DEFINES NPPPLUGINTEMPLATE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(ElasticTabstops
+	DISPLAY_NAME ElasticTabstops
+	VERSION 1.5.0
+	GIT https://github.com/mariusv-github/ElasticTabstops.git
+	COMMIT 291a9fcee6fcdb1f0c79667138e5377e103f1476
+	SOURCES src/AboutDialog.cpp src/Hyperlinks.cpp src/ElasticTabstops.cpp
+	RC_FILES src/resource.rc
+	INCLUDES src src/Dialogs src/Parsers src/Npp src/Utilities
+	DEFINES __STDC_WANT_SECURE_LIB__=1 _CRT_NONSTDC_NO_DEPRECATE INCLUDE_DEPRECATED_FEATURES)
+
+nppmac_add_external_plugin(HexEditor
+	DISPLAY_NAME HEX-Editor
+	VERSION 0.9.14.0
+	GIT https://github.com/chcg/NPP_HexEditor.git
+	COMMIT 026debb7d650f87a27f1199d945c4b3518064662
+	SOURCES Common/Ccpp/Common.cpp Common/Ccpp/dpiManagerV2.cpp Common/Ccpp/StaticDialog.cpp Common/Ccpp/NppDarkModeDummy.cpp HexEditor/src/HelpDlg/HelpDialog.cpp HexEditor/src/HelpDlg/URLCtrl.cpp HexEditor/src/Hex.cpp HexEditor/src/HEXDialog.cpp HexEditor/src/misc/ColorCombo.cpp HexEditor/src/misc/ColorPopup.cpp HexEditor/src/misc/ModifyMenu.cpp HexEditor/src/misc/MultiTypeCombo.cpp HexEditor/src/OptionDlg/ColumnDialog.cpp HexEditor/src/OptionDlg/OptionDialog.cpp HexEditor/src/UserDlg/CompareDialog.cpp HexEditor/src/UserDlg/FindReplaceDialog.cpp HexEditor/src/UserDlg/GotoDialog.cpp HexEditor/src/UserDlg/PatternDialog.cpp HexEditor/src/Utf8_16.cpp
+	RC_FILES HexEditor/src/HEXDialog.rc
+	INCLUDES HexEditor/projects/2003 HexEditor/src HexEditor/src/HelpDlg HexEditor/src/MISC HexEditor/src/OptionDlg HexEditor/src/UserDlg Common/Ccpp NativeLang/src
+	DEFINES _CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES HEXEDITOR_EXPORTS)
+
+# LuaScript: Lua, which its Windows build makes a DLL of its own (Lua.vcxproj), is built into the plugin,
+# configured for macOS (LUA_USE_MACOSX) as Windows' build is by _WIN32.
+nppmac_add_external_plugin(LuaScript
+	DISPLAY_NAME LuaScript
+	VERSION 0.12
+	GIT https://github.com/dail8859/LuaScript.git
+	COMMIT a4dd230779d099f16962bc4c00f465a7d58e36d9
+	SOURCES src/Dialogs/AboutDialog.cpp src/Dialogs/ConsoleDialog.cpp src/Dialogs/Hyperlinks.cpp src/Dialogs/StaticDialog.cpp src/IFaceTableMixer.cpp src/LuaConsole.cpp src/luawinfile/winfile.c src/NppExtensionAPI.cpp src/LuaScript.cpp src/NppIFaceTable.cpp src/SciIFaceTable.cpp src/SciTE/GUIWin.cpp src/SciTE/IFaceTable.cpp src/SciTE/LuaExtension.cpp src/SciTE/StyleWriter.cpp
+		src/lua/src/lapi.c src/lua/src/lauxlib.c src/lua/src/lbaselib.c src/lua/src/lbitlib.c src/lua/src/lcode.c src/lua/src/lcorolib.c src/lua/src/lctype.c src/lua/src/ldblib.c src/lua/src/ldebug.c src/lua/src/ldo.c src/lua/src/ldump.c src/lua/src/lfunc.c src/lua/src/lgc.c src/lua/src/linit.c src/lua/src/liolib.c src/lua/src/llex.c src/lua/src/lmathlib.c src/lua/src/lmem.c src/lua/src/loadlib.c src/lua/src/lobject.c src/lua/src/lopcodes.c src/lua/src/loslib.c src/lua/src/lparser.c src/lua/src/lstate.c src/lua/src/lstring.c src/lua/src/lstrlib.c src/lua/src/ltable.c src/lua/src/ltablib.c src/lua/src/ltm.c src/lua/src/lundump.c src/lua/src/lutf8lib.c src/lua/src/lvm.c src/lua/src/lzio.c
+	RC_FILES src/Dialogs/resource.rc src/Dialogs/Version.rc
+	INCLUDES src src/SciTE src/lua/src src/Dialogs src/Npp src/Utilities
+	DEFINES WIN32_LEAN_AND_MEAN __STDC_WANT_SECURE_LIB__=1 _CRT_NONSTDC_NO_DEPRECATE LUA_USE_MACOSX)
+
+# MultiReplace: Lua's two programs (lua.c, luac.c, each with a main) are left out of the plugin.
+nppmac_add_external_plugin(MultiReplace
+	DISPLAY_NAME MultiReplace
+	VERSION 6.1.0.37
+	GIT https://github.com/daddel80/notepadpp-multireplace.git
+	COMMIT db5065e524ea2b2344cd082488c7f4c9b47ef99f
+	SOURCES src/ColumnTabs.cpp src/OnePassHits.cpp src/ConfigManager.cpp src/CsvListFormat.cpp src/DialogFreeze.cpp src/DirectoryWalk.cpp src/DPIManager.cpp src/DropTarget.cpp src/Encoding.cpp src/engine/EngineFactory.cpp src/engine/ExprTkEngine.cpp src/engine/Iformulaengine.cpp src/engine/LuaEngine.cpp src/exprtk/DateParse.cpp src/exprtk/EcmdParser.cpp src/exprtk/ExprTkPatternParser.cpp src/exprtk/FormatSpec.cpp src/exprtk/MatchHistory.cpp src/exprtk/MatchHistoryAnalysis.cpp src/exprtk/NumberParse.cpp src/FileDialogUtil.cpp src/FileLoad.cpp src/FileLoadPool.cpp src/image_data.cpp src/IniFileCache.cpp src/LanguageManager.cpp src/language_mapping.cpp src/ListCodec.cpp src/lua/lapi.c src/lua/lauxlib.c src/lua/lcode.c src/lua/ldebug.c src/lua/ldo.c src/lua/lgc.c src/lua/liolib.c src/lua/lparser.c src/lua/lstate.c src/lua/lstring.c src/lua/lstrlib.c src/lua/ltable.c src/lua/lvm.c src/AboutDialog.cpp src/lua/lbaselib.c src/lua/lcorolib.c src/lua/lctype.c src/lua/ldblib.c src/lua/ldump.c src/lua/lfunc.c src/lua/linit.c src/lua/llex.c src/lua/lmathlib.c src/lua/lmem.c src/lua/loadlib.c src/lua/lobject.c src/lua/lopcodes.c src/lua/loslib.c src/lua/ltablib.c src/lua/ltm.c src/lua/lundump.c src/lua/lutf8lib.c src/lua/lzio.c src/MultiReplaceConfigDialog.cpp src/MultiReplacePanel.cpp src/MultiReplace.cpp src/MultiReplacePanel_BatchUI.cpp src/MultiReplacePanel_FlowTabs.cpp src/MultiReplacePanel_FormulaDebug.cpp src/NppStyleKit.cpp src/NumericToken.cpp src/PluginDefinition.cpp src/ResultDock.cpp src/StaticDialog/StaticDialog.cpp src/StringUtils.cpp src/TandemDock.cpp src/UndoRedoManager.cpp
+	RC_FILES src/MultiReplace.rc src/StaticDialog/resource.rc
+	INCLUDES vs.proj src/lua
+	DEFINES NPPPLUGINTEMPLATE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+# MZC8051: its sources are written in GBK.
+nppmac_add_external_plugin(MZC8051
+	DISPLAY_NAME MZC8051
+	VERSION 0.0.1
+	GIT https://github.com/Jiangshan00001/npp_MZC8051.git
+	COMMIT fb6eb297ee4f2405e6b6b2787ef05daf11e311c2
+	SOURCES src/dir_file.cpp src/DockingFeature/GoToLineDlg.cpp src/DockingFeature/StaticDialog.cpp src/myexecute.cpp src/NppPluginDemo.cpp src/osdialog.c src/osdialog_win.c src/PluginDefinition.cpp src/replace.cpp src/text_encode.cpp
+	RC_FILES src/DockingFeature/goLine.rc src/NppPluginDemo.rc
+	INCLUDES vs.proj
+	DEFINES NPPPLUGINDEMO_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1
+	ENCODING GBK)
+
+nppmac_add_external_plugin(NppTextFX
+	DISPLAY_NAME NppTextFX2
+	VERSION 2.0.3
+	GIT https://github.com/rainman74/NPPTextFX2.git
+	COMMIT 71ec1ead277ef311ed3216df3c1ce19ea4985518
+	SOURCES Minilzo/minilzo.cpp Src/CapsTables.cpp Src/MicroXML/MicroXML.cpp Src/NPPTextFX.cpp Src/Poppad/Popfind.cpp Src/Scintilla/UniConversion.cpp Src/TransformsA.cpp Src/TransformsW.cpp
+	RC_FILES Src/NPPTextFX.rc
+	INCLUDES VC SRC
+	FORCED_INCLUDES VC/defines.h
+	CHARACTER_SET MultiByte
+	DEFINES TEXTFX_EXPORTS NPP_UNICODE)
+
+# Papyrus: its package (dist) has the lexer's styles, their dark theme and extras beside the DLL.
+nppmac_add_external_plugin(Papyrus
+	DISPLAY_NAME "Papyrus Script Lexer"
+	VERSION 1.2.2.354
+	GIT https://github.com/blu3mania/npp-papyrus.git
+	COMMIT 888d44af0b63368179755ca79d4f2be319b0377f
+	SOURCES src/DllMain.cpp src/external/lexilla/Accessor.cxx src/external/lexilla/PropSetSimple.cxx src/external/lexilla/WordList.cxx src/external/npp/ColourPicker.cpp src/external/npp/ColourPopup.cpp src/external/npp/Common.cpp src/external/npp/DarkMode.cpp src/external/npp/NppDarkMode.cpp src/external/npp/StaticDialog.cpp src/external/npp/URLCtrl.cpp src/external/tinyxml2/tinyxml2.cpp src/external/XMessageBox/XMessageBox.cpp src/Plugin/Common/Game.cpp src/Plugin/Common/Logger.cpp src/Plugin/Common/NotepadPlusPlus.cpp src/Plugin/Common/StringUtil.cpp src/Plugin/Common/Timer.cpp src/Plugin/Common/Version.cpp src/Plugin/CompilationErrorHandling/ErrorAnnotator.cpp src/Plugin/CompilationErrorHandling/ErrorsWindow.cpp src/Plugin/Compiler/Compiler.cpp src/Plugin/Compiler/CompilerSettings.cpp src/Plugin/Lexer/Lexer.cpp src/Plugin/Lexer/LexerDefinition.cpp src/Plugin/Lexer/SimpleLexerBase.cpp src/Plugin/KeywordMatcher/KeywordMatcher.cpp src/Plugin/Plugin.cpp src/Plugin/PluginDefinition.cpp src/Plugin/Settings/Settings.cpp src/Plugin/Settings/SettingsDialog.cpp src/Plugin/Settings/SettingsStorage.cpp src/Plugin/UI/AboutDialog.cpp src/Plugin/UI/DialogBase.cpp src/Plugin/UI/MultiTabbedDialog.cpp
+	RC_FILES src/Plugin/Resources.rc
+	INCLUDES src src/external/gsl/include src/external/lexilla src/external/npp src/external/scintilla
+	CXX_STANDARD 23
+	PACKAGE_DIR dist)

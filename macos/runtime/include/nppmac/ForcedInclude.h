@@ -38,6 +38,11 @@
 #define DECLSPEC_IMPORT __attribute__((visibility("default")))
 #endif
 
+// Visual C++'s __noop intrinsic: a call to it is not compiled, its arguments neither.
+#ifndef __noop
+#define __noop(...) ((void)0)
+#endif
+
 #include "nppmac/PlatformDecls.h"
 
 #ifdef __cplusplus
@@ -49,4 +54,8 @@
 // SDK does not have) defines it.
 #include <stdint.h>
 typedef uint_least16_t char16_t;
+// What the Microsoft CRT gives C code besides: errno, which its stddef.h and stdlib.h declare, and its
+// wide functions.
+#include <errno.h>
+#include "nppmac/WideCrt.h"
 #endif

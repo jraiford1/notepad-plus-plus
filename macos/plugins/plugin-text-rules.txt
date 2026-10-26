@@ -22,6 +22,11 @@ files: *
 line: pszText
 regex: (pszText\s*=\s*)((?:TEXT|_T)\s*\(\s*"(?:[^"\\]|\\.)*"\s*\)|L"(?:[^"\\]|\\.)*") => $1const_cast<LPTSTR>($2)
 
+# The same for a menu item's text (MENUITEMINFO dwTypeData), which InsertMenuItem only reads.
+files: *
+line: dwTypeData
+regex: (dwTypeData\s*=\s*)((?:TEXT|_T)\s*\(\s*"(?:[^"\\]|\\.)*"\s*\)|L"(?:[^"\\]|\\.)*") => $1const_cast<LPTSTR>($2)
+
 # --- Single plugins: rules for one plugin's own files (its name, then its path) ---
 
 # BigFiles' message helper takes the message as wchar_t *, and is given literals.
@@ -119,3 +124,124 @@ replace: sqlite3_open16(_dbFile.c_str(), &_db) => sqlite3_open(nppmac::nativePat
 files: NppTags/SqliteDB.cpp
 line: sqlite3_open16(_dbFile, &_db)
 replace: sqlite3_open16(_dbFile, &_db) => sqlite3_open(nppmac::nativePath(std::u16string_view{_dbFile}).c_str(), &_db)
+
+# ElasticTabstops names a variable "not", which is an operator in C++ (Visual C++ takes it as a name).
+files: ElasticTabstops/src/ElasticTabstops.h
+line: bool not =
+replace: bool not = => bool negated =
+
+files: ElasticTabstops/src/ElasticTabstops.h
+line: extension.c_str()+not
+regex: \bnot\b => negated
+
+# HexEditor's list column and option tab names: literals given where Windows' headers have TCHAR *.
+files: HexEditor/HexEditor/src/HEXDialog.cpp
+line: _T("Address"), 7, 0 };
+replace: _T("Address") => const_cast<LPTSTR>(_T("Address"))
+
+files: HexEditor/HexEditor/src/OptionDlg/OptionDialog.cpp
+line: static LPTSTR	szTabNames[32]
+replace: static LPTSTR	szTabNames[32] => static LPCTSTR	szTabNames[32]
+
+# HexEditor's cursor timer takes the time as unsigned long, Windows' DWORD (32 bits there).
+files: HexEditor/HexEditor/src/HEXDialog.h
+line: static void CALLBACK cursorFunc(
+replace: unsigned long lParam => DWORD lParam
+
+# Compose writes sizeof INPUT without parentheses (Visual C++ allows it for a type name).
+files: Compose/src/*.cpp
+line: sizeof INPUT
+replace: sizeof INPUT => sizeof(INPUT)
+
+# Compose gives JSON values to functions taking a string_view, which Visual C++ converts implicitly.
+files: Compose/src/LoadSequenceDefinitions.cpp
+line: auto s = utf8to32(j);
+replace: utf8to32(j) => utf8to32(j.get<std::string>())
+
+files: Compose/src/ProcessCompose.cpp
+line: sendString(utf8to16(rule.value()));
+replace: utf8to16(rule.value()) => utf8to16(rule.value().get<std::string>())
+
+# LuaScript's SciTE GUI layer takes macOS for a narrow-character platform; here it is Windows'.
+files: LuaScript/src/SciTE/GUI.h
+line: #if defined(GTK) || defined(__APPLE__)
+replace: #if defined(GTK) || defined(__APPLE__) => #if defined(GTK)
+
+# LuaScript's binary_find puts const between typename and the name it qualifies, which Visual C++
+# accepts; the const goes first.
+files: LuaScript/src/SciTE/IFaceTable.cpp
+line: static typename const std::iterator_traits<Iter>::value_type
+replace: static typename const => static const typename
+
+# LuaScript sorts the name lists that functions return, binding the temporaries to a reference to
+# non-const, as Visual C++ allows: it takes either kind.
+files: LuaScript/src/LuaConsole.cpp
+line: static std::vector<std::string> &sortCaseInsensitive(std::vector<std::string> &strings)
+replace: static std::vector<std::string> &sortCaseInsensitive(std::vector<std::string> &strings) => template <typename Strings> static std::vector<std::string> &sortCaseInsensitive(Strings &&strings)
+
+# MultiReplace reads the rest of a wide string stream through std::istreambuf_iterator, which takes
+# the stream's buffer: the runtime's char16_t string stream gives its UTF-16 buffer by rdbuf().
+files: MultiReplace/src/MultiReplacePanel.cpp
+line: (std::istreambuf_iterator<wchar_t>(contentStream))
+replace: (contentStream)) => (contentStream.rdbuf()))
+
+# MultiReplace's Lua engine declares the panel's file loader at block scope inside its namespace, which
+# names a function of that namespace; Visual C++ links it to the global one, where it is defined. It
+# is declared there, and the block brings it in.
+files: MultiReplace/src/engine/LuaEngine.cpp
+line: namespace MultiReplaceEngine {
+replace: namespace MultiReplaceEngine { => int luaSafeLoadFileSandbox_impl(lua_State* L); namespace MultiReplaceEngine {
+
+files: MultiReplace/src/engine/LuaEngine.cpp
+line: extern int luaSafeLoadFileSandbox_impl(lua_State * L);
+replace: extern int luaSafeLoadFileSandbox_impl(lua_State * L); => using ::luaSafeLoadFileSandbox_impl;
+
+# NppTextFX's LZO takes _WIN64, which Wine's headers define on every 64-bit target, for Windows and its
+# type model (a 32-bit long); macOS is a case of its own further on.
+files: NppTextFX/MINILZO/*
+line: #elif defined(__WIN64__) || defined(_WIN64) || defined(WIN64)
+replace: #elif defined(__WIN64__) || defined(_WIN64) || defined(WIN64) => #elif (defined(__WIN64__) || defined(_WIN64) || defined(WIN64)) && !defined(__APPLE__)
+
+files: NppTextFX/MINILZO/*
+line: #elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__)
+replace: #elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__) => #elif (defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__)) && !defined(__APPLE__)
+
+# NppTextFX changes the case of one character by passing it as the string pointer (user32's form),
+# through unsigned, which is smaller than a pointer here: through uintptr_t.
+files: NppTextFX/SRC/CapsTables.H
+line: #define Char
+regex: \(unsigned\)(Char(?:Upper|Lower)[AW]\(\((?:wchar_t|char) \*\))\(unsigned\) => (uintptr_t)$1(uintptr_t)
+
+# NppTextFX's find dialog declares g_fOnNT again inside an extern "C" block, after CapsTables.h has
+# declared it for C++; Visual C++ keeps the first declaration.
+files: NppTextFX/SRC/Poppad/Popfind.cpp
+line: extern BOOL g_fOnNT;
+replace: extern BOOL g_fOnNT; => // g_fOnNT: declared by CapsTables.h
+
+# NppTextFX calls the Microsoft library's _snwprintf by MinGW's name, snwprintf, with compilers other
+# than MinGW's; the runtime's library is Microsoft's.
+files: NppTextFX/SRC/Poppad/Popfind.cpp
+line: #if defined(__WATCOMC__) || defined(__DMC__) || defined(_MSC_VER)
+replace: defined(_MSC_VER) => defined(_MSC_VER) || defined(NPPMAC)
+
+# Papyrus's Topic and PrimitiveTypeValueMonitor have a member template whose parameter is named T like
+# the class template's, which Visual C++ lets hide it. The member is only used with the class's own T:
+# its parameter takes another name.
+files: Papyrus/src/Plugin/Common/Topic.hpp
+line: template <class T>
+regex: ^(\s{4,})template <class T> => $1template <class U>
+
+files: Papyrus/src/Plugin/Common/PrimitiveTypeValueMonitor.hpp
+line: template <class T>
+regex: ^(\s{4,})template <class T> => $1template <class U>
+
+# Papyrus defines its exported functions in its namespace with C++ names, and exports them by their
+# plain names through a module-definition file (Exports.def), which Visual C++'s linker matches to
+# them. Here they have C linkage: the same functions as PluginInterface.h's extern "C" declarations.
+files: Papyrus/src/Plugin/PluginDefinition.cpp
+line: ) {
+regex: ^(  )(\S.*\) \{) => $1extern "C" $2
+
+files: Papyrus/src/Plugin/Lexer/LexerDefinition.cpp
+line: SCI_METHOD
+regex: ^(  )(\S.* SCI_METHOD .*\) \{) => $1extern "C" $2

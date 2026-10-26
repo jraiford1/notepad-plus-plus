@@ -54,6 +54,16 @@ namespace nppmac::platform
 	std::string homeDirectory();
 	std::string userName();
 	std::string fullUserName(); // as the user's account shows it ("Jane Appleseed")
+
+	// Unicode normalization: form C, D, KC or KD.
+	enum class Normalization
+	{
+		composed,
+		decomposed,
+		compatibilityComposed,
+		compatibilityDecomposed,
+	};
+	std::u16string normalize(std::u16string_view text, Normalization form);
 	std::string computerName();
 
 	// Opens a URL or a file with its default application. Returns false on failure.

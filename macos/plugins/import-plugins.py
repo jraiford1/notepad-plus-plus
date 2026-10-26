@@ -50,12 +50,16 @@ def is_release_x64(condition):
 
 def read_project(path):
 	root = ElementTree.parse(path).getroot()
-	project = {'type': None, 'sources': [], 'rc': [], 'includes': [], 'defines': [], 'rc_defines': [], 'references': []}
+	project = {'type': None, 'character_set': 'Unicode', 'language_standard': None, 'sources': [], 'rc': [], 'includes': [], 'defines': [],
+		'forced_includes': [], 'rc_defines': [], 'references': []}
 	for group in root.iter(MSBUILD + 'PropertyGroup'):
 		if is_release_x64(group.get('Condition')):
 			kind = group.find(MSBUILD + 'ConfigurationType')
 			if kind is not None:
 				project['type'] = kind.text
+			character_set = group.find(MSBUILD + 'CharacterSet')
+			if character_set is not None:
+				project['character_set'] = character_set.text
 			# VC++ Directories > Include Directories.
 			include_path = group.find(MSBUILD + 'IncludePath')
 			if include_path is not None and include_path.text:
@@ -87,12 +91,18 @@ def read_project(path):
 		compile_settings = group.find(MSBUILD + 'ClCompile')
 		if compile_settings is None:
 			continue
+		standard = compile_settings.find(MSBUILD + 'LanguageStandard')
+		if standard is not None and standard.text:
+			project['language_standard'] = standard.text
 		includes = compile_settings.find(MSBUILD + 'AdditionalIncludeDirectories')
 		defines = compile_settings.find(MSBUILD + 'PreprocessorDefinitions')
 		if includes is not None and includes.text:
 			project['includes'] += [i.replace('\\', '/') for i in includes.text.split(';') if i and '%(' not in i]
 		if defines is not None and defines.text:
 			project['defines'] += [d for d in defines.text.split(';') if d and '%(' not in d]
+		forced_includes = compile_settings.find(MSBUILD + 'ForcedIncludeFiles')
+		if forced_includes is not None and forced_includes.text:
+			project['forced_includes'] += [f.replace('\\', '/') for f in forced_includes.text.split(';') if f and '%(' not in f]
 	return project
 
 
@@ -173,7 +183,8 @@ def solution_dir(checkout, project_path):
 
 def repository_path(checkout, project_dir, path, solution=None):
 	# A project-relative path as a repository-relative one; None outside the repository.
-	path = path.replace('$(ProjectDir)', '').replace('$(MSBuildProjectDirectory)', '.')
+	# $(ProjectDir) ends in a separator, and projects often write one after it too.
+	path = re.sub(r'\$\((?:ProjectDir|MSBuildProjectDirectory)\)/*', './', path)
 	if solution is not None:
 		path = path.replace('$(SolutionDir)', solution + '/')
 	if '$(' in path:
@@ -211,7 +222,15 @@ def entry(name, plugin, checkout):
 		sources += [repository_path(checkout, library_dir, s) for s in library['sources']]
 		library_includes = [repository_path(checkout, library_dir, i, solution) for i in library['includes']]
 		includes += [os.path.relpath(library_dir, checkout)] + [i for i in library_includes if i]
-	defines = [d for d in project['defines'] if d not in WINDOWS_ONLY_DEFINES and not d.startswith('$(')]
+	# The headers the compiler includes before each source, found as #include finds them.
+	forced_includes = []
+	for header in project['forced_includes']:
+		found = next((os.path.normpath(os.path.join(i, header)) for i in includes if os.path.isfile(os.path.join(checkout, i, header))), None)
+		if found is None:
+			return None, f'forced include {header} not found'
+		if found.replace(os.sep, '/') not in forced_includes:
+			forced_includes.append(found.replace(os.sep, '/'))
+	defines = list(dict.fromkeys(d for d in project['defines'] if d not in WINDOWS_ONLY_DEFINES and not d.startswith('$(')))
 	properties = project_properties(path)
 	rc_defines = [expand(d, properties) for d in project['rc_defines'] if d not in WINDOWS_ONLY_DEFINES]
 	rc_defines = [d for d in rc_defines if d and d not in ('_UNICODE', 'UNICODE')]
@@ -228,6 +247,13 @@ def entry(name, plugin, checkout):
 	if rc_files:
 		lines.append(f'\tRC_FILES {cmake_list(rc_files)}')
 	lines.append(f'\tINCLUDES {cmake_list(sorted(set(includes), key=includes.index))}')
+	if forced_includes:
+		lines.append(f'\tFORCED_INCLUDES {cmake_list(forced_includes)}')
+	if project['character_set'] == 'MultiByte':
+		lines.append('\tCHARACTER_SET MultiByte')
+	# The build's standard is C++20, which the runtime's headers need: only a newer one is the project's.
+	if project['language_standard'] in ('stdcpplatest', 'stdcpp23'):
+		lines.append('\tCXX_STANDARD 23')
 	if defines:
 		lines.append(f'\tDEFINES {cmake_list(defines)}')
 	if rc_defines:

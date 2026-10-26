@@ -213,7 +213,10 @@ if [ -n "$catalog" ] && [ -d "$catalog" ]; then
 		# The files the plugin's package has beside it (a default configuration...).
 		if [ -f "${dll%.dll}.files" ]; then
 			while IFS= read -r dataFile; do
-				[ -n "$dataFile" ] && cp "$(dirname "$dll")/$dataFile" "$pluginsRoot/$name/"
+				if [ -n "$dataFile" ]; then
+					mkdir -p "$(dirname "$pluginsRoot/$name/$dataFile")"
+					cp "$(dirname "$dll")/$dataFile" "$pluginsRoot/$name/$dataFile"
+				fi
 			done < "${dll%.dll}.files"
 		fi
 		catalogInstalled+=("$name")

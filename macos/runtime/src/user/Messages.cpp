@@ -986,6 +986,12 @@ BOOL WINAPI PostMessageW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return TRUE;
 }
 
+// Posted messages carry no text (Windows refuses to post the ones that would): the same in both forms.
+BOOL WINAPI PostMessageA(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	return PostMessageW(hwnd, message, wParam, lParam);
+}
+
 BOOL WINAPI PostThreadMessageW(DWORD, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	postMessage(nullptr, message, wParam, lParam);
@@ -1740,6 +1746,53 @@ UINT WINAPI MapVirtualKeyW(UINT code, UINT mapType)
 	}
 }
 
+// A key's name, from the scan code (and extended flag) of a keyboard message's lParam: Windows'
+// English names.
+int WINAPI GetKeyNameTextW(LONG lParam, LPWSTR buffer, int size)
+{
+	if (!buffer || size <= 0)
+		return 0;
+	const UINT scanCode = (static_cast<UINT>(lParam) >> 16) & 0xFF;
+	const bool extended = (lParam & (1 << 24)) != 0;
+	UINT key = MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK);
+	static const std::pair<UINT, const char16_t*> names[] = {
+		{VK_ESCAPE, u"Esc"}, {VK_BACK, u"Backspace"}, {VK_TAB, u"Tab"}, {VK_RETURN, u"Enter"}, {VK_CONTROL, u"Ctrl"},
+		{VK_SHIFT, u"Shift"}, {VK_MENU, u"Alt"}, {VK_SPACE, u"Space"}, {VK_CAPITAL, u"Caps Lock"}, {VK_MULTIPLY, u"Num *"},
+		{VK_SUBTRACT, u"Num -"}, {VK_ADD, u"Num +"}, {VK_HOME, u"Home"}, {VK_END, u"End"}, {VK_PRIOR, u"Page Up"},
+		{VK_NEXT, u"Page Down"}, {VK_INSERT, u"Insert"}, {VK_DELETE, u"Delete"}, {VK_UP, u"Up"}, {VK_DOWN, u"Down"},
+		{VK_LEFT, u"Left"}, {VK_RIGHT, u"Right"},
+	};
+	std::u16string name;
+	if (key >= VK_F1 && key <= VK_F12)
+	{
+		name = u"F" + nppmac::to_u16string(key - VK_F1 + 1);
+	}
+	else if (const UINT ch = MapVirtualKeyW(key, MAPVK_VK_TO_CHAR); ch != 0 && key != VK_SPACE)
+	{
+		name = std::u16string(1, static_cast<char16_t>(ch));
+	}
+	else
+	{
+		for (const auto& [vk, text] : names)
+		{
+			if (vk == key)
+				name = text;
+		}
+		// Without the extended flag, the navigation keys are the keypad's.
+		if (!extended && (key == VK_HOME || key == VK_END || key == VK_PRIOR || key == VK_NEXT || key == VK_INSERT || key == VK_DELETE
+			|| key == VK_UP || key == VK_DOWN || key == VK_LEFT || key == VK_RIGHT))
+			name = u"Num " + name;
+		if (extended && key == VK_CONTROL)
+			name = u"Right Ctrl";
+		if (extended && key == VK_MENU)
+			name = u"Right Alt";
+	}
+	const size_t count = std::min<size_t>(name.size(), static_cast<size_t>(size - 1));
+	std::copy_n(name.begin(), count, buffer);
+	buffer[count] = u'\0';
+	return static_cast<int>(count);
+}
+
 UINT WINAPI MapVirtualKeyExW(UINT code, UINT mapType, HKL)
 {
 	return MapVirtualKeyW(code, mapType);
@@ -1782,9 +1835,39 @@ WORD WINAPI VkKeyScanExW(WCHAR ch, HKL)
 	return static_cast<WORD>(VkKeyScanW(ch));
 }
 
-UINT WINAPI SendInput(UINT, LPINPUT, int)
+// Input goes to the program's own focused window, as the messages it makes there: a key (and a
+// KEYEVENTF_UNICODE character as WM_CHAR). Nothing goes to the system: there is no system-wide input
+// to inject into, and mouse input is not simulated.
+UINT WINAPI SendInput(UINT count, LPINPUT inputs, int size)
 {
-	return 0;
+	if (!inputs || size != static_cast<int>(sizeof(INPUT)))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return 0;
+	}
+	for (UINT i = 0; i < count; ++i)
+	{
+		const INPUT& input = inputs[i];
+		HWND target = GetFocus();
+		if (input.type != INPUT_KEYBOARD || !target)
+			continue;
+		const KEYBDINPUT& key = input.ki;
+		const bool up = (key.dwFlags & KEYEVENTF_KEYUP) != 0;
+		if (key.dwFlags & KEYEVENTF_UNICODE)
+		{
+			if (!up)
+				PostMessageW(target, WM_CHAR, key.wScan, 1);
+			continue;
+		}
+		// lParam: repeat count 1, the scan code, extended key, and for a key up its previous state and transition.
+		LPARAM lParam = 1 | (static_cast<LPARAM>(key.wScan & 0xFF) << 16);
+		if (key.dwFlags & KEYEVENTF_EXTENDEDKEY)
+			lParam |= 1 << 24;
+		if (up)
+			lParam |= static_cast<LPARAM>(3) << 30;
+		PostMessageW(target, up ? WM_KEYUP : WM_KEYDOWN, key.wVk, lParam);
+	}
+	return count;
 }
 
 void WINAPI mouse_event(DWORD, DWORD, DWORD, DWORD, ULONG_PTR)

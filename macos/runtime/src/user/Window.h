@@ -109,6 +109,7 @@ namespace nppmac::user
 		bool _applyingGeometry = false;     // the window manager is moving the native window itself
 		bool _destroying = false;
 		bool _acceptsFiles = false;
+		IDropTarget* _dropTarget = nullptr; // RegisterDragDrop
 		bool _painting = false;             // inside BeginPaint/EndPaint
 		RECT _invalid{};                    // pending update region (bounding box), client coordinates
 		bool _eraseBackground = false;
@@ -150,6 +151,12 @@ namespace nppmac::user
 
 	Window* fromHandle(HWND hwnd);
 	std::vector<Window*> topLevelWindows();
+
+	// --- Drag and drop ----------------------------------------------------------------------------
+
+	// Gives the files of an HDROP to a drop target (RegisterDragDrop), as OLE does when they are let
+	// go over its window; the HDROP is the target's data from then on.
+	void dropOnTarget(IDropTarget* target, HGLOBAL drop, POINT screenPosition);
 
 	// --- Classes ----------------------------------------------------------------------------------
 

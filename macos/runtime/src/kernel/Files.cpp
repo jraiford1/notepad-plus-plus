@@ -35,6 +35,7 @@
 #include <mutex>
 #include <memory>
 #include <poll.h>
+#include <sys/attr.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
@@ -915,6 +916,11 @@ HANDLE WINAPI CreateFileMappingW(HANDLE fileHandle, LPSECURITY_ATTRIBUTES, DWORD
 	return createHandle(mapping);
 }
 
+HANDLE WINAPI CreateFileMappingA(HANDLE fileHandle, LPSECURITY_ATTRIBUTES security, DWORD protect, DWORD sizeHigh, DWORD sizeLow, LPCSTR name)
+{
+	return CreateFileMappingW(fileHandle, security, protect, sizeHigh, sizeLow, name ? nppmac::toUtf16(name).c_str() : nullptr);
+}
+
 LPVOID WINAPI MapViewOfFile(HANDLE mappingHandle, DWORD, DWORD offsetHigh, DWORD offsetLow, SIZE_T bytes)
 {
 	auto mapping = lookup<FileMapping>(mappingHandle);
@@ -1464,6 +1470,116 @@ UINT WINAPI GetDriveTypeW(LPCWSTR rootPath)
 	if (::statfs(rootPath ? toPosixPath(rootPath).c_str() : "/", &info) != 0)
 		return DRIVE_NO_ROOT_DIR;
 	return (info.f_flags & MNT_LOCAL) ? DRIVE_FIXED : DRIVE_REMOTE;
+}
+
+BOOL WINAPI GetVolumePathNameW(LPCWSTR fileName, LPWSTR volumePath, DWORD size)
+{
+	// The folder the file's volume is mounted on, ending in '/'.
+	struct statfs info{};
+	if (::statfs(toPosixPath(fileName).c_str(), &info) != 0)
+	{
+		setErrorFromErrno();
+		return FALSE;
+	}
+	std::u16string mountPoint = fromPosixPath(info.f_mntonname);
+	if (mountPoint.empty() || mountPoint.back() != u'/')
+		mountPoint += u'/';
+	if (mountPoint.size() >= size)
+	{
+		SetLastError(ERROR_FILENAME_EXCED_RANGE);
+		return FALSE;
+	}
+	std::copy(mountPoint.begin(), mountPoint.end(), volumePath);
+	volumePath[mountPoint.size()] = u'\0';
+	return TRUE;
+}
+
+// Volumes have no "\\?\Volume{GUID}\" names here: they are known by the folders they are mounted on.
+BOOL WINAPI GetVolumeNameForVolumeMountPointW(LPCWSTR, LPWSTR volumeName, DWORD size)
+{
+	if (volumeName && size > 0)
+		volumeName[0] = u'\0';
+	SetLastError(ERROR_NOT_SUPPORTED);
+	return FALSE;
+}
+
+DWORD WINAPI GetLogicalDriveStringsW(DWORD size, LPWSTR buffer)
+{
+	// The startup disk, then the other volumes (mounted under /Volumes): each a folder path ending in '/'.
+	std::u16string drives{u"/"};
+	drives.push_back(u'\0');
+	struct statfs* mounts = nullptr;
+	const int count = ::getmntinfo_r_np(&mounts, MNT_NOWAIT);
+	for (int i = 0; i < count; ++i)
+	{
+		const std::string_view mountPoint{mounts[i].f_mntonname};
+		if (mountPoint.starts_with("/Volumes/"))
+		{
+			drives += fromPosixPath(mountPoint);
+			drives += u'/';
+			drives.push_back(u'\0');
+		}
+	}
+	std::free(mounts);
+	if (drives.size() + 1 > size)
+		return static_cast<DWORD>(drives.size() + 1);
+	std::copy(drives.begin(), drives.end(), buffer);
+	buffer[drives.size()] = u'\0';
+	return static_cast<DWORD>(drives.size());
+}
+
+BOOL WINAPI GetVolumeInformationW(LPCWSTR rootPath, LPWSTR volumeName, DWORD volumeNameSize, LPDWORD serialNumber,
+	LPDWORD maxComponentLength, LPDWORD fileSystemFlags, LPWSTR fileSystemName, DWORD fileSystemNameSize)
+{
+	struct statfs info{};
+	if (::statfs(rootPath ? toPosixPath(rootPath).c_str() : "/", &info) != 0)
+	{
+		setErrorFromErrno();
+		return FALSE;
+	}
+	if (volumeName && volumeNameSize > 0)
+	{
+		// The volume's own name ("Macintosh HD" for the startup disk), which is not always its mount
+		// point's folder name.
+		struct VolumeName
+		{
+			u_int32_t length;
+			attrreference_t name;
+			char text[MAXPATHLEN];
+		} __attribute__((aligned(4), packed)) attributes{};
+		attrlist request{};
+		request.bitmapcount = ATTR_BIT_MAP_COUNT;
+		request.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
+		std::u16string name;
+		if (::getattrlist(info.f_mntonname, &request, &attributes, sizeof(attributes), 0) == 0)
+			name = fromPosixPath(reinterpret_cast<const char*>(&attributes.name) + attributes.name.attr_dataoffset);
+		wcsncpy_s(volumeName, volumeNameSize, name.c_str(), _TRUNCATE);
+	}
+	if (serialNumber)
+		*serialNumber = static_cast<DWORD>(info.f_fsid.val[0]);
+	if (maxComponentLength)
+		*maxComponentLength = NAME_MAX;
+	if (fileSystemFlags)
+	{
+		DWORD flags = FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK;
+		if (::pathconf(info.f_mntonname, _PC_CASE_SENSITIVE) == 1)
+			flags |= FILE_CASE_SENSITIVE_SEARCH;
+		if (info.f_flags & MNT_RDONLY)
+			flags |= FILE_READ_ONLY_VOLUME;
+		*fileSystemFlags = flags;
+	}
+	if (fileSystemName && fileSystemNameSize > 0)
+		wcsncpy_s(fileSystemName, fileSystemNameSize, fromPosixPath(info.f_fstypename).c_str(), _TRUNCATE);
+	return TRUE;
+}
+
+// Windows' device control codes: none has a meaning for macOS devices.
+BOOL WINAPI DeviceIoControl(HANDLE, DWORD, LPVOID, DWORD, LPVOID, DWORD, LPDWORD bytesReturned, LPOVERLAPPED)
+{
+	if (bytesReturned)
+		*bytesReturned = 0;
+	SetLastError(ERROR_NOT_SUPPORTED);
+	return FALSE;
 }
 
 // --- Pipes ----------------------------------------------------------------------------------------

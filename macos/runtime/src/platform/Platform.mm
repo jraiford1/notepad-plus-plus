@@ -141,6 +141,29 @@ namespace nppmac::platform
 		return toString(NSUserName());
 	}
 
+	std::u16string normalize(std::u16string_view text, Normalization form)
+	{
+		NSString* string = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(text.data()) length:text.size()];
+		switch (form)
+		{
+			case Normalization::composed:
+				string = string.precomposedStringWithCanonicalMapping;
+				break;
+			case Normalization::decomposed:
+				string = string.decomposedStringWithCanonicalMapping;
+				break;
+			case Normalization::compatibilityComposed:
+				string = string.precomposedStringWithCompatibilityMapping;
+				break;
+			case Normalization::compatibilityDecomposed:
+				string = string.decomposedStringWithCompatibilityMapping;
+				break;
+		}
+		std::u16string result(string.length, u'\0');
+		[string getCharacters:reinterpret_cast<unichar*>(result.data()) range:NSMakeRange(0, string.length)];
+		return result;
+	}
+
 	std::string fullUserName()
 	{
 		return toString(NSFullUserName());

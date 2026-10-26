@@ -22,7 +22,7 @@
 #     nppmac_add_plugin(<Name> SOURCE_DIR <dir> SOURCES <file>...)
 
 function(nppmac_add_plugin name)
-	cmake_parse_arguments(plugin "NPP_HEADERS" "SOURCE_DIR" "SOURCES;RC_FILES;RC_INCLUDES;RC_DEFINES" ${ARGN})
+	cmake_parse_arguments(plugin "NPP_HEADERS" "SOURCE_DIR;ENCODING" "SOURCES;RC_FILES;RC_INCLUDES;RC_DEFINES" ${ARGN})
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 	set(generatedSources "")
 	foreach(source IN LISTS plugin_SOURCES)
@@ -30,11 +30,16 @@ function(nppmac_add_plugin name)
 	endforeach()
 	set(migrationReport "${CMAKE_CURRENT_BINARY_DIR}/${name}/migration-report.tsv")
 	file(GLOB_RECURSE pluginFiles CONFIGURE_DEPENDS "${plugin_SOURCE_DIR}/*")
+	# Sources written in a code page (a plugin from a Chinese or Japanese Windows): ENCODING names it.
+	set(encodingOption "")
+	if(plugin_ENCODING)
+		set(encodingOption --source-encoding "${plugin_ENCODING}")
+	endif()
 	add_custom_command(
 		OUTPUT "${migrationReport}"
 		BYPRODUCTS ${generatedSources}
 		COMMAND npp-migrate "${plugin_SOURCE_DIR}" "${generatedDir}" --report "${migrationReport}"
-			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt" --text-base "${name}"
+			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt" --text-base "${name}" ${encodingOption}
 		DEPENDS npp-migrate ${pluginFiles} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt"
 		COMMENT "Migrating plugin ${name}"
 		VERBATIM
@@ -61,6 +66,9 @@ function(nppmac_add_plugin name)
 	# Plugins are written for Visual C++: __declspec. (Not -fms-extensions: it makes the Interlocked
 	# functions Wine's headers define compiler built-ins.)
 	target_compile_options(${name} PRIVATE -fdeclspec)
+	# Visual C++'s C compiler warns where clang's stops: pointers to functions or data whose types differ
+	# only in what is the same here (WPARAM and LPARAM signedness...).
+	target_compile_options(${name} PRIVATE "$<$<COMPILE_LANGUAGE:C>:-Wno-error=incompatible-function-pointer-types;-Wno-error=incompatible-pointer-types;-Wno-error=int-conversion>")
 	target_link_options(${name} PRIVATE "SHELL:-bundle_loader \"$<TARGET_FILE:NotepadPlusPlus>\"")
 	add_dependencies(${name} NotepadPlusPlus)
 
@@ -118,13 +126,19 @@ endfunction()
 # A plugin from the official plugin list, built from its own sources: fetched at configure time at a
 # pinned commit (or taken from NPPMAC_PLUGIN_SOURCES/<name>, a local checkout), then built as above.
 # Paths are relative to its repository: SOURCES and RC_FILES as its project lists them, INCLUDES its
-# project's include folders (relative to the repository; the migrated copies are used), RC_DEFINES the
+# project's include folders (relative to the repository; the migrated copies are used), FORCED_INCLUDES
+# the headers its compiler includes before each source (ForcedIncludeFiles), CHARACTER_SET MultiByte
+# for a project whose TCHAR is char (the Win32 A functions; Unicode is the default), CXX_STANDARD the
+# C++ standard its project asks for when newer than the build's (C++20), RC_DEFINES the
 # definitions its resource compiler is given (MSBuild properties such as a version, resolved), FILES
-# what its Windows package has beside the DLL (a default configuration...), copied there as they are.
+# what its Windows package has beside the DLL (a default configuration...), copied there as they are,
+# PACKAGE_DIR the folder of its repository that is the rest of its package (copied beside the DLL,
+# subfolders and all), ENCODING the code page its sources are written in when they are not Unicode
+# (GBK, SHIFT_JIS...).
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
 option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
 function(nppmac_add_external_plugin name)
-	cmake_parse_arguments(plugin "" "GIT;COMMIT;VERSION;DISPLAY_NAME" "SOURCES;RC_FILES;INCLUDES;DEFINES;RC_DEFINES;FILES" ${ARGN})
+	cmake_parse_arguments(plugin "" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
 		set(sourceDir "${NPPMAC_PLUGIN_SOURCES}/${name}")
 	else()
@@ -148,7 +162,7 @@ function(nppmac_add_external_plugin name)
 		endif()
 	endif()
 	nppmac_add_plugin(${name} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES}
-		RC_DEFINES ${plugin_RC_DEFINES})
+		RC_DEFINES ${plugin_RC_DEFINES} ENCODING "${plugin_ENCODING}")
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 
 	# version_git.h, which some plugins make before building with their version_git.sh (from git
@@ -174,6 +188,15 @@ function(nppmac_add_external_plugin name)
 	endforeach()
 	target_include_directories(${name} AFTER PRIVATE "${NPP_ROOT}/scintilla/include")
 	target_compile_definitions(${name} PRIVATE ${plugin_DEFINES})
+	if(plugin_CXX_STANDARD)
+		set_target_properties(${name} PROPERTIES CXX_STANDARD ${plugin_CXX_STANDARD})
+	endif()
+	if(plugin_CHARACTER_SET STREQUAL "MultiByte")
+		target_compile_options(${name} PRIVATE -UUNICODE -U_UNICODE)
+	endif()
+	foreach(header IN LISTS plugin_FORCED_INCLUDES)
+		target_compile_options(${name} PRIVATE "SHELL:-include \"${generatedDir}/${header}\"")
+	endforeach()
 	# windows.h defines the min and max macros unless the project asks it not to; the runtime's headers
 	# ask for Notepad++.
 	if(NOT "NOMINMAX" IN_LIST plugin_DEFINES)
@@ -188,6 +211,18 @@ function(nppmac_add_external_plugin name)
 			VERBATIM)
 		string(APPEND fileNames "${fileName}\n")
 	endforeach()
+	if(plugin_PACKAGE_DIR)
+		set(packageDir "${sourceDir}/${plugin_PACKAGE_DIR}")
+		file(GLOB_RECURSE packageFiles RELATIVE "${packageDir}" "${packageDir}/*")
+		foreach(packageFile IN LISTS packageFiles)
+			get_filename_component(packageFolder "${CMAKE_CURRENT_BINARY_DIR}/${name}/${packageFile}" DIRECTORY)
+			add_custom_command(TARGET ${name} POST_BUILD
+				COMMAND "${CMAKE_COMMAND}" -E make_directory "${packageFolder}"
+				COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${packageDir}/${packageFile}" "${CMAKE_CURRENT_BINARY_DIR}/${name}/${packageFile}"
+				VERBATIM)
+			string(APPEND fileNames "${packageFile}\n")
+		endforeach()
+	endif()
 	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}/${name}.files" "${fileNames}")
 	set_property(GLOBAL APPEND PROPERTY NPPMAC_CATALOG_PLUGINS ${name})
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_VERSION "${plugin_VERSION}")

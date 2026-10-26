@@ -290,6 +290,24 @@ BOOL WINAPI GetVersionExW(LPOSVERSIONINFOW info)
 	return TRUE;
 }
 
+BOOL WINAPI GetVersionExA(LPOSVERSIONINFOA info)
+{
+	info->dwMajorVersion = reportedMajorVersion;
+	info->dwMinorVersion = reportedMinorVersion;
+	info->dwBuildNumber = reportedBuild;
+	info->dwPlatformId = VER_PLATFORM_WIN32_NT;
+	info->szCSDVersion[0] = '\0';
+	if (info->dwOSVersionInfoSize >= sizeof(OSVERSIONINFOEXA))
+	{
+		auto* extended = reinterpret_cast<LPOSVERSIONINFOEXA>(info);
+		extended->wServicePackMajor = 0;
+		extended->wServicePackMinor = 0;
+		extended->wSuiteMask = VER_SUITE_SINGLEUSERTS;
+		extended->wProductType = VER_NT_WORKSTATION;
+	}
+	return TRUE;
+}
+
 DWORD WINAPI GetVersion()
 {
 	return (reportedBuild << 16) | (reportedMinorVersion << 8) | reportedMajorVersion;
@@ -551,6 +569,23 @@ namespace
 		return static_cast<int>(text.size() + 1);
 	}
 
+	// A text the W function made, as the A function gives it: in UTF-8, the ANSI code page here.
+	int writeAnsi(int wideResult, const char16_t* text, LPSTR buffer, int size)
+	{
+		if (wideResult == 0)
+			return 0;
+		const std::string narrow = nppmac::toUtf8(text);
+		if (size == 0)
+			return static_cast<int>(narrow.size() + 1);
+		if (narrow.size() + 1 > static_cast<size_t>(size))
+		{
+			SetLastError(ERROR_INSUFFICIENT_BUFFER);
+			return 0;
+		}
+		std::memcpy(buffer, narrow.c_str(), narrow.size() + 1);
+		return static_cast<int>(narrow.size() + 1);
+	}
+
 	SYSTEMTIME timeOrNow(const SYSTEMTIME* time)
 	{
 		SYSTEMTIME now{};
@@ -566,6 +601,13 @@ int WINAPI GetDateFormatW(LCID, DWORD flags, const SYSTEMTIME* date, LPCWSTR for
 	return writeFormatted(formatPicture(timeOrNow(date), picture), buffer, size);
 }
 
+int WINAPI GetDateFormatA(LCID locale, DWORD flags, const SYSTEMTIME* date, LPCSTR format, LPSTR buffer, int size)
+{
+	const std::u16string wideFormat = nppmac::toUtf16(format ? format : "");
+	char16_t text[256]{};
+	return writeAnsi(GetDateFormatW(locale, flags, date, format ? wideFormat.c_str() : nullptr, text, 256), text, buffer, size);
+}
+
 int WINAPI GetDateFormatEx(LPCWSTR, DWORD flags, const SYSTEMTIME* date, LPCWSTR format, LPWSTR buffer, int size, LPCWSTR)
 {
 	return GetDateFormatW(0, flags, date, format, buffer, size);
@@ -575,6 +617,13 @@ int WINAPI GetTimeFormatW(LCID, DWORD flags, const SYSTEMTIME* time, LPCWSTR for
 {
 	const std::u16string picture = format ? format : ((flags & TIME_NOSECONDS) ? u"HH:mm" : u"HH:mm:ss");
 	return writeFormatted(formatPicture(timeOrNow(time), picture), buffer, size);
+}
+
+int WINAPI GetTimeFormatA(LCID locale, DWORD flags, const SYSTEMTIME* time, LPCSTR format, LPSTR buffer, int size)
+{
+	const std::u16string wideFormat = nppmac::toUtf16(format ? format : "");
+	char16_t text[256]{};
+	return writeAnsi(GetTimeFormatW(locale, flags, time, format ? wideFormat.c_str() : nullptr, text, 256), text, buffer, size);
 }
 
 int WINAPI GetTimeFormatEx(LPCWSTR, DWORD flags, const SYSTEMTIME* time, LPCWSTR format, LPWSTR buffer, int size)
@@ -661,6 +710,17 @@ DWORD WINAPI GetEnvironmentVariableW(LPCWSTR name, LPWSTR buffer, DWORD size)
 		return 0;
 	}
 	return copyToBuffer(nppmac::toUtf16(value), buffer, size);
+}
+
+DWORD WINAPI GetEnvironmentVariableA(LPCSTR name, LPSTR buffer, DWORD size)
+{
+	const std::string value = environmentValue(name);
+	if (value.empty())
+	{
+		SetLastError(ERROR_ENVVAR_NOT_FOUND);
+		return 0;
+	}
+	return copyToBuffer(value, buffer, size);
 }
 
 BOOL WINAPI SetEnvironmentVariableW(LPCWSTR name, LPCWSTR value)

@@ -308,3 +308,14 @@ void WINAPI CoTaskMemFree(LPVOID memory)
 {
 	std::free(memory);
 }
+
+// Obsolete on Windows too, where they can only tell by touching the memory: here, a null pointer is bad.
+BOOL WINAPI IsBadReadPtr(LPCVOID pointer, UINT_PTR size)
+{
+	return size != 0 && !pointer;
+}
+
+BOOL WINAPI IsBadWritePtr(LPVOID pointer, UINT_PTR size)
+{
+	return size != 0 && !pointer;
+}

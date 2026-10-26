@@ -249,6 +249,21 @@ namespace
 			unlink(path);
 		}
 
+		// char16_t streams (std::basic_stringstream<TCHAR>) read and write numbers with the facets the
+		// runtime puts in the global locale.
+		nppmac::installChar16Facets();
+		{
+			std::basic_ostringstream<char16_t> out;
+			out << 42 << u' ' << 2.5 << u' ' << std::boolalpha << true;
+			CHECK_EQUAL(out.str(), u"42 2.5 true");
+			std::basic_istringstream<char16_t> in{u"17 0x1F 3.25"};
+			int number = 0;
+			int hex = 0;
+			double real = 0;
+			in >> number >> std::hex >> hex >> std::dec >> real;
+			CHECK(!in.fail() && number == 17 && hex == 31 && real == 3.25);
+		}
+
 		// Regular expressions on UTF-16 text (std::wregex once migrated).
 		const std::u16string sentence = u"Hello World, hello again 123";
 		CHECK_EQUAL(std::regex_replace(sentence, nppmac::wregex(u"hello", std::regex_constants::icase), u"bye"), u"bye World, bye again 123");
@@ -276,6 +291,47 @@ namespace
 		p.replace_extension(".xml");
 		CHECK_EQUAL(p.wstring(), u"/tmp/dir/file.xml");
 		CHECK_EQUAL((nppmac::filesystem::path{u"/a"} / u"b").wstring(), u"/a/b");
+
+		// A string stream read back to a position, and the rest of it as UTF-16 (istreambuf_iterator).
+		{
+			nppmac::u16stringstream text{u"first\nsecond \u00e9\n"};
+			const std::streampos start = text.tellg();
+			std::u16string first;
+			nppmac::getline(text, first);
+			CHECK_EQUAL(first, u"first");
+			const std::u16string rest{std::istreambuf_iterator<char16_t>{text.rdbuf()}, std::istreambuf_iterator<char16_t>{}};
+			CHECK_EQUAL(rest, u"second \u00e9\n");
+			text.clear();
+			text.seekg(start);
+			nppmac::getline(text, first);
+			CHECK_EQUAL(first, u"first");
+		}
+
+		// to_u16string takes what converts to a number, as std::to_wstring's overloads do.
+		struct Counter
+		{
+			operator int() const { return 7; }
+		};
+		CHECK_EQUAL(nppmac::to_u16string(Counter{}), u"7");
+		CHECK_EQUAL(nppmac::to_u16string(18446744073709551615ULL), u"18446744073709551615");
+
+		char16_t message[64]{};
+		CHECK(_wcserror_s(message, ENOENT) == 0 && std::u16string{message} == nppmac::toUtf16(std::strerror(ENOENT)));
+		char16_t tooShort[4]{};
+		CHECK(_wcserror_s(tooShort, ENOENT) == 0 && std::u16string{tooShort}.size() == 3);
+	}
+
+	void testAnsiFunctions()
+	{
+		// The ANSI code page is UTF-8: a string changes case where the other case has as many bytes.
+		char text[] = "abc \xc3\xa9t\xc3\xa9 Z";
+		CharUpperA(text);
+		CHECK_EQUAL(std::string{text}, std::string{"ABC \xc3\x89T\xc3\x89 Z"});
+		CharLowerA(text);
+		CHECK_EQUAL(std::string{text}, std::string{"abc \xc3\xa9t\xc3\xa9 z"});
+		// One character passed as the pointer, as user32 takes it.
+		CHECK(reinterpret_cast<uintptr_t>(CharUpperA(reinterpret_cast<LPSTR>(static_cast<uintptr_t>('q')))) == 'Q');
+		CHECK(IsCharUpperA('Q') && !IsCharUpperA('q') && IsCharAlphaNumericA('5') && !IsCharLowerA('\xc3'));
 	}
 }
 
@@ -286,6 +342,7 @@ int main()
 	testSecureAndCounted();
 	testStringFunctions();
 	testConversionsAndStd();
+	testAnsiFunctions();
 
 	std::cout << (g_checks - g_failures) << "/" << g_checks << " CRT checks passed\n";
 	return g_failures == 0 ? 0 : 1;

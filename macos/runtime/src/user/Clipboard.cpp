@@ -109,6 +109,11 @@ UINT WINAPI RegisterClipboardFormatW(LPCWSTR name)
 	return format;
 }
 
+UINT WINAPI RegisterClipboardFormatA(LPCSTR name)
+{
+	return RegisterClipboardFormatW(nppmac::toUtf16(name).c_str());
+}
+
 int WINAPI GetClipboardFormatNameW(UINT format, LPWSTR name, int size)
 {
 	auto it = registeredFormats().find(format);

@@ -387,10 +387,18 @@ namespace nppmac::user
 		std::memcpy(reinterpret_cast<BYTE*>(header) + sizeof(DROPFILES), list.data(), list.size() * sizeof(char16_t));
 		GlobalUnlock(drop);
 
-		// The message goes to the nearest window that accepts files (WS_EX_ACCEPTFILES).
+		// The files go to the nearest window that takes them: through its drop target (RegisterDragDrop),
+		// or as a message when it accepts files (WS_EX_ACCEPTFILES).
 		Window* target = this;
-		while (target && !target->_acceptsFiles && !(target->_exStyle & WS_EX_ACCEPTFILES))
+		while (target && !target->_dropTarget && !target->_acceptsFiles && !(target->_exStyle & WS_EX_ACCEPTFILES))
 			target = target->_parent;
+		if (target && target->_dropTarget)
+		{
+			POINT screen{position._x, position._y};
+			ClientToScreen(_hwnd, &screen);
+			dropOnTarget(target->_dropTarget, drop, screen);
+			return;
+		}
 		postMessage(target ? target : this, WM_DROPFILES, reinterpret_cast<WPARAM>(drop), 0);
 	}
 
@@ -398,7 +406,7 @@ namespace nppmac::user
 	{
 		for (const Window* w = this; w; w = w->_parent)
 		{
-			if (w->_acceptsFiles || (w->_exStyle & WS_EX_ACCEPTFILES))
+			if (w->_dropTarget || w->_acceptsFiles || (w->_exStyle & WS_EX_ACCEPTFILES))
 				return true;
 		}
 		return false;
@@ -1903,5 +1911,5 @@ void WINAPI DragAcceptFiles(HWND hwnd, BOOL accept)
 	if (!window)
 		return;
 	window->_acceptsFiles = accept != FALSE;
-	nppmac::ui::setAcceptsFiles(window->_view, window->_acceptsFiles);
+	nppmac::ui::setAcceptsFiles(window->_view, window->_acceptsFiles || window->_dropTarget);
 }

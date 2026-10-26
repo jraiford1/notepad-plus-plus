@@ -23,6 +23,7 @@
 #include "nppmac/Startup.h"
 
 #include <algorithm>
+#include <cstring>
 #include <unordered_set>
 
 namespace nppmac::user
@@ -555,6 +556,49 @@ BOOL WINAPI GetMenuItemInfoW(HMENU handle, UINT position, BOOL byPosition, LPMEN
 	return TRUE;
 }
 
+// The A forms: MENUITEMINFOA is MENUITEMINFOW with the text in UTF-8 (the ANSI code page here).
+static_assert(sizeof(MENUITEMINFOA) == sizeof(MENUITEMINFOW));
+
+namespace
+{
+	// An item's information in the W form, its text (when it has one) converted into text.
+	MENUITEMINFOW wideItemInfo(const MENUITEMINFOA& info, std::u16string& text)
+	{
+		MENUITEMINFOW wide{};
+		std::memcpy(&wide, &info, sizeof(wide));
+		const UINT type = (info.fMask & (MIIM_FTYPE | MIIM_TYPE)) ? info.fType : 0;
+		if ((info.fMask & (MIIM_STRING | MIIM_TYPE)) && info.dwTypeData && !(type & (MFT_SEPARATOR | MFT_BITMAP | MFT_OWNERDRAW)))
+		{
+			text = nppmac::toUtf16(info.dwTypeData);
+			wide.dwTypeData = text.data();
+		}
+		return wide;
+	}
+}
+
+BOOL WINAPI GetMenuItemInfoA(HMENU handle, UINT position, BOOL byPosition, LPMENUITEMINFOA info)
+{
+	LPSTR text = info->dwTypeData;
+	const UINT size = info->cch;
+	MENUITEMINFOW wide{};
+	std::memcpy(&wide, info, sizeof(wide));
+	wide.dwTypeData = nullptr;
+	wide.cch = 0;
+	if (!GetMenuItemInfoW(handle, position, byPosition, &wide))
+		return FALSE;
+	std::memcpy(info, &wide, sizeof(wide));
+	info->dwTypeData = text;
+	info->cch = size;
+	if (info->fMask & (MIIM_STRING | MIIM_TYPE))
+	{
+		const std::string narrow = nppmac::toUtf8(findItem(toMenu(handle), position, byPosition ? MF_BYPOSITION : MF_BYCOMMAND)->_text);
+		if (text && size > 0)
+			lstrcpynA(text, narrow.c_str(), static_cast<int>(size));
+		info->cch = static_cast<UINT>(narrow.size());
+	}
+	return TRUE;
+}
+
 BOOL WINAPI SetMenuItemInfoW(HMENU handle, UINT position, BOOL byPosition, LPCMENUITEMINFOW info)
 {
 	MenuItem* item = findItem(toMenu(handle), position, byPosition ? MF_BYPOSITION : MF_BYCOMMAND);
@@ -575,6 +619,13 @@ BOOL WINAPI SetMenuItemInfoW(HMENU handle, UINT position, BOOL byPosition, LPCME
 	if ((info->fMask & (MIIM_STRING | MIIM_TYPE)) && info->dwTypeData && !(item->_type & (MFT_SEPARATOR | MFT_BITMAP | MFT_OWNERDRAW)))
 		item->_text = info->dwTypeData;
 	return TRUE;
+}
+
+BOOL WINAPI SetMenuItemInfoA(HMENU handle, UINT position, BOOL byPosition, LPCMENUITEMINFOA info)
+{
+	std::u16string text;
+	const MENUITEMINFOW wide = wideItemInfo(*info, text);
+	return SetMenuItemInfoW(handle, position, byPosition, &wide);
 }
 
 BOOL WINAPI InsertMenuItemW(HMENU handle, UINT position, BOOL byPosition, LPCMENUITEMINFOW info)
@@ -616,6 +667,13 @@ BOOL WINAPI InsertMenuItemW(HMENU handle, UINT position, BOOL byPosition, LPCMEN
 	}
 	menu->_items.insert(menu->_items.begin() + static_cast<std::ptrdiff_t>(index), item);
 	return TRUE;
+}
+
+BOOL WINAPI InsertMenuItemA(HMENU handle, UINT position, BOOL byPosition, LPCMENUITEMINFOA info)
+{
+	std::u16string text;
+	const MENUITEMINFOW wide = wideItemInfo(*info, text);
+	return InsertMenuItemW(handle, position, byPosition, &wide);
 }
 
 DWORD WINAPI CheckMenuItem(HMENU handle, UINT id, UINT flags)
@@ -738,6 +796,13 @@ HMENU WINAPI GetMenu(HWND hwnd)
 	// GetMenu on a child returns its id (BabyGrid finds its grids this way).
 	Window* window = fromHandle(hwnd);
 	return window ? reinterpret_cast<HMENU>(window->_id) : nullptr;
+}
+
+// The window menu (system menu) of the title bar, which a macOS window does not have: none, as for a
+// Windows window without WS_SYSMENU.
+HMENU WINAPI GetSystemMenu(HWND, BOOL)
+{
+	return nullptr;
 }
 
 BOOL WINAPI SetMenu(HWND hwnd, HMENU handle)

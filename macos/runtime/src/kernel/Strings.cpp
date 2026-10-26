@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstring>
 #include <iconv.h>
 #include <mutex>
 #include <unordered_map>
@@ -234,6 +235,24 @@ BOOL WINAPI GetCPInfo(UINT codePage, LPCPINFO info)
 	return TRUE;
 }
 
+BOOL WINAPI IsDBCSLeadByteEx(UINT codePage, BYTE testChar)
+{
+	CPINFO info{};
+	if (!GetCPInfo(codePage, &info))
+		return FALSE;
+	for (size_t i = 0; i + 1 < MAX_LEADBYTES && info.LeadByte[i] != 0; i += 2)
+	{
+		if (testChar >= info.LeadByte[i] && testChar <= info.LeadByte[i + 1])
+			return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL WINAPI IsDBCSLeadByte(BYTE testChar)
+{
+	return IsDBCSLeadByteEx(CP_ACP, testChar);
+}
+
 BOOL WINAPI GetCPInfoExW(UINT codePage, DWORD, LPCPINFOEXW info)
 {
 	CPINFO basic{};
@@ -424,6 +443,44 @@ LPWSTR WINAPI CharUpperW(LPWSTR str)
 	return str;
 }
 
+namespace
+{
+	// The case change of an ANSI (UTF-8) string, in place as user32 makes it: each character whose
+	// other case takes as many bytes. A pointer whose high bits are zero is a single character, which
+	// one byte is only in ASCII.
+	LPSTR changeCase(LPSTR str, char16_t (*change)(char16_t))
+	{
+		if (reinterpret_cast<uintptr_t>(str) <= 0xFFFF)
+		{
+			const auto ch = static_cast<unsigned char>(reinterpret_cast<uintptr_t>(str));
+			return reinterpret_cast<LPSTR>(static_cast<uintptr_t>(ch < 0x80 ? static_cast<unsigned char>(change(ch)) : ch));
+		}
+		const size_t size = std::strlen(str);
+		for (size_t pos = 0; pos < size;)
+		{
+			const auto lead = static_cast<unsigned char>(str[pos]);
+			const size_t length = std::min(size - pos, lead < 0xC0 ? size_t{1} : lead < 0xE0 ? size_t{2} : lead < 0xF0 ? size_t{3} : size_t{4});
+			std::u16string character = nppmac::toUtf16(std::string_view{str + pos, length});
+			for (char16_t& unit : character)
+				unit = change(unit);
+			if (const std::string changed = nppmac::toUtf8(character); changed.size() == length)
+				std::memcpy(str + pos, changed.data(), length);
+			pos += length;
+		}
+		return str;
+	}
+}
+
+LPSTR WINAPI CharLowerA(LPSTR str)
+{
+	return changeCase(str, lowerChar);
+}
+
+LPSTR WINAPI CharUpperA(LPSTR str)
+{
+	return changeCase(str, upperChar);
+}
+
 DWORD WINAPI CharLowerBuffW(LPWSTR str, DWORD length)
 {
 	for (DWORD i = 0; i < length; ++i)
@@ -458,6 +515,23 @@ BOOL WINAPI IsCharUpperW(WCHAR ch)
 	return nppmac::isupper(ch, std::locale::classic()) ? TRUE : FALSE;
 }
 
+// One byte of the ANSI code page, which is UTF-8 here: a character of its own only in ASCII.
+
+BOOL WINAPI IsCharAlphaNumericA(CHAR ch)
+{
+	return static_cast<unsigned char>(ch) < 0x80 && IsCharAlphaNumericW(static_cast<unsigned char>(ch));
+}
+
+BOOL WINAPI IsCharLowerA(CHAR ch)
+{
+	return static_cast<unsigned char>(ch) < 0x80 && IsCharLowerW(static_cast<unsigned char>(ch));
+}
+
+BOOL WINAPI IsCharUpperA(CHAR ch)
+{
+	return static_cast<unsigned char>(ch) < 0x80 && IsCharUpperW(static_cast<unsigned char>(ch));
+}
+
 int WINAPI CompareStringOrdinal(LPCWCH lhs, int lhsLength, LPCWCH rhs, int rhsLength, BOOL ignoreCase)
 {
 	const std::u16string_view a{lhs, lhsLength < 0 ? wcslen(lhs) : static_cast<size_t>(lhsLength)};
@@ -478,6 +552,50 @@ int WINAPI CompareStringOrdinal(LPCWCH lhs, int lhsLength, LPCWCH rhs, int rhsLe
 int WINAPI CompareStringW(LCID, DWORD flags, LPCWSTR lhs, int lhsLength, LPCWSTR rhs, int rhsLength)
 {
 	return CompareStringOrdinal(lhs, lhsLength, rhs, rhsLength, (flags & (NORM_IGNORECASE | LINGUISTIC_IGNORECASE)) != 0);
+}
+
+// Unicode normalization (forms C, D, KC, KD). A length of -1 takes the string with its terminator.
+int WINAPI NormalizeString(NORM_FORM form, LPCWSTR source, int sourceLength, LPWSTR dest, int destLength)
+{
+	using nppmac::platform::Normalization;
+	Normalization normalization = Normalization::composed;
+	switch (form)
+	{
+		case NormalizationC:
+			normalization = Normalization::composed;
+			break;
+		case NormalizationD:
+			normalization = Normalization::decomposed;
+			break;
+		case NormalizationKC:
+			normalization = Normalization::compatibilityComposed;
+			break;
+		case NormalizationKD:
+			normalization = Normalization::compatibilityDecomposed;
+			break;
+		default:
+			SetLastError(ERROR_INVALID_PARAMETER);
+			return 0;
+	}
+	if (!source)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return 0;
+	}
+	const bool terminated = sourceLength < 0;
+	const std::u16string_view text{source, terminated ? std::char_traits<char16_t>::length(source) : static_cast<size_t>(sourceLength)};
+	std::u16string result = nppmac::platform::normalize(text, normalization);
+	if (terminated)
+		result += u'\0';
+	if (destLength == 0)
+		return static_cast<int>(result.size());
+	if (!dest || static_cast<int>(result.size()) > destLength)
+	{
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return -static_cast<int>(result.size());
+	}
+	std::copy(result.begin(), result.end(), dest);
+	return static_cast<int>(result.size());
 }
 
 int WINAPI CompareStringEx(LPCWSTR, DWORD flags, LPCWCH lhs, int lhsLength, LPCWCH rhs, int rhsLength, LPNLSVERSIONINFO, LPVOID, LPARAM)
@@ -504,6 +622,11 @@ int WINAPI LCMapStringEx(LPCWSTR, DWORD flags, LPCWSTR source, int sourceLength,
 	}
 	std::copy(text.begin(), text.end(), dest);
 	return static_cast<int>(text.size());
+}
+
+int WINAPI LCMapStringW(LCID, DWORD flags, LPCWSTR source, int sourceLength, LPWSTR dest, int destLength)
+{
+	return LCMapStringEx(nullptr, flags, source, sourceLength, dest, destLength, nullptr, nullptr, 0);
 }
 
 BOOL WINAPI IsTextUnicode(const void* buffer, int size, LPINT result)
