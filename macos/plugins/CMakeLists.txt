@@ -79,14 +79,23 @@ function(nppmac_add_plugin name)
 			set(partFile "${CMAKE_CURRENT_BINARY_DIR}/${name}/res/${rcName}.res")
 			# The engine's copy (UTF-8, Windows separators fixed), compiled in the plugin's own folder with
 			# its own headers and files; relative, as llvm-rc reads an argument starting with '/' as an option.
+			# It is preprocessed first as llvm-rc would, with the wide strings of the plugin's migrated
+			# headers made L"..." again (npp-migrate --rc-wide-strings), then compiled as it is.
 			file(RELATIVE_PATH rcText "${rcDirectory}" "${generatedDir}/${rcFile}")
+			get_filename_component(rcGeneratedDirectory "${generatedDir}/${rcFile}" DIRECTORY)
+			set(preprocessedFile "${rcGeneratedDirectory}/${rcName}.preprocessed.rc")
+			set(wideFile "${rcGeneratedDirectory}/${rcName}.wide.rc")
+			file(RELATIVE_PATH wideText "${rcDirectory}" "${wideFile}")
+			set(rcDefines -DRC_INVOKED -D_WIN64 -DUNICODE -D_UNICODE)
 			add_custom_command(
 				OUTPUT "${partFile}"
 				COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${name}/res"
-				COMMAND "${NPPMAC_LLVM_RC}" -I "${rcDirectory}" ${rcIncludeFlags} ${nppPluginRcFlags} -c 65001 -D_WIN64 -DUNICODE -D_UNICODE
-					-fo "${partFile}" "${rcText}"
+				COMMAND "${NPPMAC_RC_CLANG}" --driver-mode=gcc -target arm64-pc-windows-msvc-coff -E -xc ${rcDefines}
+					-I "${rcDirectory}" ${rcIncludeFlags} ${nppPluginRcFlags} -o "${preprocessedFile}" "${rcText}"
+				COMMAND npp-migrate --rc-wide-strings "${preprocessedFile}" "${wideFile}"
+				COMMAND "${NPPMAC_LLVM_RC}" /no-preprocess -c 65001 -I "${rcDirectory}" ${rcIncludeFlags} -fo "${partFile}" "${wideText}"
 				WORKING_DIRECTORY "${rcDirectory}"
-				DEPENDS "${migrationReport}" "${plugin_SOURCE_DIR}/${rcFile}"
+				DEPENDS "${migrationReport}" "${plugin_SOURCE_DIR}/${rcFile}" npp-migrate
 				COMMENT "Compiling resources of plugin ${name}: ${rcFile}"
 				VERBATIM
 			)
@@ -149,10 +158,10 @@ function(nppmac_add_external_plugin name)
 		file(WRITE "${generatedDir}/version_git.h" "#pragma once\n"
 			"#define VERSION_NUMBER ${versionNumbers},0\n"
 			"#define VERSION_NUMBER_STR \"${version}\"\n"
-			"#define VERSION_NUMBER_WSTR L\"${version}\"\n"
+			"#define VERSION_NUMBER_WSTR u\"${version}\"\n"
 			"#define COPYRIGHT_STR \"${copyright}\"\n"
 			"#define VERSION_GIT_STR \"v${version}\"\n"
-			"#define VERSION_GIT_WSTR L\"v${version}\"\n")
+			"#define VERSION_GIT_WSTR u\"v${version}\"\n")
 	endif()
 	foreach(include IN LISTS plugin_INCLUDES)
 		target_include_directories(${name} PRIVATE "${generatedDir}/${include}")
@@ -169,7 +178,10 @@ function(nppmac_add_external_plugin name)
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_DISPLAY_NAME "${plugin_DISPLAY_NAME}")
 endfunction()
 
-# The include paths llvm-rc needs for a plugin's .rc: the runtime's and Wine's headers.
+# The include paths llvm-rc needs for a plugin's .rc: the runtime's and Wine's headers. Its preprocessor
+# is the clang beside it.
+get_filename_component(nppLlvmBin "${NPPMAC_LLVM_RC}" DIRECTORY)
+find_program(NPPMAC_RC_CLANG clang HINTS "${nppLlvmBin}" NO_DEFAULT_PATH REQUIRED)
 set(nppPluginRcFlags -I "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/include")
 foreach(wineDir IN LISTS NPPMAC_WINE_INCLUDE_DIRS)
 	list(APPEND nppPluginRcFlags -I "${wineDir}")

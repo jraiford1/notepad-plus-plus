@@ -23,6 +23,7 @@
 #include <malloc/malloc.h>
 #include <cstring>
 #include <mutex>
+#include <sys/mman.h>
 #include <unordered_map>
 
 namespace
@@ -45,6 +46,12 @@ namespace
 	std::unordered_map<const void*, Block*>& handles() // handle -> block, for moveable blocks
 	{
 		static auto* map = new std::unordered_map<const void*, Block*>;
+		return *map;
+	}
+
+	std::unordered_map<const void*, SIZE_T>& virtualSizes() // VirtualAlloc block -> its size
+	{
+		static auto* map = new std::unordered_map<const void*, SIZE_T>;
 		return *map;
 	}
 
@@ -229,6 +236,53 @@ BOOL WINAPI HeapFree(HANDLE, DWORD, LPVOID memory)
 SIZE_T WINAPI HeapSize(HANDLE, DWORD, LPCVOID memory)
 {
 	return malloc_size(memory);
+}
+
+// Plugins use VirtualAlloc for plain buffers: committed, zeroed, read-write pages from the system.
+LPVOID WINAPI VirtualAlloc(LPVOID address, SIZE_T bytes, DWORD allocationType, DWORD)
+{
+	if (address)
+	{
+		// Committing within a reservation: it is all committed already.
+		if (allocationType & MEM_COMMIT)
+			return address;
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return nullptr;
+	}
+	if (!(allocationType & (MEM_COMMIT | MEM_RESERVE)) || bytes == 0)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return nullptr;
+	}
+	void* memory = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	if (memory == MAP_FAILED)
+	{
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+		return nullptr;
+	}
+	std::lock_guard lock{g_blocksMutex};
+	virtualSizes()[memory] = bytes;
+	return memory;
+}
+
+BOOL WINAPI VirtualFree(LPVOID address, SIZE_T, DWORD freeType)
+{
+	// MEM_DECOMMIT keeps the pages: they are given back when the block is released.
+	if (!(freeType & MEM_RELEASE))
+		return address != nullptr;
+	SIZE_T bytes = 0;
+	{
+		std::lock_guard lock{g_blocksMutex};
+		const auto found = virtualSizes().find(address);
+		if (found == virtualSizes().end())
+		{
+			SetLastError(ERROR_INVALID_ADDRESS);
+			return FALSE;
+		}
+		bytes = found->second;
+		virtualSizes().erase(found);
+	}
+	return ::munmap(address, bytes) == 0;
 }
 
 BOOL WINAPI VirtualProtect(LPVOID, SIZE_T, DWORD newProtect, PDWORD oldProtect)

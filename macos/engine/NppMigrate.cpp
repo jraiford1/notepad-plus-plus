@@ -20,6 +20,11 @@
 //     npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>]
 //                 [--text-rules <file> --text-base <path of sourceRoot under PowerEditor/>]
 //                 [--plugin-text-rules <file>]
+//     npp-migrate --rc-wide-strings <preprocessed .rc> <output .rc>
+//
+// The second form is for a plugin's resources: its .rc includes the plugin's migrated headers, whose
+// wide strings are char16_t literals (u"..."), which llvm-rc does not read; they become L"..." again
+// in the preprocessed script, which llvm-rc then compiles without preprocessing it.
 //
 // A file is only written when its content changes, so an incremental build only recompiles
 // what upstream actually changed.
@@ -55,6 +60,7 @@
 #include "MigrationRules.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fnmatch.h>
 #include <fstream>
@@ -62,6 +68,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -99,7 +106,7 @@ namespace
 
 	bool isCodeFile(const fs::path& path)
 	{
-		static const std::vector<std::string> codeExtensions = {".h", ".hpp", ".hxx", ".inl", ".c", ".cpp", ".cxx", ".cc"};
+		static const std::vector<std::string> codeExtensions = {".h", ".hpp", ".hxx", ".inl", ".inc", ".c", ".cpp", ".cxx", ".cc"};
 		const std::string ext = path.extension().string();
 		return std::find(codeExtensions.begin(), codeExtensions.end(), ext) != codeExtensions.end();
 	}
@@ -197,6 +204,114 @@ namespace
 		}
 		result.append(last, content.cend());
 		content = std::move(result);
+		return changes;
+	}
+
+	// rc.exe takes a string literal that goes on over line ends (as long STRINGTABLE texts do, with their
+	// own \r\n escapes); llvm-rc does not. The line ends inside a literal are dropped: its lines join.
+	size_t joinResourceStringLines(std::string& content)
+	{
+		enum class State
+		{
+			code,
+			string,
+			lineComment,
+			blockComment,
+		};
+		State state = State::code;
+		size_t changes = 0;
+		std::string result;
+		result.reserve(content.size());
+		for (size_t i = 0; i < content.size(); ++i)
+		{
+			const char c = content[i];
+			const char next = i + 1 < content.size() ? content[i + 1] : '\0';
+			switch (state)
+			{
+			case State::code:
+				if (c == '"')
+					state = State::string;
+				else if (c == '/' && next == '/')
+					state = State::lineComment;
+				else if (c == '/' && next == '*')
+					state = State::blockComment;
+				break;
+			case State::string:
+				if (c == '\\' && next != '\0')
+				{
+					// An escape, or the preprocessor's line continuation: kept as it is.
+					result += c;
+					result += next;
+					++i;
+					continue;
+				}
+				if (c == '"' && next == '"')
+				{
+					result += "\"\"";
+					++i;
+					continue;
+				}
+				if (c == '"')
+				{
+					state = State::code;
+				}
+				else if (c == '\r' || c == '\n')
+				{
+					if (c == '\n')
+						++changes;
+					continue;
+				}
+				break;
+			case State::lineComment:
+				if (c == '\n')
+					state = State::code;
+				break;
+			case State::blockComment:
+				if (c == '*' && next == '/')
+				{
+					result += "*/";
+					++i;
+					state = State::code;
+					continue;
+				}
+				break;
+			}
+			result += c;
+		}
+		content = std::move(result);
+		return changes;
+	}
+
+	bool isIdentifierChar(char c)
+	{
+		return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+	}
+
+	// u"..." outside string literals becomes L"...".
+	size_t restoreResourceWideStrings(std::string& content)
+	{
+		bool inString = false;
+		size_t changes = 0;
+		for (size_t i = 0; i < content.size(); ++i)
+		{
+			const char c = content[i];
+			if (inString)
+			{
+				if (c == '\\' || (c == '"' && i + 1 < content.size() && content[i + 1] == '"'))
+					++i; // an escape, or "" (a quote in an .rc string)
+				else if (c == '"')
+					inString = false;
+			}
+			else if (c == '"')
+			{
+				inString = true;
+			}
+			else if (c == 'u' && i + 1 < content.size() && content[i + 1] == '"' && (i == 0 || !isIdentifierChar(content[i - 1])))
+			{
+				content[i] = 'L';
+				++changes;
+			}
+		}
 		return changes;
 	}
 
@@ -422,6 +537,22 @@ namespace
 
 int main(int argc, char* argv[])
 {
+	if (argc == 4 && std::string_view{argv[1]} == "--rc-wide-strings")
+	{
+		std::string content;
+		if (!readFile(argv[2], content))
+		{
+			std::cerr << "npp-migrate: cannot read " << argv[2] << "\n";
+			return exitIoError;
+		}
+		restoreResourceWideStrings(content);
+		if (!writeIfChanged(argv[3], content))
+		{
+			std::cerr << "npp-migrate: cannot write " << argv[3] << "\n";
+			return exitIoError;
+		}
+		return 0;
+	}
 	if (argc < 3 || argc % 2 == 0)
 	{
 		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>]\n";
@@ -503,7 +634,7 @@ int main(int argc, char* argv[])
 		if (convertFromUtf16(content))
 			++utf16Files;
 		if (isResourceScript(file))
-			resourcePaths += fixResourcePaths(content);
+			resourcePaths += fixResourcePaths(content) + joinResourceStringLines(content);
 		applyTextRules(textRules, textBase + "/" + relative.generic_string(), content);
 		if (isCodeFile(file))
 		{
@@ -568,6 +699,6 @@ int main(int argc, char* argv[])
 
 	std::cout << "npp-migrate: " << files.size() << " files, " << migratedFiles << " migrated, "
 		<< changedFiles << " changed, " << totalRewrites << " rewrites, " << appliedFixups << " fixups, "
-		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource file names" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{}) << "\n";
+		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource script fixes" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{}) << "\n";
 	return exitOk;
 }

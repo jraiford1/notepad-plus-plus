@@ -92,6 +92,16 @@ namespace nppmac::gdi
 		CTFontRef ctFont();
 	};
 
+	// The largest bitmap the runtime makes: 2^28 pixels (1 GB, 16384 x 16384). Windows fails a bitmap it
+	// cannot allocate; here a misread header (a corrupt or unexpected format) must fail too, rather than
+	// take all the memory there is.
+	constexpr long long maxBitmapPixels = 1LL << 28;
+
+	inline bool isAllowedBitmapSize(long long width, long long height)
+	{
+		return width > 0 && height > 0 && width <= maxBitmapPixels / height;
+	}
+
 	// A device-independent bitmap: 32-bit BGRA (premultiplied), top-down rows, as a top-down DIB.
 	// Monochrome and other depths are converted on creation.
 	struct Bitmap : GdiObject

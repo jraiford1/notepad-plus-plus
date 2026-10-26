@@ -10,9 +10,20 @@ files: *PluginDefinition.*
 line: setCommand(
 regex: ([(,]\s*)(TCHAR|WCHAR|wchar_t)\s*\*\s*cmdName => $1const $2 *cmdName
 
+# A macro that makes a wide string of its argument (L#x, after Visual C++'s _CRT_WIDE) pastes the L
+# prefix onto the stringized argument; the u"" before it does the same for char16_t, by concatenation.
+files: *
+line: L#
+regex: \bL#\s*(\w+) => u"" #$1
+
 # --- Single plugins: rules for one plugin's own files (its name, then its path) ---
 
 # BigFiles' message helper takes the message as wchar_t *, and is given literals.
 files: BigFiles/src/Support.*
 line: msgBox_int(
 replace: wchar_t* str => const wchar_t* str
+
+# Papyrus' file version string ends in BUILD_NUMBER, a number its build script replaces; as a string.
+files: Papyrus/src/Plugin/Resources.rc
+line: #define VER_FILEVERSION_STR
+replace: L"." BUILD_NUMBER => L"." STR(BUILD_NUMBER)
