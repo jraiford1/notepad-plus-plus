@@ -367,6 +367,15 @@ int swprintf(char16_t* buffer, size_t count, const char16_t* format, ...)
 	return result;
 }
 
+int swprintf(char16_t* buffer, const char16_t* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const std::u16string text = nppmac::crt::formatWide(format, args);
+	va_end(args);
+	return writeTruncated(buffer, text.size() + 1, text);
+}
+
 int vswprintf(char16_t* buffer, size_t count, const char16_t* format, va_list args)
 {
 	// ISO swprintf: -1 when the output does not fit, the buffer is still terminated.

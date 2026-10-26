@@ -925,6 +925,12 @@ BOOL WINAPI IsWindow(HWND hwnd)
 	return fromHandle(hwnd) ? TRUE : FALSE;
 }
 
+// Every window takes its messages' text as UTF-16.
+BOOL WINAPI IsWindowUnicode(HWND hwnd)
+{
+	return IsWindow(hwnd);
+}
+
 // --- Tree -----------------------------------------------------------------------------------------
 
 HWND WINAPI GetParent(HWND hwnd)

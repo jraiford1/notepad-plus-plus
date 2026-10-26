@@ -129,6 +129,9 @@ namespace
 		CHECK(swprintf(buffer, 4, u"%d", 12345) == -1);
 		CHECK_EQUAL(std::u16string{buffer}, u"123");
 
+		CHECK(swprintf(buffer, u"%s=%d", u"key", 7) == 5);
+		CHECK_EQUAL(std::u16string{buffer}, u"key=7");
+
 		CHECK(_snwprintf_s(buffer, 8, _TRUNCATE, u"%s", u"0123456789") == -1);
 		CHECK_EQUAL(std::u16string{buffer}, u"0123456");
 
@@ -199,6 +202,11 @@ namespace
 		nppmac::u16stringstream ss;
 		ss << u"value=" << 42 << u' ' << std::hex << 255;
 		CHECK_EQUAL(ss.str(), u"value=42 ff");
+
+		nppmac::u16stringstream strings;
+		strings << std::u16string{u"text"} << u'!';
+		CHECK_EQUAL(strings.str(), u"text!");
+		CHECK(strings.getloc() == std::locale::classic());
 
 		nppmac::u16stringstream hex;
 		hex << std::uppercase << std::setfill(char16_t('0')) << std::setw(2) << std::hex << 10;

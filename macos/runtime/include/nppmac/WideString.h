@@ -78,6 +78,8 @@ char16_t* wmemchr(char16_t* str, char16_t ch, size_t count);
 // printf family. Format strings follow the Microsoft CRT: in a wide function %s and %c take wide
 // arguments and %S / %C narrow ones; %ls / %hs, %I64d, %I32d and %Iu are accepted.
 int swprintf(char16_t* buffer, size_t count, const char16_t* format, ...);
+// Visual C++'s older swprintf, without the buffer's size (plugins use it): the buffer must be big enough.
+int swprintf(char16_t* buffer, const char16_t* format, ...);
 int vswprintf(char16_t* buffer, size_t count, const char16_t* format, va_list args);
 
 // --- Microsoft CRT wide-string functions -------------------------------------------------------
@@ -216,6 +218,10 @@ namespace nppmac
 			return _stream.imbue(loc);
 		}
 
+		std::locale getloc() const {
+			return _stream.getloc();
+		}
+
 		explicit operator bool() const {
 			return static_cast<bool>(_stream);
 		}
@@ -229,6 +235,12 @@ namespace nppmac
 		}
 
 		u16stringstream& operator<<(std::u16string_view text) {
+			_stream << toUtf8(text);
+			return *this;
+		}
+
+		// An exact match, so that a std::u16string does not go to the template below.
+		u16stringstream& operator<<(const std::u16string& text) {
 			_stream << toUtf8(text);
 			return *this;
 		}

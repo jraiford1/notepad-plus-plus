@@ -191,3 +191,93 @@ nppmac_add_external_plugin(TidyText
 	RC_FILES src/TidyText.rc
 	INCLUDES vs.proj
 	DEFINES TIDYTEXT_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(BigFiles
+	DISPLAY_NAME "BigFiles - Open Very Large Files"
+	VERSION 0.1.3
+	GIT https://github.com/superolmo/BigFiles.git
+	COMMIT 3196c9eab5815f83f863de6882ee803b42736ae3
+	SOURCES src/BigFiles.cpp src/Configuration.cpp src/FileTracker.cpp src/libmagic_alike.cpp src/PluginDefinition.cpp src/Support.cpp src/v3.cpp
+	RC_FILES src/BigFiles.rc
+	INCLUDES vs.proj
+	DEFINES NPPPLUGINTEMPLATE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(BlitzSearch
+	DISPLAY_NAME "Blitz Search"
+	VERSION 1.0.0.6
+	GIT https://github.com/Natestah/BlitsNppPlugin.git
+	COMMIT d91e43906182ecd4cb809ccdf9de549021bb3382
+	SOURCES src/BlitzSearch.cpp src/PluginDefinition.cpp
+	RC_FILES src/BlitzSearch.rc
+	INCLUDES src/vs src/npp
+	DEFINES NPPPLUGINDEMO_EXPORTS)
+
+nppmac_add_external_plugin(CommentToggler
+	DISPLAY_NAME "Comment Toggler"
+	VERSION 1.0.0.0
+	GIT https://github.com/ScienceDiscoverer/CommentToggler.git
+	COMMIT bbae39d806b91fa8ef5e63d3210eb76c6ee919ce
+	SOURCES CommentToggler.cpp PluginDefinition.cpp
+	RC_FILES CommentToggler.rc
+	INCLUDES vs npp
+	DEFINES NPPPLUGINDEMO_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(FoldingLineHider
+	DISPLAY_NAME "Folding Line Hider"
+	VERSION 1.1
+	GIT https://github.com/leonardchai/FoldingLineHider.git
+	COMMIT 0c43f177027ba7747d5b30fd1322eb469273e90c
+	SOURCES src/NppPlugin.cpp src/PluginDefinition.cpp
+	RC_FILES src/NppPlugin.rc
+	INCLUDES vs.proj
+	DEFINES NPPPLUGIN_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(IndentByFold
+	DISPLAY_NAME "Indent By Fold"
+	VERSION 0.7.3
+	GIT https://github.com/ffes/indentbyfold.git
+	COMMIT 2ebc630a63d47144b878d948cd1f89f5ba7d9126
+	SOURCES IBFMenu.cpp IBFPlugin.cpp IndentByFold.cpp NppMessager.cpp NppPlugin.cpp NppPluginMenu.cpp SciMessager.cpp WaitCursor.cpp
+	RC_FILES IndentByFold_res.rc
+	INCLUDES .
+	DEFINES "_WIN32_WINNT= 0x501")
+
+nppmac_add_external_plugin(NppRgaIsaPlugin
+	DISPLAY_NAME "RGA ISA Compiler"
+	VERSION 1.0.0.0
+	GIT https://github.com/DIMOSUS/NppRgaIsaPlugin.git
+	COMMIT 2ffce47771a6bd0070c6fb84c891976f0d3f11d4
+	SOURCES src/DockingFeature/isaDlg.cpp src/DockingFeature/StaticDialog.cpp src/NppIasPlugin.cpp src/PluginDefinition.cpp
+	RC_FILES src/DockingFeature/isaPanel.rc src/NppIasPlugin.rc
+	INCLUDES vs.proj
+	DEFINES NPPPLUGINTEMPLATE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(SecurePad
+	DISPLAY_NAME SecurePad
+	VERSION 2.4
+	GIT https://github.com/DominicTobias/SecurePad.git
+	COMMIT 12cb5a0ec46b2536595e2af642487ad87fc2f212
+	SOURCES blowfish.cpp NppPluginDemo.cpp PluginDefinition.cpp
+	RC_FILES Resources.rc
+	INCLUDES .
+	DEFINES NPPPLUGINTEMPLATE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(NppTaskList
+	DISPLAY_NAME "Task List"
+	VERSION 2.7
+	GIT https://github.com/Megabyteceer/npp-task-list.git
+	COMMIT 7d53ea90d34b099cbd45d574ad3f3dcfa2938874
+	SOURCES src/AboutDialog/AboutDlg.cpp src/Common.cpp src/config.cpp src/dpiManagerV2.cpp src/NppDarkModeDummy.cpp src/NppTaskListPlugin.cpp src/PluginDefinition.cpp src/StaticDialog.cpp src/TaskListDlg.cpp src/URLCtrl.cpp
+	RC_FILES resources/TaskList.rc
+	INCLUDES . include
+	DEFINES _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING NPPPLUGINTASKLIST_EXPORTS _CRT_NONSTDC_NO_DEPRECATE)
+
+nppmac_add_external_plugin(pork2sausage
+	DISPLAY_NAME "Pork to Sausage"
+	VERSION 2.6
+	GIT https://github.com/npp-plugins/pork2sausage.git
+	COMMIT cce79843879d66469f8c5d6459e2f49f11e6fa53
+	SOURCES src/Pork2Sausage.cpp src/Process.cpp
+	RC_FILES src/Pork2Sausage.rc
+	INCLUDES vs.proj
+	DEFINES PORK2SAUSAGE_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)

@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <knownfolders.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -697,6 +698,17 @@ HINSTANCE WINAPI ShellExecuteW(HWND, LPCWSTR operation, LPCWSTR file, LPCWSTR pa
 	}
 	// Values above 32 mean success.
 	return reinterpret_cast<HINSTANCE>(static_cast<intptr_t>(ok ? 42 : SE_ERR_FNF));
+}
+
+HINSTANCE WINAPI ShellExecuteA(HWND window, LPCSTR operation, LPCSTR file, LPCSTR parameters, LPCSTR directory, INT show)
+{
+	const auto wide = [](LPCSTR text) { return text ? std::optional<std::u16string>{nppmac::toUtf16(text)} : std::nullopt; };
+	const auto pointer = [](const std::optional<std::u16string>& text) { return text ? text->c_str() : nullptr; };
+	const std::optional<std::u16string> wideOperation = wide(operation);
+	const std::optional<std::u16string> wideFile = wide(file);
+	const std::optional<std::u16string> wideParameters = wide(parameters);
+	const std::optional<std::u16string> wideDirectory = wide(directory);
+	return ShellExecuteW(window, pointer(wideOperation), pointer(wideFile), pointer(wideParameters), pointer(wideDirectory), show);
 }
 
 BOOL WINAPI ShellExecuteExW(SHELLEXECUTEINFOW* info)
