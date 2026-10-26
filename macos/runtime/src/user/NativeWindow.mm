@@ -19,10 +19,14 @@
 // No <windows.h> here.
 
 #import <Cocoa/Cocoa.h>
+#import <IOSurface/IOSurface.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include "Backend.h"
 #include "platform/Platform.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -45,7 +49,8 @@ namespace nppmac::ui
 		NSView* _view = nil;           // the client area
 		NSWindow* _window = nil;       // top levels
 		bool _adopted = false;         // a native control's view
-		CGContextRef _surface = nullptr;
+		CGContextRef _surface = nullptr;  // draws into _ioSurface
+		IOSurfaceRef _ioSurface = nullptr; // the layer's contents: the window's pixels, once (owned by _surface)
 		int _surfaceWidth = 0;         // in points
 		int _surfaceHeight = 0;
 		CGFloat _surfaceScale = 1;
@@ -175,6 +180,88 @@ static bool g_sendingTestEvent = false;
 	NSString* _markedText; // the text an input method is composing, nil when none
 }
 @end
+
+namespace
+{
+	void releaseSurface(NativeView* native);
+
+	bool isShown(NSView* view)
+	{
+		return !view.isHiddenOrHasHiddenAncestor && view.window.isVisible;
+	}
+
+	// A view that is not shown gives its surface up; it is painted again, whole, when it is shown.
+	void givePixelsUp(NppMacView* view)
+	{
+		NativeView* native = view->_native;
+		if (!native || !native->_surface)
+			return;
+		releaseSurface(native);
+		view.layer.contents = nil;
+		native->_owner->nativePixelsLost();
+	}
+
+	// A top-level window's views as it is hidden (they give their pixels up) or shown (they are painted).
+	void hideTree(NSView* view)
+	{
+		if ([view isKindOfClass:NppMacView.class])
+			givePixelsUp(static_cast<NppMacView*>(view));
+		for (NSView* subview in view.subviews)
+			hideTree(subview);
+	}
+
+	void showTree(NSView* view)
+	{
+		if ([view isKindOfClass:NppMacView.class] && !view.isHidden)
+			view.needsDisplay = YES;
+		for (NSView* subview in view.subviews)
+			showTree(subview);
+	}
+
+	// A copy of the part of a window's surface that covers area (in points), as an image of its own,
+	// for drawRect (an image of the view): an image of the surface itself would be copied whole by
+	// the surface's next drawing.
+	CGImageRef copySurfaceArea(NativeView* native, NSRect area)
+	{
+		CGContextRef surface = native->_surface;
+		const CGFloat scale = native->_surfaceScale;
+		const size_t surfaceWidth = CGBitmapContextGetWidth(surface);
+		const size_t surfaceHeight = CGBitmapContextGetHeight(surface);
+		const auto* pixels = static_cast<const uint8_t*>(CGBitmapContextGetData(surface));
+		if (!pixels)
+			return nullptr;
+		const auto clamp = [](CGFloat value, size_t limit)
+		{
+			return static_cast<size_t>(std::clamp<CGFloat>(value, 0, static_cast<CGFloat>(limit)));
+		};
+		const size_t left = clamp(std::floor(NSMinX(area) * scale), surfaceWidth);
+		const size_t top = clamp(std::floor(NSMinY(area) * scale), surfaceHeight);
+		const size_t right = clamp(std::ceil(NSMaxX(area) * scale), surfaceWidth);
+		const size_t bottom = clamp(std::ceil(NSMaxY(area) * scale), surfaceHeight);
+		if (right <= left || bottom <= top)
+			return nullptr;
+
+		// The surface's rows run from the top (its context is flipped to a top-left origin).
+		const size_t width = right - left;
+		const size_t height = bottom - top;
+		const size_t bytesPerPixel = CGBitmapContextGetBitsPerPixel(surface) / 8;
+		const size_t sourceStride = CGBitmapContextGetBytesPerRow(surface);
+		const size_t stride = width * bytesPerPixel;
+		CFMutableDataRef copy = CFDataCreateMutable(nullptr, static_cast<CFIndex>(stride * height));
+		CFDataSetLength(copy, static_cast<CFIndex>(stride * height));
+		uint8_t* target = CFDataGetMutableBytePtr(copy);
+		for (size_t row = 0; row < height; ++row)
+			std::memcpy(target + row * stride, pixels + (top + row) * sourceStride + left * bytesPerPixel, stride);
+
+		CGDataProviderRef provider = CGDataProviderCreateWithCFData(copy);
+		CFRelease(copy);
+		CGImageRef image = CGImageCreate(width, height, CGBitmapContextGetBitsPerComponent(surface), CGBitmapContextGetBitsPerPixel(surface),
+			stride, CGBitmapContextGetColorSpace(surface), CGBitmapContextGetBitmapInfo(surface), provider, nullptr, false,
+			kCGRenderingIntentDefault);
+		CGDataProviderRelease(provider);
+		return image;
+	}
+}
 
 @implementation NppMacView
 
@@ -320,6 +407,54 @@ static bool g_sendingTestEvent = false;
 	[super updateTrackingAreas];
 }
 
+// The window's pixels are its layer's contents: the surface it draws into, which Core Animation shows
+// as it is. (Drawn through drawRect, AppKit would keep a copy of them, and the layer one more.)
+- (BOOL)wantsUpdateLayer
+{
+	return YES;
+}
+
+- (void)updateLayer
+{
+	// A view that is not shown is not painted: it is when it is shown (viewDidUnhide, showTree).
+	if (!_native || !isShown(self))
+		return;
+	const NSRect bounds = self.bounds;
+	_native->_owner->nativePaint(UiRect{0, 0, static_cast<int>(std::ceil(NSWidth(bounds))), static_cast<int>(std::ceil(NSHeight(bounds)))});
+	if (!_native)
+		return;
+	CALayer* layer = self.layer;
+	if (!_native->_ioSurface)
+	{
+		layer.contents = nil;
+		layer.backgroundColor = [NSColor colorWithSRGBRed:0.94 green:0.94 blue:0.94 alpha:1].CGColor;
+		return;
+	}
+	// Set again (through nil) so Core Animation reads the surface's new pixels, without the fade a
+	// change of contents otherwise has.
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	layer.backgroundColor = nil;
+	layer.contents = nil;
+	layer.contents = (__bridge id)_native->_ioSurface;
+	[CATransaction commit];
+}
+
+// Hidden, itself or with an ancestor: it gives its pixels up, as a window that is not shown has none.
+- (void)viewDidHide
+{
+	[super viewDidHide];
+	givePixelsUp(self);
+}
+
+- (void)viewDidUnhide
+{
+	[super viewDidUnhide];
+	if (isShown(self))
+		self.needsDisplay = YES;
+}
+
+// Only for an image of the view (cacheDisplayInRect: the test runs' snapshots); the screen shows the layer.
 - (void)drawRect:(NSRect)dirtyRect
 {
 	if (!_native)
@@ -338,16 +473,21 @@ static bool g_sendingTestEvent = false;
 		CGContextFillRect(context, NSRectToCGRect(NSIntersectionRect(dirtyRect, self.bounds)));
 		return;
 	}
-	CGImageRef image = CGBitmapContextCreateImage(_native->_surface);
+	CGImageRef image = copySurfaceArea(_native, dirtyRect);
 	if (!image)
 		return;
-	// The view is flipped: draw the image upright.
+	// The view is flipped: draw the image upright, where its area is in the surface.
+	const CGFloat scale = _native->_surfaceScale;
+	const CGFloat left = std::floor(NSMinX(dirtyRect) * scale) / scale;
+	const CGFloat top = std::floor(NSMinY(dirtyRect) * scale) / scale;
+	const CGFloat width = static_cast<CGFloat>(CGImageGetWidth(image)) / scale;
+	const CGFloat height = static_cast<CGFloat>(CGImageGetHeight(image)) / scale;
 	CGContextSaveGState(context);
 	CGContextClipToRect(context, NSRectToCGRect(dirtyRect));
-	CGContextTranslateCTM(context, 0, _native->_surfaceHeight);
+	CGContextTranslateCTM(context, 0, top + height);
 	CGContextScaleCTM(context, 1, -1);
 	CGContextSetInterpolationQuality(context, kCGInterpolationNone);
-	CGContextDrawImage(context, CGRectMake(0, 0, _native->_surfaceWidth, _native->_surfaceHeight), image);
+	CGContextDrawImage(context, CGRectMake(left, 0, width, height), image);
 	CGContextRestoreGState(context);
 	CGImageRelease(image);
 }
@@ -552,6 +692,8 @@ static bool g_sendingTestEvent = false;
 
 - (void)windowDidDeminiaturize:(NSNotification*)notification
 {
+	// Nothing was painted while the window was in the Dock.
+	showTree(static_cast<NSWindow*>(notification.object).contentView);
 	NativeView* native = [self nativeFor:notification];
 	if (native)
 		native->_owner->nativeMinimized(false);
@@ -706,6 +848,16 @@ static std::vector<std::string> g_launchFiles;
 	windowManagerApplicationActivated(true);
 }
 
+// Nothing was painted while the application was hidden.
+- (void)applicationDidUnhide:(NSNotification*)notification
+{
+	for (NSWindow* window in NSApp.windows)
+	{
+		if (window.isVisible && window.contentView)
+			showTree(window.contentView);
+	}
+}
+
 - (void)applicationDidResignActive:(NSNotification*)notification
 {
 	windowManagerApplicationActivated(false);
@@ -751,11 +903,28 @@ namespace
 	{
 		NppMacView* view = [[NppMacView alloc] initWithFrame:frame];
 		view->_native = native;
-		view.wantsLayer = NO;
+		view.wantsLayer = YES;
+		view.layerContentsRedrawPolicy = NSViewLayerContentsRedrawOnSetNeedsDisplay;
+		// The surface's first row is the window's top; it is not stretched while the window resizes.
+		view.layer.contentsGravity = kCAGravityTopLeft;
 		view.autoresizingMask = NSViewNotSizable;
 		// A window's pixels stay inside it, as on Windows (views do not clip by default since macOS 14).
 		view.clipsToBounds = YES;
 		return view;
+	}
+
+	void releaseIOSurface(void* ioSurface, void*)
+	{
+		IOSurfaceUnlock(static_cast<IOSurfaceRef>(ioSurface), 0, nullptr);
+		CFRelease(static_cast<IOSurfaceRef>(ioSurface));
+	}
+
+	void releaseSurface(NativeView* native)
+	{
+		if (native->_surface)
+			CGContextRelease(native->_surface);
+		native->_surface = nullptr;
+		native->_ioSurface = nullptr;
 	}
 
 	void ensureSurface(NativeView* native)
@@ -769,10 +938,34 @@ namespace
 		if (native->_surface && native->_surfaceWidth == width && native->_surfaceHeight == height && native->_surfaceScale == scale)
 			return;
 
+		// An IOSurface, which Core Animation shows without copying it, locked for drawing for its lifetime:
+		// the layer is told when it changed (updateLayer).
+		const size_t pixelWidth = static_cast<size_t>(width * scale);
+		const size_t pixelHeight = static_cast<size_t>(height * scale);
+		NSDictionary* properties = @{
+			(id)kIOSurfaceWidth: @(pixelWidth),
+			(id)kIOSurfaceHeight: @(pixelHeight),
+			(id)kIOSurfaceBytesPerElement: @4,
+			(id)kIOSurfacePixelFormat: @(static_cast<unsigned>('BGRA')),
+		};
+		IOSurfaceRef ioSurface = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
+		if (!ioSurface)
+			return;
+		IOSurfaceLock(ioSurface, 0, nullptr);
+		// The context owns the IOSurface: it is unlocked and released with the context's last
+		// reference (a window DC keeps one while it is used).
 		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-		CGContextRef surface = CGBitmapContextCreate(nullptr, static_cast<size_t>(width * scale), static_cast<size_t>(height * scale), 8, 0,
-			colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little));
+		CGContextRef surface = CGBitmapContextCreateWithData(IOSurfaceGetBaseAddress(ioSurface), pixelWidth, pixelHeight, 8,
+			IOSurfaceGetBytesPerRow(ioSurface), colorSpace,
+			static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little), releaseIOSurface, ioSurface);
 		CGColorSpaceRelease(colorSpace);
+		if (!surface)
+		{
+			releaseIOSurface(ioSurface, nullptr);
+			return;
+		}
+		if (pixelWidth * pixelHeight > 0)
+			std::memset(IOSurfaceGetBaseAddress(ioSurface), 0, IOSurfaceGetBytesPerRow(ioSurface) * pixelHeight);
 		// Keep what the old surface showed, so that a resize does not flash.
 		if (native->_surface)
 		{
@@ -782,7 +975,7 @@ namespace
 				CGContextDrawImage(surface, CGRectMake(0, (height - native->_surfaceHeight) * scale, native->_surfaceWidth * scale, native->_surfaceHeight * scale), old);
 				CGImageRelease(old);
 			}
-			CGContextRelease(native->_surface);
+			releaseSurface(native);
 		}
 		else if (!native->_seeThrough)
 		{
@@ -793,6 +986,9 @@ namespace
 		CGContextTranslateCTM(surface, 0, height * scale);
 		CGContextScaleCTM(surface, scale, -scale);
 		native->_surface = surface;
+		native->_ioSurface = ioSurface;
+		native->_view.layer.contentsScale = scale;
+		native->_view.layer.contents = (__bridge id)ioSurface;
 		native->_surfaceWidth = width;
 		native->_surfaceHeight = height;
 		native->_surfaceScale = scale;
@@ -1091,8 +1287,7 @@ namespace nppmac::ui
 		{
 			[native->_view removeFromSuperview];
 		}
-		if (native->_surface)
-			CGContextRelease(native->_surface);
+		releaseSurface(native);
 		native->_view = nil;
 		native->_window = nil;
 		delete native;
@@ -1119,6 +1314,8 @@ namespace nppmac::ui
 			if (!visible)
 			{
 				[native->_window orderOut:nil];
+				hideTree(native->_window.contentView);
+				return;
 			}
 			else if (activate)
 			{
@@ -1132,6 +1329,7 @@ namespace nppmac::ui
 			{
 				[native->_window orderFront:nil];
 			}
+			showTree(native->_window.contentView);
 			return;
 		}
 		native->_view.hidden = !visible;

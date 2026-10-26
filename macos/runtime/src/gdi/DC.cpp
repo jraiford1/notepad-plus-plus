@@ -80,6 +80,10 @@ namespace nppmac::gdi
 				release(state);
 			if (dc->_bitmap)
 				deselect(dc->_bitmap);
+			// A window DC keeps its window's surface until it is released (the window may resize, or
+			// give its surface up when hidden, in the meantime).
+			if (dc->_kind == DCKind::window && dc->_context)
+				CGContextRelease(dc->_context);
 			{
 				std::lock_guard lock{g_dcsMutex};
 				liveDCs().erase(dc);
@@ -170,6 +174,8 @@ namespace nppmac::gdi
 		DC* dc = createDC(DCKind::window);
 		dc->_window = window;
 		dc->_context = window && window->_view && !window->_nativeControl ? static_cast<CGContextRef>(ui::surfaceContext(window->_view)) : nullptr;
+		if (dc->_context)
+			CGContextRetain(dc->_context);
 		dc->_width = window ? window->_clientWidth : 0;
 		dc->_height = window ? window->_clientHeight : 0;
 		if (window && window->_font)
