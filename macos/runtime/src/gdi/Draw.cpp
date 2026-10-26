@@ -750,6 +750,11 @@ namespace
 		height = header.biHeight < 0 ? -header.biHeight : header.biHeight;
 		const bool bottomUp = header.biHeight > 0;
 		const int bitCount = header.biBitCount;
+		if (!isAllowedBitmapSize(width, height))
+		{
+			width = height = 0;
+			return {};
+		}
 		const size_t stride = ((static_cast<size_t>(width) * static_cast<size_t>(bitCount) + 31) / 32) * 4;
 		const RGBQUAD* palette = reinterpret_cast<const RGBQUAD*>(reinterpret_cast<const BYTE*>(info) + header.biSize);
 		std::vector<uint32_t> pixels(static_cast<size_t>(width) * static_cast<size_t>(height));
@@ -800,6 +805,8 @@ int WINAPI StretchDIBits(HDC hdc, int x, int y, int width, int height, int sourc
 	int dibWidth = 0;
 	int dibHeight = 0;
 	std::vector<uint32_t> pixels = readDib(info, bits, dibWidth, dibHeight);
+	if (pixels.empty())
+		return 0;
 	HBITMAP temporary = CreateBitmap(dibWidth, dibHeight, 1, 32, pixels.data());
 	HDC source = CreateCompatibleDC(nullptr);
 	HGDIOBJ old = SelectObject(source, temporary);

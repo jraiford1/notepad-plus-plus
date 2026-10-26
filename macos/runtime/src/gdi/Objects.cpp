@@ -390,6 +390,11 @@ HFONT WINAPI CreateFontW(int height, int width, int escapement, int orientation,
 HBITMAP WINAPI CreateDIBSection(HDC, const BITMAPINFO* info, UINT, void** bits, HANDLE, DWORD)
 {
 	const BITMAPINFOHEADER& header = info->bmiHeader;
+	if (!isAllowedBitmapSize(header.biWidth, std::abs(static_cast<long long>(header.biHeight))))
+	{
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+		return nullptr;
+	}
 	auto* bitmap = new Bitmap;
 	bitmap->_width = header.biWidth;
 	bitmap->_height = header.biHeight < 0 ? -header.biHeight : header.biHeight;
@@ -409,6 +414,11 @@ HBITMAP WINAPI CreateDIBSection(HDC, const BITMAPINFO* info, UINT, void** bits, 
 
 HBITMAP WINAPI CreateBitmap(int width, int height, UINT planes, UINT bitsPerPixel, const void* bits)
 {
+	if (!isAllowedBitmapSize(std::max(1, width), std::max(1, height)))
+	{
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+		return nullptr;
+	}
 	auto* bitmap = new Bitmap;
 	bitmap->_width = std::max(1, width);
 	bitmap->_height = std::max(1, height);

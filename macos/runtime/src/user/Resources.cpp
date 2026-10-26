@@ -27,6 +27,8 @@
 #include "platform/Platform.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <span>
 #include <dirent.h>
 #include <fstream>
 #include <iterator>
@@ -467,20 +469,73 @@ namespace nppmac::user
 		return createIcon(std::move(decoded), !cursor, hotspot);
 	}
 
+	// A bitmap from a DIB: its header (and colors), then its pixels at bits, which must end by end. The
+	// header is Windows' (BITMAPINFOHEADER, or a later version) or OS/2's (BITMAPCOREHEADER: 16-bit
+	// sizes, 3-byte colors), which some plugins' .bmp files still have; it is read as a BITMAPINFO.
+	// Null when the header is neither, or the pixels are not all there.
+	HBITMAP bitmapFromDib(std::span<const BYTE> dib, const BYTE* bits, const BYTE* end)
+	{
+		DWORD headerSize = 0;
+		if (dib.size() < sizeof(headerSize))
+			return nullptr;
+		std::memcpy(&headerSize, dib.data(), sizeof(headerSize));
+		BITMAPINFOHEADER header{};
+		size_t colorSize = sizeof(RGBQUAD);
+		if (headerSize == sizeof(BITMAPCOREHEADER) && dib.size() >= sizeof(BITMAPCOREHEADER))
+		{
+			BITMAPCOREHEADER core{};
+			std::memcpy(&core, dib.data(), sizeof(core));
+			header.biWidth = core.bcWidth;
+			header.biHeight = core.bcHeight;
+			header.biPlanes = 1;
+			header.biBitCount = core.bcBitCount;
+			header.biCompression = BI_RGB;
+			colorSize = sizeof(RGBTRIPLE);
+		}
+		else if (headerSize >= sizeof(BITMAPINFOHEADER) && dib.size() >= headerSize)
+		{
+			std::memcpy(&header, dib.data(), sizeof(header));
+		}
+		else
+		{
+			return nullptr;
+		}
+		header.biSize = sizeof(BITMAPINFOHEADER);
+		const long long height = std::abs(static_cast<long long>(header.biHeight));
+		if (!gdi::isAllowedBitmapSize(header.biWidth, height) || header.biBitCount == 0 || header.biBitCount > 32)
+			return nullptr;
+
+		// The color masks follow a BITMAPINFOHEADER and are inside the later versions, at the same place.
+		const size_t masks = header.biCompression == BI_BITFIELDS ? 3 * sizeof(DWORD) : 0;
+		const size_t colors = header.biBitCount <= 8 ? (header.biClrUsed ? header.biClrUsed : size_t{1} << header.biBitCount) : 0;
+		const size_t colorsOffset = (colorSize == sizeof(RGBTRIPLE) ? headerSize : std::max<size_t>(headerSize, sizeof(BITMAPINFOHEADER) + masks));
+		if (colors > 256 || colorsOffset + colors * colorSize > dib.size())
+			return nullptr;
+		std::vector<BYTE> info(sizeof(BITMAPINFOHEADER) + masks + colors * sizeof(RGBQUAD));
+		std::memcpy(info.data(), &header, sizeof(header));
+		if (masks)
+			std::memcpy(info.data() + sizeof(BITMAPINFOHEADER), dib.data() + sizeof(BITMAPINFOHEADER), masks);
+		auto* palette = reinterpret_cast<RGBQUAD*>(info.data() + sizeof(BITMAPINFOHEADER) + masks);
+		for (size_t i = 0; i < colors; ++i)
+		{
+			const BYTE* color = dib.data() + colorsOffset + i * colorSize;
+			palette[i] = RGBQUAD{color[0], color[1], color[2], 0};
+		}
+		if (!bits)
+			bits = dib.data() + colorsOffset + colors * colorSize;
+
+		const size_t stride = ((static_cast<size_t>(header.biWidth) * header.biBitCount + 31) / 32) * 4;
+		if (bits < dib.data() || bits > end || static_cast<size_t>(end - bits) < stride * static_cast<size_t>(height))
+			return nullptr;
+		HBITMAP bitmap = CreateBitmap(header.biWidth, static_cast<int>(height), 1, 32, nullptr);
+		SetDIBits(nullptr, bitmap, 0, static_cast<UINT>(height), bits, reinterpret_cast<const BITMAPINFO*>(info.data()), DIB_RGB_COLORS);
+		return bitmap;
+	}
+
 	HBITMAP loadBitmapResource(LPCWSTR name, HMODULE module)
 	{
 		std::span<const BYTE> data = resourceBytes(name, RT_BITMAP, module);
-		if (data.size() < sizeof(BITMAPINFOHEADER))
-			return nullptr;
-		const auto* info = reinterpret_cast<const BITMAPINFO*>(data.data());
-		const BITMAPINFOHEADER& header = info->bmiHeader;
-		const int colors = header.biBitCount <= 8 ? (header.biClrUsed ? static_cast<int>(header.biClrUsed) : (1 << header.biBitCount)) : 0;
-		const size_t masks = header.biCompression == BI_BITFIELDS ? 12 : 0;
-		const BYTE* bits = data.data() + header.biSize + masks + static_cast<size_t>(colors) * 4;
-		const int height = std::abs(header.biHeight);
-		HBITMAP bitmap = CreateBitmap(header.biWidth, height, 1, 32, nullptr);
-		SetDIBits(nullptr, bitmap, 0, static_cast<UINT>(height), bits, info, DIB_RGB_COLORS);
-		return bitmap;
+		return bitmapFromDib(data, nullptr, data.data() + data.size());
 	}
 
 	// LR_LOADTRANSPARENT: Windows paints the pixels of the top-left pixel's color in the window color, so they
@@ -522,13 +577,12 @@ namespace nppmac::user
 		}
 		if (data[0] == 'B' && data[1] == 'M')
 		{
-			const auto* info = reinterpret_cast<const BITMAPINFO*>(data.data() + sizeof(BITMAPFILEHEADER));
+			if (data.size() <= sizeof(BITMAPFILEHEADER))
+				return nullptr;
 			DWORD bitsOffset = 0;
 			std::memcpy(&bitsOffset, data.data() + 10, 4);
-			const int height = std::abs(info->bmiHeader.biHeight);
-			HBITMAP bitmap = CreateBitmap(info->bmiHeader.biWidth, height, 1, 32, nullptr);
-			SetDIBits(nullptr, bitmap, 0, static_cast<UINT>(height), data.data() + bitsOffset, info, DIB_RGB_COLORS);
-			return bitmap;
+			const std::span<const BYTE> dib{data.data() + sizeof(BITMAPFILEHEADER), data.size() - sizeof(BITMAPFILEHEADER)};
+			return bitsOffset < data.size() ? bitmapFromDib(dib, data.data() + bitsOffset, data.data() + data.size()) : nullptr;
 		}
 		// ICONDIR: entries like a resource group's, ending with a file offset instead of an id.
 		WORD count = 0;

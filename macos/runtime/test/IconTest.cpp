@@ -15,13 +15,19 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Tests of icons on Retina screens: an icon loaded at its Windows size keeps the file's image of twice
-// that size, and image lists and DrawIconEx draw it where a surface has two pixels per point.
+// that size, and image lists and DrawIconEx draw it where a surface has two pixels per point. Also
+// .bmp files: OS/2's header is read, and a header with an impossible size fails instead of allocating.
 
 #include "gdi/Gdi.h"
 
 #include <commctrl.h>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <string>
+#include <unistd.h>
+#include <vector>
 
 namespace
 {
@@ -73,6 +79,38 @@ namespace
 		DeleteDC(hdc);
 		return differences;
 	}
+
+	// Writes a .bmp file: a file header, an OS/2 header (BITMAPCOREHEADER) of the given size, and
+	// 24-bit pixels, all of one color (blue, green, red). Returns its path.
+	std::string writeCoreBitmap(int width, int height, int pixelRows, const BYTE (&color)[3])
+	{
+		const size_t stride = ((static_cast<size_t>(width) * 24 + 31) / 32) * 4;
+		std::vector<BYTE> pixels(stride * static_cast<size_t>(pixelRows));
+		for (int y = 0; y < pixelRows; ++y)
+		{
+			for (int x = 0; x < width; ++x)
+				std::memcpy(&pixels[static_cast<size_t>(y) * stride + static_cast<size_t>(x) * 3], color, 3);
+		}
+		BITMAPCOREHEADER core{};
+		core.bcSize = sizeof(core);
+		core.bcWidth = static_cast<WORD>(width);
+		core.bcHeight = static_cast<WORD>(height);
+		core.bcPlanes = 1;
+		core.bcBitCount = 24;
+		const DWORD bitsOffset = 14 + sizeof(core);
+		const DWORD fileSize = bitsOffset + static_cast<DWORD>(pixels.size());
+		std::vector<BYTE> file{'B', 'M'};
+		file.resize(14);
+		std::memcpy(&file[2], &fileSize, 4);
+		std::memcpy(&file[10], &bitsOffset, 4);
+		file.insert(file.end(), reinterpret_cast<const BYTE*>(&core), reinterpret_cast<const BYTE*>(&core) + sizeof(core));
+		file.insert(file.end(), pixels.begin(), pixels.end());
+		char path[] = "/tmp/npp-bitmap-XXXXXX";
+		const int fd = mkstemp(path);
+		write(fd, file.data(), file.size());
+		close(fd);
+		return path;
+	}
 }
 
 int main()
@@ -94,6 +132,22 @@ int main()
 
 	ImageList_Destroy(list);
 	DestroyIcon(icon);
+
+	// An OS/2 bitmap (BlitzSearch's toolbar image): its 16-bit sizes, not a BITMAPINFOHEADER's.
+	const BYTE red[3] = {0x00, 0x00, 0xFF};
+	const std::string os2 = writeCoreBitmap(20, 20, 20, red);
+	HBITMAP bitmap = static_cast<HBITMAP>(LoadImageW(nullptr, nppmac::toUtf16(os2).c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE));
+	auto* loaded = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(bitmap, nppmac::gdi::ObjectType::bitmap);
+	CHECK(loaded && loaded->_width == 20 && loaded->_height == 20);
+	CHECK(loaded && (loaded->rowPointer(10)[10] & 0xFFFFFF) == 0xFF0000);
+	DeleteObject(bitmap);
+	unlink(os2.c_str());
+
+	// A header promising more pixels than the file holds fails, and so does an impossible size.
+	const std::string truncated = writeCoreBitmap(20, 20, 5, red);
+	CHECK(LoadImageW(nullptr, nppmac::toUtf16(truncated).c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE) == nullptr);
+	unlink(truncated.c_str());
+	CHECK(CreateBitmap(1 << 20, 1 << 20, 1, 32, nullptr) == nullptr);
 	std::cout << g_checks << " checks, " << g_failures << " failures\n";
 	return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
