@@ -238,6 +238,29 @@ if [ -n "$catalog" ] && [ -d "$catalog" ]; then
 	catalogInstalled=()
 fi
 
+# A rich edit in a docked panel: NppExec alone (its commands are 22000 on) runs the editor's text as
+# a script (Select All, then Execute Selected Text), whose output its console (RichEdit20W) shows.
+if [ -n "$catalog" ] && [ -f "$catalog/NppExec/NppExec.dll" ]; then
+	mkdir -p "$pluginsRoot/NppExec"
+	cp "$catalog/NppExec/NppExec.dll" "$pluginsRoot/NppExec/"
+	if [ -f "$catalog/NppExec/NppExec.res" ]; then
+		cp "$catalog/NppExec/NppExec.res" "$pluginsRoot/NppExec/"
+	fi
+	printf 'echo hello from nppexec\n' > "$work/nppexec.txt"
+	files=("$work/nppexec.txt")
+	mkdir -p "$work/rich-edit-settings"
+	if runSettings="$work/rich-edit-settings" run rich-edit NPPMAC_TEST_COMMAND=42007,22002 NPPMAC_DUMP_TREE=1; then
+		if grep -q 'RichEdit20W .* visible text="hello from nppexec' "$work/rich-edit.log"; then
+			echo "ok   rich-edit"
+		else
+			echo "FAIL rich-edit: NppExec's console does not show the script's output"
+			grep 'RichEdit20W' "$work/rich-edit.log" | head -3
+			failures=$((failures + 1))
+		fi
+	fi
+	rm -rf "${pluginsRoot:?}/NppExec"
+fi
+
 # Plugins Admin (IDM_SETTING_PLUGINADM) opens with the app's plugin list, without an error.
 files=()
 mkdir -p "$work/plugins-admin-settings"

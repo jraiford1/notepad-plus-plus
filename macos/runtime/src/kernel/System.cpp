@@ -66,10 +66,13 @@ namespace
 		user32,
 		uxtheme,
 		comctl32,
+		msftedit, // rich edits: their classes are the runtime's (Edit.cpp)
+		riched20,
+		riched32,
 		count,
 	};
 
-	const char16_t* const g_systemModuleNames[] = {u"ntdll", u"kernel32", u"user32", u"uxtheme", u"comctl32"};
+	const char16_t* const g_systemModuleNames[] = {u"ntdll", u"kernel32", u"user32", u"uxtheme", u"comctl32", u"msftedit", u"riched20", u"riched32"};
 
 	// A module handle is its image's base address, and programs read the PE headers there: Notepad++'s
 	// dark mode walks comctl32's delay-import table. Each stand-in is a valid, empty PE header (no data

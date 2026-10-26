@@ -184,6 +184,14 @@
 		"author": "Pablo Lopez",
 		"homepage": "https://github.com/pablo-code14/NppCrossCheck"
 	},
+	"NppExec": {
+		"folder-name": "NppExec",
+		"display-name": "NppExec",
+		"version": "0.8.12.1",
+		"description": "Execute commands or saved scripts without leaving Notepad++.",
+		"author": "Vitaliy Dovgan",
+		"homepage": "https://github.com/d0vgan/nppexec"
+	},
 	"NppExport": {
 		"folder-name": "NppExport",
 		"display-name": "NppExport",
@@ -201,6 +209,14 @@
 		"description": "Favorites plugin.\r\nNotepad++ does not come with favorites. This is a simple solution to that problem.",
 		"author": "Helder Sepulveda",
 		"homepage": "https://github.com/heldersepu/nppfavorites"
+	},
+	"NppJavaPlugin": {
+		"folder-name": "NppJavaPlugin",
+		"display-name": "Java Plugin",
+		"version": "0.4.1",
+		"description": "Allows Java Code Compilation and Execution directly from Notepad++.",
+		"author": "Dominik Cebula",
+		"homepage": "https://github.com/dominikcebula/npp-java-plugin"
 	},
 	"NppPluginDemo": {
 		"folder-name": "NppPluginDemo",

@@ -21,9 +21,11 @@
 #include "Handles.h"
 #include "Internal.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <mutex>
 #include <shellapi.h>
 #include <signal.h>
 #include <spawn.h>
@@ -363,4 +365,135 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR commandLine, int* count)
 	if (count)
 		*count = static_cast<int>(arguments.size());
 	return block;
+}
+
+// --- Job objects ---------------------------------------------------------------------------------
+
+using nppmac::kernel::createHandle;
+using nppmac::kernel::lookup;
+using nppmac::kernel::lookupHandle;
+
+namespace
+{
+	// A job: the processes assigned to it, stopped together (each with its process group, so with what
+	// it started) when the job is terminated, or when its last handle closes with KILL_ON_JOB_CLOSE.
+	class Job : public KernelObject
+	{
+	public:
+		~Job() override
+		{
+			if (_killOnClose)
+				terminate();
+		}
+
+		void terminate()
+		{
+			std::lock_guard lock{_mutex};
+			for (const pid_t pid : _processes)
+				::killpg(pid, SIGKILL);
+		}
+
+		std::mutex _mutex;
+		std::vector<pid_t> _processes;
+		bool _killOnClose = false;
+	};
+}
+
+HANDLE WINAPI CreateJobObjectW(LPSECURITY_ATTRIBUTES, LPCWSTR)
+{
+	return createHandle(std::make_shared<Job>());
+}
+
+BOOL WINAPI SetInformationJobObject(HANDLE handle, JOBOBJECTINFOCLASS infoClass, LPVOID info, DWORD length)
+{
+	std::shared_ptr<Job> job = lookup<Job>(handle);
+	if (!job || !info)
+		return FALSE;
+	// The limits that matter here: killing the processes with the job.
+	const JOBOBJECT_BASIC_LIMIT_INFORMATION* basic = nullptr;
+	if (infoClass == JobObjectBasicLimitInformation && length >= sizeof(JOBOBJECT_BASIC_LIMIT_INFORMATION))
+		basic = static_cast<const JOBOBJECT_BASIC_LIMIT_INFORMATION*>(info);
+	else if (infoClass == JobObjectExtendedLimitInformation && length >= sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION))
+		basic = &static_cast<const JOBOBJECT_EXTENDED_LIMIT_INFORMATION*>(info)->BasicLimitInformation;
+	if (basic)
+		job->_killOnClose = (basic->LimitFlags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) != 0;
+	return TRUE;
+}
+
+BOOL WINAPI AssignProcessToJobObject(HANDLE handle, HANDLE process)
+{
+	std::shared_ptr<Job> job = lookup<Job>(handle);
+	std::shared_ptr<ChildProcess> child = std::dynamic_pointer_cast<ChildProcess>(lookupHandle(process));
+	if (!job || !child)
+	{
+		SetLastError(ERROR_INVALID_HANDLE);
+		return FALSE;
+	}
+	std::lock_guard lock{job->_mutex};
+	job->_processes.push_back(child->_pid);
+	return TRUE;
+}
+
+BOOL WINAPI TerminateJobObject(HANDLE handle, UINT)
+{
+	std::shared_ptr<Job> job = lookup<Job>(handle);
+	if (!job)
+		return FALSE;
+	job->terminate();
+	return TRUE;
+}
+
+BOOL WINAPI IsProcessInJob(HANDLE process, HANDLE handle, PBOOL result)
+{
+	if (!result)
+		return FALSE;
+	*result = FALSE;
+	// Notepad++ itself is in no job; a child is in the jobs it was assigned to.
+	std::shared_ptr<ChildProcess> child = std::dynamic_pointer_cast<ChildProcess>(lookupHandle(process));
+	if (child && handle)
+	{
+		if (std::shared_ptr<Job> job = lookup<Job>(handle))
+		{
+			std::lock_guard lock{job->_mutex};
+			*result = std::find(job->_processes.begin(), job->_processes.end(), child->_pid) != job->_processes.end();
+		}
+	}
+	return TRUE;
+}
+
+// --- Consoles ------------------------------------------------------------------------------------
+
+// Ctrl+C (SIGINT) and Ctrl+Break (SIGTERM) for a process group: a child started by CreateProcess has
+// its own. Group 0, the caller's console, is no one here: Notepad++ has no console.
+BOOL WINAPI GenerateConsoleCtrlEvent(DWORD event, DWORD group)
+{
+	if (group == 0)
+		return TRUE;
+	return ::killpg(static_cast<pid_t>(group), event == CTRL_C_EVENT ? SIGINT : SIGTERM) == 0;
+}
+
+BOOL WINAPI SetConsoleCtrlHandler(PHANDLER_ROUTINE, BOOL)
+{
+	return TRUE;
+}
+
+BOOL WINAPI FreeConsole()
+{
+	return TRUE;
+}
+
+// --- Security descriptors: files and pipes have the user's permissions ----------------------------
+
+BOOL WINAPI InitializeSecurityDescriptor(PSECURITY_DESCRIPTOR descriptor, DWORD revision)
+{
+	if (!descriptor)
+		return FALSE;
+	std::memset(descriptor, 0, sizeof(SECURITY_DESCRIPTOR));
+	static_cast<SECURITY_DESCRIPTOR*>(descriptor)->Revision = static_cast<BYTE>(revision);
+	return TRUE;
+}
+
+BOOL WINAPI SetSecurityDescriptorDacl(PSECURITY_DESCRIPTOR descriptor, BOOL, PACL, BOOL)
+{
+	return descriptor != nullptr;
 }

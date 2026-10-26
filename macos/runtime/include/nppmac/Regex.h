@@ -14,99 +14,103 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Regular expressions on UTF-16 text: std::wregex and its family (wsmatch, wsregex_iterator...) for
-// char16_t, as plugins use them on what were wide strings. libc++ has no std::regex_traits<char16_t>
-// (there is no ctype<char16_t> facet), so the traits here classify through regex_traits<wchar_t>
-// (UTF-32 on macOS, which holds every UTF-16 code unit). The engine renames std::wregex and the rest
-// to these; the std algorithms (regex_match, regex_search, regex_replace) take them as they are, and
-// positions are in UTF-16 code units, as on Windows.
+// Regular expressions on UTF-16 text: std::basic_regex<char16_t>, which std::wregex and its family
+// (wsmatch, wsregex_iterator...) become, as plugins use them on what were wide strings. libc++'s
+// regex_traits only works for char and wchar_t (there is no ctype<char16_t> facet), so the one for
+// char16_t here classifies through regex_traits<wchar_t> (UTF-32 on macOS, which holds every UTF-16
+// code unit). The engine renames std::wregex and the rest to the nppmac names; the std algorithms
+// (regex_match, regex_search, regex_replace) take them as they are, and positions are in UTF-16 code
+// units, as on Windows.
 
 #pragma once
 
 #include <regex>
 #include <string>
 
+template <>
+class std::regex_traits<char16_t>
+{
+public:
+	using char_type = char16_t;
+	using string_type = std::u16string;
+	using locale_type = std::locale;
+	using char_class_type = std::regex_traits<wchar_t>::char_class_type;
+
+	static std::size_t length(const char_type* text) {
+		return std::char_traits<char16_t>::length(text);
+	}
+
+	char_type translate(char_type c) const {
+		return c;
+	}
+
+	char_type translate_nocase(char_type c) const {
+		const wchar_t lower = _wide.translate_nocase(static_cast<wchar_t>(c));
+		return lower <= 0xFFFF ? static_cast<char_type>(lower) : c;
+	}
+
+	// Collation by code unit (Windows' wregex collates by the locale only with regex::collate).
+	template <class Iterator>
+	string_type transform(Iterator first, Iterator last) const {
+		return string_type(first, last);
+	}
+
+	template <class Iterator>
+	string_type transform_primary(Iterator first, Iterator last) const {
+		string_type text(first, last);
+		for (char16_t& c : text)
+			c = translate_nocase(c);
+		return text;
+	}
+
+	template <class Iterator>
+	string_type lookup_collatename(Iterator first, Iterator last) const {
+		const std::wstring name = widen(first, last);
+		const std::wstring element = _wide.lookup_collatename(name.begin(), name.end());
+		string_type result;
+		for (const wchar_t c : element)
+			result += static_cast<char16_t>(c);
+		return result;
+	}
+
+	template <class Iterator>
+	char_class_type lookup_classname(Iterator first, Iterator last, bool icase = false) const {
+		const std::wstring name = widen(first, last);
+		return _wide.lookup_classname(name.begin(), name.end(), icase);
+	}
+
+	bool isctype(char_type c, char_class_type classes) const {
+		return _wide.isctype(static_cast<wchar_t>(c), classes);
+	}
+
+	int value(char_type c, int radix) const {
+		return _wide.value(static_cast<wchar_t>(c), radix);
+	}
+
+	locale_type imbue(locale_type locale) {
+		return _wide.imbue(locale);
+	}
+
+	locale_type getloc() const {
+		return _wide.getloc();
+	}
+
+private:
+	template <class Iterator>
+	static std::wstring widen(Iterator first, Iterator last) {
+		std::wstring text;
+		for (; first != last; ++first)
+			text += static_cast<wchar_t>(*first);
+		return text;
+	}
+
+	std::regex_traits<wchar_t> _wide;
+};
+
+
 namespace nppmac
 {
-	class u16regex_traits
-	{
-	public:
-		using char_type = char16_t;
-		using string_type = std::u16string;
-		using locale_type = std::locale;
-		using char_class_type = std::regex_traits<wchar_t>::char_class_type;
-
-		static std::size_t length(const char_type* text) {
-			return std::char_traits<char16_t>::length(text);
-		}
-
-		char_type translate(char_type c) const {
-			return c;
-		}
-
-		char_type translate_nocase(char_type c) const {
-			const wchar_t lower = _wide.translate_nocase(static_cast<wchar_t>(c));
-			return lower <= 0xFFFF ? static_cast<char_type>(lower) : c;
-		}
-
-		// Collation by code unit (Windows' wregex collates by the locale only with regex::collate).
-		template <class Iterator>
-		string_type transform(Iterator first, Iterator last) const {
-			return string_type(first, last);
-		}
-
-		template <class Iterator>
-		string_type transform_primary(Iterator first, Iterator last) const {
-			string_type text(first, last);
-			for (char16_t& c : text)
-				c = translate_nocase(c);
-			return text;
-		}
-
-		template <class Iterator>
-		string_type lookup_collatename(Iterator first, Iterator last) const {
-			const std::wstring name = widen(first, last);
-			const std::wstring element = _wide.lookup_collatename(name.begin(), name.end());
-			string_type result;
-			for (const wchar_t c : element)
-				result += static_cast<char16_t>(c);
-			return result;
-		}
-
-		template <class Iterator>
-		char_class_type lookup_classname(Iterator first, Iterator last, bool icase = false) const {
-			const std::wstring name = widen(first, last);
-			return _wide.lookup_classname(name.begin(), name.end(), icase);
-		}
-
-		bool isctype(char_type c, char_class_type classes) const {
-			return _wide.isctype(static_cast<wchar_t>(c), classes);
-		}
-
-		int value(char_type c, int radix) const {
-			return _wide.value(static_cast<wchar_t>(c), radix);
-		}
-
-		locale_type imbue(locale_type locale) {
-			return _wide.imbue(locale);
-		}
-
-		locale_type getloc() const {
-			return _wide.getloc();
-		}
-
-	private:
-		template <class Iterator>
-		static std::wstring widen(Iterator first, Iterator last) {
-			std::wstring text;
-			for (; first != last; ++first)
-				text += static_cast<wchar_t>(*first);
-			return text;
-		}
-
-		std::regex_traits<wchar_t> _wide;
-	};
-
+	using u16regex_traits = std::regex_traits<char16_t>;
 	using wregex = std::basic_regex<char16_t, u16regex_traits>;
 	using wcmatch = std::match_results<const char16_t*>;
 	using wsmatch = std::match_results<std::u16string::const_iterator>;

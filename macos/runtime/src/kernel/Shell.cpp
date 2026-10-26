@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <htmlhelp.h>
 #include <knownfolders.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -280,6 +281,32 @@ LPWSTR WINAPI PathCombineW(LPWSTR dest, LPCWSTR directory, LPCWSTR file)
 	}
 	wcscpy_s(dest, MAX_PATH, canonical);
 	return dest;
+}
+
+// The root: "/" here, or a Windows root ("C:\\", "\\").
+BOOL WINAPI PathIsRootW(LPCWSTR path)
+{
+	if (!path)
+		return FALSE;
+	const std::u16string_view text{path};
+	if (text == u"/" || text == u"\\")
+		return TRUE;
+	return text.size() == 3 && text[1] == u':' && (text[2] == u'\\' || text[2] == u'/') ? TRUE : FALSE;
+}
+
+// HTML Help shows a .chm file: here it is opened with the application that opens it, if any (there
+// is no HTML Help viewer of the system's); no help window is made.
+HWND WINAPI HtmlHelpW(HWND, LPCWSTR file, UINT command, DWORD_PTR)
+{
+	if (file && (command == HH_DISPLAY_TOPIC || command == HH_DISPLAY_TOC || command == HH_DISPLAY_INDEX))
+	{
+		std::u16string path{file};
+		// "help.chm::/topic.htm": the file.
+		if (const size_t topic = path.find(u"::"); topic != std::u16string::npos)
+			path.resize(topic);
+		nppmac::platform::openUrlOrFile(toPosixPath(path));
+	}
+	return nullptr;
 }
 
 LPSTR WINAPI PathCombineA(LPSTR dest, LPCSTR directory, LPCSTR file)

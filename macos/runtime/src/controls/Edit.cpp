@@ -18,10 +18,18 @@
 // one level of undo, word wrap, the standard context menu and the EM_* messages. Lines are
 // separated by "\r\n", as in Windows edit controls. Colors come from the parent through
 // WM_CTLCOLOREDIT, or WM_CTLCOLORSTATIC when read-only or disabled.
+//
+// The rich edit control (RichEdit20W, RichEdit50W: msftedit.dll and riched20.dll) is the same control
+// in its rich mode: paragraphs end with "\r", each character has a format (colors, bold, italic,
+// underline, strikeout), its colors are its own, and the parent gets the notifications it asks for
+// (EN_MSGFILTER, EN_SELCHANGE, EN_CHANGE...), with the EM_* messages of rich edits.
 
 #include "ControlSupport.h"
 
+#include <richedit.h>
+
 #include <cwctype>
+#include <map>
 
 namespace nppmac::controls
 {
@@ -47,6 +55,18 @@ namespace nppmac::controls
 		{
 			size_t _start = 0;
 			size_t _length = 0; // without the line break
+		};
+
+		// A rich edit character format: its colors (automatic: the window's) and effects (CFE_BOLD...).
+		struct CharFormat
+		{
+			bool _autoColor = true;
+			COLORREF _color = 0;
+			bool _autoBack = true;
+			COLORREF _back = 0;
+			DWORD _effects = 0;
+
+			bool operator==(const CharFormat&) const = default;
 		};
 
 		struct Edit
@@ -76,6 +96,23 @@ namespace nppmac::controls
 			size_t _undoCaret = 0;
 			std::vector<Line> _lines;
 			bool _layoutValid = false;
+
+			// Rich edit: the format of each character (an index into _formats, where 0 is the default),
+			// the one text inserted next gets, the background, and the notifications the parent wants.
+			bool _rich = false;
+			std::vector<CharFormat> _formats{CharFormat{}};
+			std::vector<uint16_t> _formatOf;
+			std::vector<uint16_t> _undoFormatOf;
+			uint16_t _insertFormat = 0;
+			bool _autoBackground = true;
+			COLORREF _background = 0;
+			DWORD _eventMask = 0;
+			bool _noWrap = false;
+			HFONT _ownFont = nullptr; // made for EM_SETCHARFORMAT's face and size
+			CHARRANGE _notifiedSelection{-1, -1};
+			LPARAM _options = 0;
+			LPARAM _langOptions = 0;
+			LPARAM _imeStatus = 0;
 		};
 
 		LONG styleOf(HWND hwnd)
@@ -93,9 +130,12 @@ namespace nppmac::controls
 			return (styleOf(hwnd) & ES_READONLY) != 0;
 		}
 
-		bool wraps(HWND hwnd)
+		bool wraps(HWND hwnd, const Edit& edit)
 		{
 			const LONG style = styleOf(hwnd);
+			// A rich edit wraps unless EM_SETTARGETDEVICE says otherwise.
+			if (edit._rich)
+				return (style & ES_MULTILINE) && !edit._noWrap;
 			return (style & ES_MULTILINE) && !(style & (ES_AUTOHSCROLL | WS_HSCROLL));
 		}
 
@@ -117,6 +157,72 @@ namespace nppmac::controls
 		size_t selectionEnd(const Edit& edit)
 		{
 			return std::max(edit._anchor, edit._caret);
+		}
+
+		uint16_t formatIndex(Edit& edit, const CharFormat& format)
+		{
+			const auto found = std::find(edit._formats.begin(), edit._formats.end(), format);
+			if (found != edit._formats.end())
+				return static_cast<uint16_t>(found - edit._formats.begin());
+			if (edit._formats.size() >= 0xFFFF)
+				return 0;
+			edit._formats.push_back(format);
+			return static_cast<uint16_t>(edit._formats.size() - 1);
+		}
+
+		// What text inserted at a position looks like: as the character before it.
+		uint16_t formatBefore(const Edit& edit, size_t position)
+		{
+			if (edit._formatOf.empty())
+				return 0;
+			return edit._formatOf[std::min(position, edit._formatOf.size()) - (position > 0 ? 1 : 0)];
+		}
+
+		// A rich edit keeps "\r" for a paragraph end: "\r\n" and "\n" become "\r".
+		std::u16string richLineBreaks(std::u16string_view text)
+		{
+			std::u16string result;
+			result.reserve(text.size());
+			for (size_t i = 0; i < text.size(); ++i)
+			{
+				if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n')
+					continue; // the "\n" that follows is the paragraph end
+				result += text[i] == u'\n' ? u'\r' : text[i];
+			}
+			return result;
+		}
+
+		// What WM_GETTEXT and the clipboard get from a rich edit: "\r\n" for each paragraph end.
+		std::u16string withCrLf(std::u16string_view text)
+		{
+			std::u16string result;
+			result.reserve(text.size());
+			for (const char16_t ch : text)
+			{
+				result += ch;
+				if (ch == u'\r')
+					result += u'\n';
+			}
+			return result;
+		}
+
+		// EN_SELCHANGE, when the parent asked for it (ENM_SELCHANGE) and the selection is not the one it
+		// was last told.
+		void notifySelection(HWND hwnd, Edit& edit)
+		{
+			if (!edit._rich || !(edit._eventMask & ENM_SELCHANGE))
+				return;
+			const CHARRANGE range{static_cast<LONG>(selectionStart(edit)), static_cast<LONG>(selectionEnd(edit))};
+			if (range.cpMin == edit._notifiedSelection.cpMin && range.cpMax == edit._notifiedSelection.cpMax)
+				return;
+			edit._notifiedSelection = range;
+			SELCHANGE change{};
+			change.nmhdr.hwndFrom = hwnd;
+			change.nmhdr.idFrom = static_cast<UINT_PTR>(GetDlgCtrlID(hwnd));
+			change.nmhdr.code = EN_SELCHANGE;
+			change.chrg = range;
+			change.seltyp = static_cast<WORD>(range.cpMin == range.cpMax ? SEL_EMPTY : SEL_TEXT);
+			SendMessageW(GetParent(hwnd), WM_NOTIFY, change.nmhdr.idFrom, reinterpret_cast<LPARAM>(&change));
 		}
 
 		// The area the text is drawn in: inside the border and the margins.
@@ -203,16 +309,16 @@ namespace nppmac::controls
 			}
 
 			EditDC dc{hwnd};
-			const bool wrap = wraps(hwnd);
+			const bool wrap = wraps(hwnd, edit);
 			const RECT area = textArea(hwnd, edit);
 			const int width = area.right - area.left;
 			size_t position = 0;
 			for (;;)
 			{
-				size_t end = edit._text.find(u'\n', position);
+				size_t end = edit._text.find(edit._rich ? u'\r' : u'\n', position);
 				const size_t paragraphEnd = end == std::u16string::npos ? edit._text.size() : end;
 				size_t contentEnd = paragraphEnd;
-				if (contentEnd > position && edit._text[contentEnd - 1] == u'\r')
+				if (!edit._rich && contentEnd > position && edit._text[contentEnd - 1] == u'\r')
 					--contentEnd;
 
 				// Word wrap: break after the last space that fits, or where the width runs out.
@@ -341,7 +447,7 @@ namespace nppmac::controls
 				else if (line >= edit._firstLine + visible)
 					edit._firstLine = line - visible + 1;
 			}
-			if (wraps(hwnd))
+			if (wraps(hwnd, edit))
 			{
 				edit._scrollX = 0;
 				return;
@@ -374,23 +480,31 @@ namespace nppmac::controls
 			InvalidateRect(hwnd, nullptr, FALSE);
 			if (notify)
 			{
-				sendCommand(hwnd, EN_UPDATE);
-				sendCommand(hwnd, EN_CHANGE);
+				// A rich edit tells its parent what it asked for (EM_SETEVENTMASK).
+				if (!edit._rich || (edit._eventMask & ENM_UPDATE))
+					sendCommand(hwnd, EN_UPDATE);
+				if (!edit._rich || (edit._eventMask & ENM_CHANGE))
+					sendCommand(hwnd, EN_CHANGE);
 			}
+			notifySelection(hwnd, edit);
 		}
 
 		void setSelection(HWND hwnd, Edit& edit, size_t anchor, size_t caret)
 		{
 			edit._anchor = std::min(anchor, edit._text.size());
 			edit._caret = std::min(caret, edit._text.size());
+			if (edit._rich)
+				edit._insertFormat = formatBefore(edit, selectionStart(edit));
 			ensureCaretVisible(hwnd, edit);
 			restartCaret(hwnd, edit);
 			InvalidateRect(hwnd, nullptr, FALSE);
+			notifySelection(hwnd, edit);
 		}
 
 		void saveUndo(Edit& edit)
 		{
 			edit._undoText = edit._text;
+			edit._undoFormatOf = edit._formatOf;
 			edit._undoAnchor = edit._anchor;
 			edit._undoCaret = edit._caret;
 			edit._canUndo = true;
@@ -411,6 +525,8 @@ namespace nppmac::controls
 				std::transform(text.begin(), text.end(), text.begin(), [](char16_t ch) { return static_cast<char16_t>(std::towupper(ch)); });
 			else if (style & ES_LOWERCASE)
 				std::transform(text.begin(), text.end(), text.begin(), [](char16_t ch) { return static_cast<char16_t>(std::towlower(ch)); });
+			if (edit._rich)
+				text = richLineBreaks(text);
 
 			const size_t start = selectionStart(edit);
 			const size_t end = selectionEnd(edit);
@@ -426,6 +542,12 @@ namespace nppmac::controls
 				saveUndo(edit);
 			edit._typingEnd = std::u16string::npos;
 			edit._text.replace(start, end - start, text);
+			if (edit._rich)
+			{
+				const auto formats = edit._formatOf.begin();
+				edit._formatOf.erase(formats + static_cast<std::ptrdiff_t>(start), formats + static_cast<std::ptrdiff_t>(end));
+				edit._formatOf.insert(edit._formatOf.begin() + static_cast<std::ptrdiff_t>(start), text.size(), edit._insertFormat);
+			}
 			edit._anchor = edit._caret = start + text.size();
 			edit._modified = true;
 			edit._desiredX = -1;
@@ -442,7 +564,7 @@ namespace nppmac::controls
 			// Password text is never copied.
 			if (edit._passwordChar || selectionStart(edit) == selectionEnd(edit))
 				return;
-			const std::u16string text = selectedText(edit);
+			const std::u16string text = edit._rich ? withCrLf(selectedText(edit)) : selectedText(edit);
 			if (!OpenClipboard(hwnd))
 				return;
 			EmptyClipboard();
@@ -493,6 +615,7 @@ namespace nppmac::controls
 				return;
 			// Undo can be undone: the states swap.
 			std::swap(edit._text, edit._undoText);
+			std::swap(edit._formatOf, edit._undoFormatOf);
 			std::swap(edit._anchor, edit._undoAnchor);
 			std::swap(edit._caret, edit._undoCaret);
 			edit._typingEnd = std::u16string::npos;
@@ -713,6 +836,79 @@ namespace nppmac::controls
 			return RECT{x, top, x + 1, top + lineHeight(hdc)};
 		}
 
+		// The fonts of a rich edit's runs: the window's font with the run's effects.
+		class RichFonts
+		{
+		public:
+			explicit RichFonts(HFONT base) : _base{base} {}
+
+			~RichFonts()
+			{
+				for (const auto& [effects, font] : _fonts)
+					DeleteObject(font);
+			}
+
+			RichFonts(const RichFonts&) = delete;
+			RichFonts& operator=(const RichFonts&) = delete;
+
+			HFONT get(DWORD effects)
+			{
+				effects &= CFE_BOLD | CFE_ITALIC | CFE_UNDERLINE | CFE_STRIKEOUT;
+				if (effects == 0)
+					return _base;
+				if (const auto found = _fonts.find(effects); found != _fonts.end())
+					return found->second;
+				LOGFONTW log{};
+				GetObjectW(_base, sizeof(log), &log);
+				if (effects & CFE_BOLD)
+					log.lfWeight = FW_BOLD;
+				if (effects & CFE_ITALIC)
+					log.lfItalic = TRUE;
+				if (effects & CFE_UNDERLINE)
+					log.lfUnderline = TRUE;
+				if (effects & CFE_STRIKEOUT)
+					log.lfStrikeOut = TRUE;
+				HFONT font = CreateFontIndirectW(&log);
+				_fonts[effects] = font;
+				return font;
+			}
+
+		private:
+			HFONT _base;
+			std::map<DWORD, HFONT> _fonts;
+		};
+
+		// A rich edit's line, run by run, each with its format's colors and effects. Places are measured
+		// with the window's font: bold and italic runs keep their width in the monospaced fonts of the
+		// consoles that use rich edits.
+		void drawRichLine(HDC hdc, const Edit& edit, const Line& line, int x, int top, int height, COLORREF autoColor, RichFonts& fonts)
+		{
+			const size_t end = line._start + line._length;
+			size_t runStart = line._start;
+			while (runStart < end)
+			{
+				const uint16_t index = runStart < edit._formatOf.size() ? edit._formatOf[runStart] : 0;
+				size_t runEnd = runStart + 1;
+				while (runEnd < end && runEnd < edit._formatOf.size() && edit._formatOf[runEnd] == index)
+					++runEnd;
+				const CharFormat& format = edit._formats[index];
+				const std::u16string text = displayText(edit, runStart, runEnd - runStart);
+				const int left = x + widthOf(hdc, displayText(edit, line._start, runStart - line._start));
+				if (!format._autoBack)
+				{
+					RECT box{left, top, left + widthOf(hdc, text), top + height};
+					HBRUSH brush = CreateSolidBrush(format._back);
+					FillRect(hdc, &box, brush);
+					DeleteObject(brush);
+				}
+				SetTextColor(hdc, format._autoColor ? autoColor : format._color);
+				HGDIOBJ previous = SelectObject(hdc, fonts.get(format._effects));
+				TextOutW(hdc, left, top, text.c_str(), static_cast<int>(text.size()));
+				SelectObject(hdc, previous);
+				runStart = runEnd;
+			}
+		}
+
 		void paint(HWND hwnd, Edit& edit, HDC hdc)
 		{
 			layout(hwnd, edit);
@@ -721,8 +917,21 @@ namespace nppmac::controls
 			const bool enabled = IsWindowEnabled(hwnd) != FALSE;
 			const int saved = SaveDC(hdc);
 			SelectObject(hdc, fontOf(hwnd));
-			HBRUSH background = controlColors(hwnd, hdc, isReadOnly(hwnd) || !enabled ? WM_CTLCOLORSTATIC : WM_CTLCOLOREDIT);
+			// A rich edit has its own colors (EM_SETBKGNDCOLOR, its formats'); an edit asks its parent.
+			HBRUSH ownBackground = nullptr;
+			HBRUSH background = nullptr;
+			if (edit._rich)
+			{
+				ownBackground = CreateSolidBrush(edit._autoBackground ? GetSysColor(COLOR_WINDOW) : edit._background);
+				background = ownBackground;
+				SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
+			}
+			else
+			{
+				background = controlColors(hwnd, hdc, isReadOnly(hwnd) || !enabled ? WM_CTLCOLORSTATIC : WM_CTLCOLOREDIT);
+			}
 			FillRect(hdc, &client, background);
+			RichFonts richFonts{fontOf(hwnd)};
 			if (hasBorder(hwnd))
 			{
 				HBRUSH frame = CreateSolidBrush(edit._focused ? controlPalette()._accent : controlPalette()._frame);
@@ -754,8 +963,15 @@ namespace nppmac::controls
 				const Line& line = edit._lines[i];
 				const std::u16string text = displayText(edit, line._start, line._length);
 				const int x = area.left - edit._scrollX + alignmentOffset(hwnd, edit, hdc, line);
-				SetTextColor(hdc, textColor);
-				TextOutW(hdc, x, top, text.c_str(), static_cast<int>(text.size()));
+				if (edit._rich)
+				{
+					drawRichLine(hdc, edit, line, x, top, height, textColor, richFonts);
+				}
+				else
+				{
+					SetTextColor(hdc, textColor);
+					TextOutW(hdc, x, top, text.c_str(), static_cast<int>(text.size()));
+				}
 
 				// The selected part is drawn again over a highlight.
 				const size_t from = std::max(selStart, line._start);
@@ -797,6 +1013,8 @@ namespace nppmac::controls
 				DeleteObject(caretBrush);
 			}
 			RestoreDC(hdc, saved);
+			if (ownBackground)
+				DeleteObject(ownBackground);
 		}
 
 		void showContextMenu(HWND hwnd, Edit& edit, LPARAM lParam)
@@ -860,9 +1078,624 @@ namespace nppmac::controls
 			return static_cast<LRESULT>(count);
 		}
 
+		// --- Rich edit ------------------------------------------------------------------------------
+
+		// A rich edit's own sizes: twips for a font's height, as CHARFORMAT has them.
+		constexpr int twipsPerInch = 1440;
+		constexpr int pixelsPerInch = 96;
+
+		// What a format becomes with what a CHARFORMAT sets (its mask).
+		CharFormat applyFormat(CharFormat format, const CHARFORMATW& change)
+		{
+			const DWORD mask = change.dwMask;
+			if (mask & CFM_COLOR)
+			{
+				format._autoColor = (change.dwEffects & CFE_AUTOCOLOR) != 0;
+				format._color = change.crTextColor;
+			}
+			const DWORD effects = mask & (CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE | CFM_STRIKEOUT);
+			format._effects = (format._effects & ~effects) | (change.dwEffects & effects);
+			if ((mask & CFM_BACKCOLOR) && change.cbSize >= sizeof(CHARFORMAT2W))
+			{
+				const auto& change2 = reinterpret_cast<const CHARFORMAT2W&>(change);
+				format._autoBack = (change2.dwEffects & CFE_AUTOBACKCOLOR) != 0;
+				format._back = change2.crBackColor;
+			}
+			return format;
+		}
+
+		// EM_SETCHARFORMAT's face and size are the window's font: runs differ in colors and effects only.
+		void applyFont(HWND hwnd, Edit& edit, const CHARFORMATW& change)
+		{
+			if (!(change.dwMask & (CFM_FACE | CFM_SIZE)))
+				return;
+			LOGFONTW log{};
+			GetObjectW(fontOf(hwnd), sizeof(log), &log);
+			if (change.dwMask & CFM_FACE)
+			{
+				const size_t length = std::min<size_t>(std::char_traits<char16_t>::length(change.szFaceName), LF_FACESIZE - 1);
+				std::copy_n(change.szFaceName, length, log.lfFaceName);
+				log.lfFaceName[length] = u'\0';
+			}
+			if ((change.dwMask & CFM_SIZE) && change.yHeight > 0)
+				log.lfHeight = -MulDiv(change.yHeight, pixelsPerInch, twipsPerInch);
+			if (change.dwMask & CFM_CHARSET)
+				log.lfCharSet = change.bCharSet;
+			log.lfWeight = FW_NORMAL;
+			log.lfItalic = FALSE;
+			HFONT font = CreateFontIndirectW(&log);
+			SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+			if (edit._ownFont)
+				DeleteObject(edit._ownFont);
+			edit._ownFont = font;
+		}
+
+		void setCharFormat(HWND hwnd, Edit& edit, WPARAM scope, const CHARFORMATW& change)
+		{
+			std::map<uint16_t, uint16_t> changed; // each format, changed once
+			auto change1 = [&](uint16_t index)
+			{
+				const auto found = changed.find(index);
+				if (found != changed.end())
+					return found->second;
+				const uint16_t result = formatIndex(edit, applyFormat(edit._formats[index], change));
+				changed[index] = result;
+				return result;
+			};
+			if (scope & SCF_ALL)
+			{
+				applyFont(hwnd, edit, change);
+				for (uint16_t& index : edit._formatOf)
+					index = change1(index);
+				edit._insertFormat = change1(edit._insertFormat);
+				edit._formats[0] = applyFormat(edit._formats[0], change);
+			}
+			else if (scope & SCF_SELECTION)
+			{
+				const size_t start = selectionStart(edit);
+				const size_t end = selectionEnd(edit);
+				for (size_t i = start; i < end && i < edit._formatOf.size(); ++i)
+					edit._formatOf[i] = change1(edit._formatOf[i]);
+				edit._insertFormat = change1(edit._insertFormat);
+			}
+			else
+			{
+				// SCF_DEFAULT: the default format, and the font.
+				applyFont(hwnd, edit, change);
+				edit._formats[0] = applyFormat(edit._formats[0], change);
+			}
+			InvalidateRect(hwnd, nullptr, FALSE);
+		}
+
+		DWORD getCharFormat(HWND hwnd, const Edit& edit, WPARAM scope, CHARFORMATW& out)
+		{
+			const size_t start = selectionStart(edit);
+			uint16_t index = 0;
+			if (scope & SCF_SELECTION)
+				index = start == selectionEnd(edit) || start >= edit._formatOf.size() ? edit._insertFormat : edit._formatOf[start];
+			const CharFormat& format = edit._formats[index];
+			LOGFONTW log{};
+			GetObjectW(fontOf(hwnd), sizeof(log), &log);
+			out.dwMask = CFM_COLOR | CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE | CFM_STRIKEOUT | CFM_FACE | CFM_SIZE | CFM_CHARSET;
+			out.dwEffects = format._effects | (format._autoColor ? CFE_AUTOCOLOR : 0);
+			out.crTextColor = format._autoColor ? GetSysColor(COLOR_WINDOWTEXT) : format._color;
+			out.yHeight = MulDiv(std::abs(log.lfHeight), twipsPerInch, pixelsPerInch);
+			out.yOffset = 0;
+			out.bCharSet = log.lfCharSet;
+			out.bPitchAndFamily = log.lfPitchAndFamily;
+			std::copy_n(log.lfFaceName, LF_FACESIZE, out.szFaceName);
+			if (out.cbSize >= sizeof(CHARFORMAT2W))
+			{
+				auto& out2 = reinterpret_cast<CHARFORMAT2W&>(out);
+				out2.dwMask |= CFM_BACKCOLOR;
+				out2.dwEffects |= format._autoBack ? CFE_AUTOBACKCOLOR : 0;
+				out2.crBackColor = format._autoBack ? GetSysColor(COLOR_WINDOW) : format._back;
+			}
+			return out.dwMask;
+		}
+
+		// A character position as rich edits take it: -1 (and any other negative) is the end.
+		size_t richPosition(const Edit& edit, LONG position)
+		{
+			return position < 0 ? edit._text.size() : std::min<size_t>(static_cast<size_t>(position), edit._text.size());
+		}
+
+		void setRichText(HWND hwnd, Edit& edit, std::u16string text, bool notify)
+		{
+			edit._text = richLineBreaks(text);
+			if (edit._text.size() > edit._limit)
+				edit._text.erase(edit._limit);
+			edit._formatOf.assign(edit._text.size(), 0);
+			edit._insertFormat = 0;
+			edit._anchor = edit._caret = 0;
+			edit._firstLine = 0;
+			edit._scrollX = 0;
+			edit._modified = false;
+			edit._canUndo = false;
+			changed(hwnd, edit, notify);
+		}
+
+		LONG findText(const Edit& edit, WPARAM flags, CHARRANGE range, const char16_t* what)
+		{
+			if (!what || !*what)
+				return -1;
+			const std::u16string_view needle{what};
+			const bool down = (flags & FR_DOWN) != 0;
+			const bool matchCase = (flags & FR_MATCHCASE) != 0;
+			const bool wholeWord = (flags & FR_WHOLEWORD) != 0;
+			const size_t size = edit._text.size();
+			// Down: from cpMin to cpMax; up: from cpMin back to cpMax. -1 is the end.
+			const size_t from = richPosition(edit, range.cpMin);
+			const size_t to = richPosition(edit, range.cpMax);
+			auto matchesAt = [&](size_t at)
+			{
+				if (at + needle.size() > size)
+					return false;
+				for (size_t i = 0; i < needle.size(); ++i)
+				{
+					char16_t a = edit._text[at + i];
+					char16_t b = needle[i];
+					if (!matchCase)
+					{
+						a = static_cast<char16_t>(std::towlower(a));
+						b = static_cast<char16_t>(std::towlower(b));
+					}
+					if (a != b)
+						return false;
+				}
+				if (wholeWord)
+				{
+					if (at > 0 && isWordCharacter(edit._text[at - 1]))
+						return false;
+					if (at + needle.size() < size && isWordCharacter(edit._text[at + needle.size()]))
+						return false;
+				}
+				return true;
+			};
+			if (down)
+			{
+				for (size_t at = from; at + needle.size() <= to; ++at)
+				{
+					if (matchesAt(at))
+						return static_cast<LONG>(at);
+				}
+			}
+			else
+			{
+				const size_t lowest = std::min(from, to);
+				for (size_t at = from + 1; at-- > lowest;)
+				{
+					if (at + needle.size() <= std::max(from, to) && matchesAt(at))
+						return static_cast<LONG>(at);
+				}
+			}
+			return -1;
+		}
+
+		// EM_STREAMOUT and EM_STREAMIN: the text as bytes (UTF-16 with SF_UNICODE, else the ANSI code
+		// page), paragraphs ending with "\r\n". Rich text format is not written or read: its plain text is.
+		std::string streamBytes(std::u16string_view text, WPARAM format)
+		{
+			if (format & SF_UNICODE)
+				return std::string(reinterpret_cast<const char*>(text.data()), text.size() * sizeof(char16_t));
+			const int length = WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+			std::string bytes(static_cast<size_t>(std::max(0, length)), '\0');
+			if (length > 0)
+				WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), bytes.data(), length, nullptr, nullptr);
+			return bytes;
+		}
+
+		std::u16string streamText(const std::string& bytes, WPARAM format)
+		{
+			if (format & SF_UNICODE)
+				return std::u16string(reinterpret_cast<const char16_t*>(bytes.data()), bytes.size() / sizeof(char16_t));
+			const int length = MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
+			std::u16string text(static_cast<size_t>(std::max(0, length)), u'\0');
+			if (length > 0)
+				MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), length);
+			return text;
+		}
+
+		// EN_MSGFILTER: the parent sees the keyboard and mouse messages it asked for (ENM_KEYEVENTS,
+		// ENM_MOUSEEVENTS) first, may change them, and takes them by answering non-zero.
+		bool filtered(HWND hwnd, const Edit& edit, UINT& message, WPARAM& wParam, LPARAM& lParam)
+		{
+			const bool key = message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CHAR || message == WM_SYSKEYDOWN
+				|| message == WM_SYSKEYUP || message == WM_SYSCHAR;
+			const bool mouse = message >= WM_MOUSEFIRST && message <= WM_MOUSELAST;
+			if (!((key && (edit._eventMask & ENM_KEYEVENTS)) || (mouse && (edit._eventMask & ENM_MOUSEEVENTS))))
+				return false;
+			MSGFILTER filter{};
+			filter.nmhdr.hwndFrom = hwnd;
+			filter.nmhdr.idFrom = static_cast<UINT_PTR>(GetDlgCtrlID(hwnd));
+			filter.nmhdr.code = EN_MSGFILTER;
+			filter.msg = message;
+			filter.wParam = wParam;
+			filter.lParam = lParam;
+			if (SendMessageW(GetParent(hwnd), WM_NOTIFY, filter.nmhdr.idFrom, reinterpret_cast<LPARAM>(&filter)) != 0)
+				return true;
+			message = filter.msg;
+			wParam = filter.wParam;
+			lParam = filter.lParam;
+			return false;
+		}
+
+		// The messages a rich edit answers its own way; false for those it takes as an edit does.
+		bool richMessage(HWND hwnd, Edit& edit, UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result)
+		{
+			result = 0;
+			switch (message)
+			{
+				case WM_DESTROY:
+					if (edit._ownFont)
+					{
+						DeleteObject(edit._ownFont);
+						edit._ownFont = nullptr;
+					}
+					return false;
+				case WM_SETTEXT:
+					setRichText(hwnd, edit, lParam ? reinterpret_cast<LPCWSTR>(lParam) : u"", false);
+					result = TRUE;
+					return true;
+				case WM_GETTEXT:
+					result = copyText(withCrLf(edit._text), wParam, lParam);
+					return true;
+				case WM_GETTEXTLENGTH:
+					result = static_cast<LRESULT>(withCrLf(edit._text).size());
+					return true;
+				case EM_GETLINE:
+				{
+					// A rich edit's line has its paragraph's "\r", when it ends one.
+					layout(hwnd, edit);
+					if (wParam >= edit._lines.size() || !lParam)
+						return true;
+					const WORD size = *reinterpret_cast<const WORD*>(lParam);
+					const Line& line = edit._lines[wParam];
+					const size_t end = line._start + line._length;
+					const size_t length = line._length + (end < edit._text.size() && edit._text[end] == u'\r' ? 1 : 0);
+					const size_t count = std::min<size_t>(length, size);
+					std::copy_n(edit._text.c_str() + line._start, count, reinterpret_cast<char16_t*>(lParam));
+					result = static_cast<LRESULT>(count);
+					return true;
+				}
+				case EM_SETSEL:
+				{
+					const LONG start = static_cast<LONG>(static_cast<int>(wParam));
+					const LONG end = static_cast<LONG>(static_cast<int>(lParam));
+					edit._desiredX = -1;
+					setSelection(hwnd, edit, richPosition(edit, start), richPosition(edit, end));
+					return true;
+				}
+				case EM_EXSETSEL:
+				{
+					if (const auto* range = reinterpret_cast<const CHARRANGE*>(lParam))
+					{
+						edit._desiredX = -1;
+						setSelection(hwnd, edit, richPosition(edit, range->cpMin), richPosition(edit, range->cpMax));
+					}
+					result = static_cast<LRESULT>(edit._caret);
+					return true;
+				}
+				case EM_EXGETSEL:
+					if (auto* range = reinterpret_cast<CHARRANGE*>(lParam))
+					{
+						range->cpMin = static_cast<LONG>(selectionStart(edit));
+						range->cpMax = static_cast<LONG>(selectionEnd(edit));
+					}
+					return true;
+				case EM_LIMITTEXT:
+				case EM_EXLIMITTEXT:
+				{
+					const LPARAM limit = message == EM_LIMITTEXT ? static_cast<LPARAM>(wParam) : lParam;
+					edit._limit = limit > 0 ? static_cast<UINT>(std::min<LPARAM>(limit, maximumLimit)) : 65536;
+					return true;
+				}
+				case EM_EXLINEFROMCHAR:
+					result = static_cast<LRESULT>(lineOf(hwnd, edit, richPosition(edit, static_cast<LONG>(lParam))));
+					return true;
+				case EM_POSFROMCHAR:
+				{
+					// A rich edit's form: the point is wParam's, the position lParam.
+					auto* point = reinterpret_cast<POINTL*>(wParam);
+					if (!point)
+						return true;
+					layout(hwnd, edit);
+					EditDC dc{hwnd};
+					const size_t position = std::min<size_t>(static_cast<size_t>(lParam), edit._text.size());
+					const size_t line = lineOf(hwnd, edit, position);
+					const RECT area = textArea(hwnd, edit);
+					point->x = area.left - edit._scrollX + alignmentOffset(hwnd, edit, dc.get(), edit._lines[line]) + xOf(hwnd, edit, dc.get(), position);
+					point->y = lineTop(hwnd, edit, dc.get(), line);
+					return true;
+				}
+				case EM_CHARFROMPOS:
+				{
+					const auto* point = reinterpret_cast<const POINTL*>(lParam);
+					if (point)
+						result = static_cast<LRESULT>(positionAt(hwnd, edit, {point->x, point->y}));
+					return true;
+				}
+				case EM_SETCHARFORMAT:
+					if (lParam)
+						setCharFormat(hwnd, edit, wParam, *reinterpret_cast<const CHARFORMATW*>(lParam));
+					result = TRUE;
+					return true;
+				case EM_GETCHARFORMAT:
+					if (lParam)
+						result = static_cast<LRESULT>(getCharFormat(hwnd, edit, wParam, *reinterpret_cast<CHARFORMATW*>(lParam)));
+					return true;
+				case EM_GETTEXTRANGE:
+				{
+					auto* range = reinterpret_cast<TEXTRANGEW*>(lParam);
+					if (!range || !range->lpstrText)
+						return true;
+					const size_t start = richPosition(edit, range->chrg.cpMin);
+					const size_t end = std::max(start, richPosition(edit, range->chrg.cpMax));
+					std::copy(edit._text.begin() + static_cast<std::ptrdiff_t>(start), edit._text.begin() + static_cast<std::ptrdiff_t>(end), range->lpstrText);
+					range->lpstrText[end - start] = u'\0';
+					result = static_cast<LRESULT>(end - start);
+					return true;
+				}
+				case EM_GETSELTEXT:
+				{
+					const std::u16string text = selectedText(edit);
+					if (lParam)
+					{
+						std::copy(text.begin(), text.end(), reinterpret_cast<char16_t*>(lParam));
+						reinterpret_cast<char16_t*>(lParam)[text.size()] = u'\0';
+					}
+					result = static_cast<LRESULT>(text.size());
+					return true;
+				}
+				case EM_FINDTEXT:
+				case EM_FINDTEXTW:
+				{
+					// Unicode programs give FINDTEXTW to either.
+					if (const auto* find = reinterpret_cast<const FINDTEXTW*>(lParam))
+						result = findText(edit, wParam, find->chrg, find->lpstrText);
+					else
+						result = -1;
+					return true;
+				}
+				case EM_FINDTEXTEX:
+				case EM_FINDTEXTEXW:
+				{
+					auto* find = reinterpret_cast<FINDTEXTEXW*>(lParam);
+					result = find ? findText(edit, wParam, find->chrg, find->lpstrText) : -1;
+					if (find)
+					{
+						const LONG length = result < 0 ? 0 : static_cast<LONG>(std::char_traits<char16_t>::length(find->lpstrText));
+						find->chrgText = {static_cast<LONG>(result), result < 0 ? -1 : static_cast<LONG>(result) + length};
+					}
+					return true;
+				}
+				case EM_GETTEXTLENGTHEX:
+				{
+					const auto* query = reinterpret_cast<const GETTEXTLENGTHEX*>(wParam);
+					const bool crlf = query && (query->flags & GTL_USECRLF);
+					result = static_cast<LRESULT>(crlf ? withCrLf(edit._text).size() : edit._text.size());
+					return true;
+				}
+				case EM_GETTEXTEX:
+				{
+					const auto* query = reinterpret_cast<const GETTEXTEX*>(wParam);
+					if (!query || !lParam)
+						return true;
+					std::u16string text = (query->flags & GT_SELECTION) ? selectedText(edit) : edit._text;
+					if (query->flags & GT_USECRLF)
+						text = withCrLf(text);
+					if (query->codepage == 1200)
+					{
+						const size_t room = query->cb / sizeof(char16_t);
+						result = copyText(text, room, lParam);
+					}
+					else if (query->cb > 0)
+					{
+						std::string bytes = streamBytes(text, 0);
+						bytes.resize(std::min<size_t>(bytes.size(), query->cb - 1));
+						std::memcpy(reinterpret_cast<char*>(lParam), bytes.c_str(), bytes.size() + 1);
+						result = static_cast<LRESULT>(bytes.size());
+					}
+					return true;
+				}
+				case EM_SETTEXTEX:
+				{
+					const auto* how = reinterpret_cast<const SETTEXTEX*>(wParam);
+					std::u16string text;
+					if (lParam)
+					{
+						if (how && how->codepage != 1200)
+							text = streamText(reinterpret_cast<const char*>(lParam), 0);
+						else
+							text = reinterpret_cast<LPCWSTR>(lParam);
+					}
+					if (how && (how->flags & ST_SELECTION))
+						replaceSelection(hwnd, edit, text, (how->flags & ST_KEEPUNDO) != 0);
+					else
+						setRichText(hwnd, edit, text, true);
+					result = 1;
+					return true;
+				}
+				case EM_SETBKGNDCOLOR:
+				{
+					result = static_cast<LRESULT>(edit._autoBackground ? GetSysColor(COLOR_WINDOW) : edit._background);
+					edit._autoBackground = wParam != 0;
+					edit._background = static_cast<COLORREF>(lParam);
+					InvalidateRect(hwnd, nullptr, FALSE);
+					return true;
+				}
+				case EM_SETEVENTMASK:
+					result = static_cast<LRESULT>(edit._eventMask);
+					edit._eventMask = static_cast<DWORD>(lParam);
+					return true;
+				case EM_GETEVENTMASK:
+					result = static_cast<LRESULT>(edit._eventMask);
+					return true;
+				case EM_STREAMOUT:
+				{
+					auto* stream = reinterpret_cast<EDITSTREAM*>(lParam);
+					if (!stream || !stream->pfnCallback)
+						return true;
+					const std::u16string text = withCrLf((wParam & SFF_SELECTION) ? selectedText(edit) : edit._text);
+					std::string bytes = streamBytes(text, wParam);
+					size_t written = 0;
+					stream->dwError = 0;
+					while (written < bytes.size())
+					{
+						LONG done = 0;
+						const LONG chunk = static_cast<LONG>(std::min<size_t>(bytes.size() - written, 4096));
+						stream->dwError = stream->pfnCallback(stream->dwCookie, reinterpret_cast<LPBYTE>(bytes.data() + written), chunk, &done);
+						if (stream->dwError != 0 || done <= 0)
+							break;
+						written += static_cast<size_t>(done);
+					}
+					result = static_cast<LRESULT>(text.size());
+					return true;
+				}
+				case EM_STREAMIN:
+				{
+					auto* stream = reinterpret_cast<EDITSTREAM*>(lParam);
+					if (!stream || !stream->pfnCallback)
+						return true;
+					std::string bytes;
+					char buffer[4096];
+					stream->dwError = 0;
+					for (;;)
+					{
+						LONG done = 0;
+						stream->dwError = stream->pfnCallback(stream->dwCookie, reinterpret_cast<LPBYTE>(buffer), sizeof(buffer), &done);
+						if (stream->dwError != 0 || done <= 0)
+							break;
+						bytes.append(buffer, static_cast<size_t>(done));
+					}
+					const std::u16string text = streamText(bytes, wParam);
+					if (wParam & SFF_SELECTION)
+						replaceSelection(hwnd, edit, text, true);
+					else
+						setRichText(hwnd, edit, text, true);
+					result = static_cast<LRESULT>(text.size());
+					return true;
+				}
+				case EM_SETTARGETDEVICE:
+					// A line width of 1: no wrapping; 0: wrapping at the window's width.
+					edit._noWrap = lParam == 1;
+					invalidateLayout(edit);
+					ensureCaretVisible(hwnd, edit);
+					InvalidateRect(hwnd, nullptr, FALSE);
+					result = TRUE;
+					return true;
+				case EM_CANPASTE:
+					result = IsClipboardFormatAvailable(CF_UNICODETEXT);
+					return true;
+				case EM_PASTESPECIAL:
+					pasteFromClipboard(hwnd, edit);
+					return true;
+				case EM_CANREDO:
+				case EM_REDO:
+				case EM_AUTOURLDETECT:
+				case EM_HIDESELECTION:
+				case EM_SHOWSCROLLBAR:
+				case EM_SETEDITSTYLE:
+				case EM_GETEDITSTYLE:
+				case EM_GETPARAFORMAT:
+				case EM_SETTEXTMODE:
+					return true;
+				case EM_SETPARAFORMAT:
+				case EM_SETTYPOGRAPHYOPTIONS:
+				case EM_SETOLECALLBACK:
+					result = TRUE;
+					return true;
+				case EM_SETUNDOLIMIT:
+					result = static_cast<LRESULT>(wParam);
+					return true;
+				case EM_GETTEXTMODE:
+					result = TM_RICHTEXT | TM_SINGLELEVELUNDO;
+					return true;
+				case EM_GETOLEINTERFACE:
+					if (lParam)
+						*reinterpret_cast<void**>(lParam) = nullptr;
+					return true;
+				case EM_SETOPTIONS:
+				{
+					if (wParam == ECOOP_SET)
+						edit._options = lParam;
+					else if (wParam == ECOOP_OR)
+						edit._options |= lParam;
+					else if (wParam == ECOOP_AND)
+						edit._options &= lParam;
+					else if (wParam == ECOOP_XOR)
+						edit._options ^= lParam;
+					if (edit._options & ECO_READONLY)
+						SendMessageW(hwnd, EM_SETREADONLY, TRUE, 0);
+					result = edit._options;
+					return true;
+				}
+				case EM_GETOPTIONS:
+					result = edit._options | ((styleOf(hwnd) & ES_READONLY) ? ECO_READONLY : 0);
+					return true;
+				case EM_SETLANGOPTIONS:
+					edit._langOptions = lParam;
+					result = TRUE;
+					return true;
+				case EM_GETLANGOPTIONS:
+					result = edit._langOptions;
+					return true;
+				case EM_SETIMESTATUS:
+					result = edit._imeStatus;
+					edit._imeStatus = lParam;
+					return true;
+				case EM_GETIMESTATUS:
+					result = edit._imeStatus;
+					return true;
+				case EM_GETZOOM:
+					if (wParam)
+						*reinterpret_cast<int*>(wParam) = 0;
+					if (lParam)
+						*reinterpret_cast<int*>(lParam) = 0;
+					result = TRUE;
+					return true;
+				case EM_SETZOOM:
+					result = TRUE;
+					return true;
+				case EM_GETSCROLLPOS:
+				{
+					if (auto* point = reinterpret_cast<POINT*>(lParam))
+					{
+						EditDC dc{hwnd};
+						*point = {edit._scrollX, static_cast<LONG>(edit._firstLine) * lineHeight(dc.get())};
+					}
+					result = 1;
+					return true;
+				}
+				case EM_SETSCROLLPOS:
+				{
+					if (const auto* point = reinterpret_cast<const POINT*>(lParam))
+					{
+						EditDC dc{hwnd};
+						layout(hwnd, edit);
+						const long line = point->y / lineHeight(dc.get());
+						edit._firstLine = static_cast<size_t>(std::clamp<long>(line, 0, std::max<long>(0, static_cast<long>(edit._lines.size()) - 1)));
+						edit._scrollX = std::max<int>(0, point->x);
+						InvalidateRect(hwnd, nullptr, FALSE);
+					}
+					result = 1;
+					return true;
+				}
+				default:
+					return false;
+			}
+		}
+
 		LRESULT CALLBACK editProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			Edit* edit = dataOf<Edit>(hwnd);
+			if (edit && edit->_rich)
+			{
+				if (filtered(hwnd, *edit, message, wParam, lParam))
+					return 0;
+				if (LRESULT result = 0; richMessage(hwnd, *edit, message, wParam, lParam, result))
+					return result;
+			}
 			switch (message)
 			{
 				case WM_NCCREATE:
@@ -1160,7 +1993,7 @@ namespace nppmac::controls
 					layout(hwnd, *edit);
 					const long first = static_cast<long>(edit->_firstLine) + static_cast<long>(lParam);
 					edit->_firstLine = static_cast<size_t>(std::clamp<long>(first, 0, std::max<long>(0, static_cast<long>(edit->_lines.size()) - 1)));
-					if (!wraps(hwnd))
+					if (!wraps(hwnd, *edit))
 						edit->_scrollX = std::max(0, edit->_scrollX + static_cast<int>(wParam) * fontHeight(hwnd) / 2);
 					InvalidateRect(hwnd, nullptr, FALSE);
 					return TRUE;
@@ -1237,11 +2070,34 @@ namespace nppmac::controls
 					return DefWindowProcW(hwnd, message, wParam, lParam);
 			}
 		}
+
+		// A rich edit is an edit in rich mode from its creation: what its creation text and style give.
+		LRESULT CALLBACK richEditProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+		{
+			if (message != WM_NCCREATE)
+				return editProc(hwnd, message, wParam, lParam);
+			const LRESULT result = editProc(hwnd, message, wParam, lParam);
+			if (Edit* edit = dataOf<Edit>(hwnd))
+			{
+				edit->_rich = true;
+				edit->_limit = 32767; // a rich edit's, until EM_EXLIMITTEXT
+				edit->_text = richLineBreaks(edit->_text);
+				edit->_formatOf.assign(edit->_text.size(), 0);
+				edit->_noWrap = (reinterpret_cast<const CREATESTRUCTW*>(lParam)->style & WS_HSCROLL) != 0;
+			}
+			return result;
+		}
 	}
 
 	void registerEdit()
 	{
 		registerControl(WC_EDITW, editProc, CS_DBLCLKS, IDC_IBEAM);
 		user::setClassEditsText(WC_EDITW);
+		// Rich edits: riched20.dll's and msftedit.dll's classes (RICHEDIT_CLASS, MSFTEDIT_CLASS).
+		for (const char16_t* name : {u"RichEdit20W", u"RichEdit20A", u"RichEdit50W"})
+		{
+			registerControl(name, richEditProc, CS_DBLCLKS, IDC_IBEAM);
+			user::setClassEditsText(name);
+		}
 	}
 }

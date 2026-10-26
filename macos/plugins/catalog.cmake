@@ -445,3 +445,23 @@ nppmac_add_external_plugin(NppTags
 	RC_FILES NppTags_res.rc
 	INCLUDES .
 	DEFINES NppTags_EXPORTS)
+
+nppmac_add_external_plugin(NppExec
+	DISPLAY_NAME NppExec
+	VERSION 0.8.12.1
+	GIT https://github.com/d0vgan/nppexec.git
+	COMMIT 7a5d279468b7929146758b0d24a78e0d76d17020
+	SOURCES NppExec/src/CAnyCheckBox.cpp NppExec/src/CAnyComboBox.cpp NppExec/src/CAnyListBox.cpp NppExec/src/CAnyRichEdit.cpp NppExec/src/CAnyWindow.cpp NppExec/src/CFileModificationChecker.cpp NppExec/src/ChildProcess.cpp NppExec/src/CPopupListBox.cpp NppExec/src/cpp/CFileBufT.cpp NppExec/src/CSimpleLogger.cpp NppExec/src/CStaticOptionsManager.cpp NppExec/src/c_base/HexStr.c NppExec/src/c_base/int2str.c NppExec/src/c_base/MatchMask.c NppExec/src/c_base/max_int.c NppExec/src/c_base/PackDataStr.c NppExec/src/c_base/str2int.c NppExec/src/c_base/str_func.c NppExec/src/DirFileLister.cpp NppExec/src/DlgAdvancedOptions.cpp NppExec/src/DlgConsole.cpp NppExec/src/DlgConsoleEncoding.cpp NppExec/src/DlgConsoleOutputFilter.cpp NppExec/src/DlgDoExec.cpp NppExec/src/DlgHelpAbout.cpp NppExec/src/DlgInputBox.cpp NppExec/src/encodings/SysUniConv.cpp NppExec/src/fparser/fparser.cc NppExec/src/PickColorBtn.cpp NppExec/src/NppExec.cpp NppExec/src/NppExecCommandExecutor.cpp NppExec/src/NppExecScriptEngine.cpp NppExec/src/NppExecHelpers.cpp NppExec/src/NppScript.cpp NppExec/src/NppScriptList.cpp NppExec/src/PluginCommunication/NppExecPluginInterface.cpp NppExec/src/WarningAnalyzer.cpp NppExec/src/WarningMaskMatcher.cpp
+	RC_FILES NppExec/src/NppExec.rc
+	INCLUDES NppExec
+	DEFINES NPPEXEC_EXPORTS _CRT_SECURE_NO_DEPRECATE)
+
+nppmac_add_external_plugin(NppJavaPlugin
+	DISPLAY_NAME "Java Plugin"
+	VERSION 0.4.1
+	GIT https://github.com/dominikcebula/npp-java-plugin.git
+	COMMIT 644dbbb52ba11bb3f37c680f389eaaae4e41ee75
+	SOURCES src/Actions/ClearConsoleAction.cpp src/Actions/CompileAction.cpp src/Actions/CompileAndRunAction.cpp src/Actions/RunAction.cpp src/Actions/ShowAboutDialogAction.cpp src/Actions/ShowHideJavaConsoleAction.cpp src/Command/CommandPrompt.cpp src/Command/LoggingCommand.cpp src/Components/AboutDialog.cpp src/Components/CRichEdit.cpp src/Components/NppGateway.cpp src/Components/JavaConsole.cpp src/Components/Utils.cpp src/Configuration/Configuration.cpp src/Configuration/ConfigurationProvider.cpp src/Configuration/ConfigurationValidator.cpp src/NppJavaPlugin.cpp src/PluginInfrastructure/DockingFeature/StaticDialog.cpp src/PluginInfrastructure/NppPluginMain.cpp src/PluginInfrastructure/PluginDefinition.cpp
+	RC_FILES src/NppJavaPlugin.rc src/PluginInfrastructure/NppPluginMain.rc
+	INCLUDES vs.proj src
+	DEFINES NppJavaPlugin_EXPORTS _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)

@@ -49,6 +49,7 @@ namespace
 		{"wregex", "std::wregex re(L\"a+\"); std::wsmatch m;", "nppmac::wregex re(u\"a+\"); nppmac::wsmatch m;"},
 		{"wregex unqualified", "wsregex_iterator it;", "nppmac::wsregex_iterator it;"},
 		{"wifstream", "std::wifstream in{path};", "nppmac::wifstream in{path};"},
+		{"integer suffix", "auto a = 1i64 << 3; auto b = 0xFFui64; auto c = 7I32;", "auto a = 1LL << 3; auto b = 0xFFULL; auto c = 7;"},
 		{"C file", "FILE* f = fopen(name, \"r\"); const wchar_t* w = L\"x\";", "FILE* f = fopen(name, \"r\"); const char16_t* w = u\"x\";", nppmigrate::Language::c},
 		{"wstring_convert", "std::wstring_convert<std::codecvt_utf8<wchar_t>> c;", "nppmac::wstring_convert<std::codecvt_utf8<char16_t>> c;"},
 		{"unqualified to_wstring", "auto s = to_wstring(42);", "auto s = nppmac::to_u16string(42);"},

@@ -40,6 +40,7 @@ namespace nppmigrate
 		wideStdCharClass,   // std::isdigit(c, loc) etc. -> nppmac::isdigit (no ctype<char16_t> in libc++)
 		wideStdFilesystem,  // std::filesystem -> nppmac::filesystem (UTF-16 paths, as on Windows)
 		includeSeparator,   // #include "a\b.h" -> #include "a/b.h"
+		integerSuffix,      // Visual C++'s 1i64 / 1ui64 -> 1LL / 1ULL (and i32, i16, i8)
 		ruleCount           // keep last
 	};
 

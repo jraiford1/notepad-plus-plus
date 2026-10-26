@@ -112,6 +112,17 @@ namespace nppmac::platform
 	// cancelled. NPPMAC_TEST_COLOR=RRGGBB answers without showing it, for tests.
 	bool chooseColor(unsigned& rgb);
 
+	// The font panel, run modally with OK and Cancel. size is Core Text's (a LOGFONT's -lfHeight).
+	// NPPMAC_TEST_FONT=<family>:<size>[:bold][:italic] answers instead, for tests.
+	struct FontChoice
+	{
+		std::string _family;
+		double _size = 13;
+		bool _bold = false;
+		bool _italic = false;
+	};
+	bool chooseFont(FontChoice& choice);
+
 	// Printing: the paper and its printable area in points (top-left origin), and what to print.
 	struct PrintSetup
 	{

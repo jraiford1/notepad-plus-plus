@@ -414,14 +414,38 @@ int WINAPI ShowCursor(BOOL show)
 
 // --- Carets: custom-drawn text fields are drawn by their owners; the caret is not shown ------------
 
-BOOL WINAPI CreateCaret(HWND, HBITMAP, int, int)
+namespace
 {
+	// The caret is not drawn, but where it is and whose it is are kept, for GetCaretPos and GetGUIThreadInfo.
+	HWND g_caretWindow = nullptr;
+	POINT g_caretPosition{};
+}
+
+BOOL WINAPI CreateCaret(HWND hwnd, HBITMAP, int, int)
+{
+	g_caretWindow = hwnd;
+	g_caretPosition = {};
 	return TRUE;
 }
 
 BOOL WINAPI DestroyCaret()
 {
+	g_caretWindow = nullptr;
 	return TRUE;
+}
+
+BOOL WINAPI GetCaretPos(LPPOINT point)
+{
+	if (!point)
+		return FALSE;
+	*point = g_caretPosition;
+	return TRUE;
+}
+
+HWND nppmac::user::caretWindow(POINT& position)
+{
+	position = g_caretPosition;
+	return g_caretWindow;
 }
 
 BOOL WINAPI ShowCaret(HWND)
@@ -434,8 +458,9 @@ BOOL WINAPI HideCaret(HWND)
 	return TRUE;
 }
 
-BOOL WINAPI SetCaretPos(int, int)
+BOOL WINAPI SetCaretPos(int x, int y)
 {
+	g_caretPosition = {x, y};
 	return TRUE;
 }
 

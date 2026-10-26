@@ -26,6 +26,7 @@
 #include <commdlg.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,45 @@ BOOL WINAPI ChooseColorW(LPCHOOSECOLORW choose)
 	if (!chosen)
 		return FALSE;
 	choose->rgbResult = RGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+	return TRUE;
+}
+
+// The font dialog on the font panel. A LOGFONT's -lfHeight is the size Core Text draws it at here (a
+// Windows 10-point font, -13, is 13 on macOS); iPointSize stays in Windows points.
+BOOL WINAPI ChooseFontW(LPCHOOSEFONTW choose)
+{
+	if (!choose || !choose->lpLogFont)
+		return FALSE;
+	LOGFONTW& font = *choose->lpLogFont;
+	nppmac::platform::FontChoice choice;
+	if (choose->Flags & CF_INITTOLOGFONTSTRUCT)
+	{
+		choice._family = nppmac::toUtf8(font.lfFaceName);
+		if (font.lfHeight != 0)
+			choice._size = std::abs(font.lfHeight);
+		choice._bold = font.lfWeight >= FW_BOLD;
+		choice._italic = font.lfItalic != 0;
+	}
+	const bool ownerWasEnabled = choose->hwndOwner && IsWindowEnabled(choose->hwndOwner);
+	if (ownerWasEnabled)
+		EnableWindow(choose->hwndOwner, FALSE);
+	const bool chosen = nppmac::platform::chooseFont(choice);
+	if (ownerWasEnabled)
+		EnableWindow(choose->hwndOwner, TRUE);
+	if (!chosen)
+		return FALSE;
+
+	font.lfHeight = -static_cast<LONG>(std::lround(choice._size));
+	font.lfWidth = 0;
+	font.lfWeight = choice._bold ? FW_BOLD : FW_NORMAL;
+	font.lfItalic = choice._italic ? TRUE : FALSE;
+	font.lfCharSet = DEFAULT_CHARSET;
+	const std::u16string face = nppmac::toUtf16(choice._family);
+	const size_t count = std::min<size_t>(face.size(), LF_FACESIZE - 1);
+	std::copy_n(face.begin(), count, font.lfFaceName);
+	font.lfFaceName[count] = u'\0';
+	choose->iPointSize = static_cast<INT>(std::lround(choice._size * 72.0 / 96.0 * 10));
+	choose->nFontType = static_cast<WORD>(SCREEN_FONTTYPE | (choice._bold ? BOLD_FONTTYPE : REGULAR_FONTTYPE) | (choice._italic ? ITALIC_FONTTYPE : 0));
 	return TRUE;
 }
 
