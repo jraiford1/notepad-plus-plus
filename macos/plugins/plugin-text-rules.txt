@@ -27,6 +27,12 @@ files: *
 line: dwTypeData
 regex: (dwTypeData\s*=\s*)((?:TEXT|_T)\s*\(\s*"(?:[^"\\]|\\.)*"\s*\)|L"(?:[^"\\]|\\.)*") => $1const_cast<LPTSTR>($2)
 
+# Visual C++ takes sizeof of a type name without parentheses (sizeof WCHAR): an all-caps name after
+# sizeof gets them, which changes nothing when it is a variable or a constant instead.
+files: *
+line: sizeof 
+regex: \bsizeof ([A-Z][A-Z0-9_]*)\b(?![\[.(]|->) => sizeof($1)
+
 # --- Single plugins: rules for one plugin's own files (its name, then its path) ---
 
 # BigFiles' message helper takes the message as wchar_t *, and is given literals.
@@ -245,3 +251,138 @@ regex: ^(  )(\S.*\) \{) => $1extern "C" $2
 files: Papyrus/src/Plugin/Lexer/LexerDefinition.cpp
 line: SCI_METHOD
 regex: ^(  )(\S.* SCI_METHOD .*\) \{) => $1extern "C" $2
+
+# SessionMgr's log macros put __FUNCTION__ before a literal and make a wide literal of it (L ##
+# __FUNCTION__), which Visual C++ allows: its __FUNCTION__ is a string literal. Clang's is a variable,
+# which the format takes as an argument.
+files: SessionMgr/src/Util.h
+line: #define LOG(fmt, ...) msg::log(__FUNCTION__ ": " fmt, __VA_ARGS__)
+replace: msg::log(__FUNCTION__ ": " fmt, __VA_ARGS__) => msg::log("%s: " fmt, __FUNCTION__ __VA_OPT__(,) __VA_ARGS__)
+
+files: SessionMgr/src/Util.h
+line: #define LOGF(fmt, ...) msg::log(__FUNCTION__ "(" fmt ")", __VA_ARGS__)
+replace: msg::log(__FUNCTION__ "(" fmt ")", __VA_ARGS__) => msg::log("%s(" fmt ")", __FUNCTION__ __VA_OPT__(,) __VA_ARGS__)
+
+files: SessionMgr/src/*
+line: _W(__FUNCTION__)
+replace: _W(__FUNCTION__) => nppmac::toUtf16(__FUNCTION__).c_str()
+
+# SessionMgr's message box takes its title as LPWSTR, and is given literals: it only reads it.
+files: SessionMgr/src/Util.*
+line: show(LPCWSTR msg, LPWSTR title
+replace: LPWSTR title => LPCWSTR title
+
+# SessionMgr changes the case of one character by passing it as the string pointer, and checks
+# ShellExecute's result, a handle, through int: both through pointer-sized integers here.
+files: SessionMgr/src/SessionMgr.cpp
+line: (WCHAR)::CharUpperW((LPWSTR)it->name[0])
+replace: (WCHAR)::CharUpperW((LPWSTR)it->name[0]) => (WCHAR)(uintptr_t)::CharUpperW((LPWSTR)(uintptr_t)it->name[0])
+
+files: SessionMgr/src/Menu.cpp
+line: if ((int)h <= 32) {
+replace: (int)h => (INT_PTR)h
+
+files: SessionMgr/src/Util.cpp
+line: LPWSTR buf, buf1, buf2 = NULL, lem, lastErrorMsg = NULL;
+replace: LPWSTR buf, buf1, buf2 = NULL, lem, lastErrorMsg = NULL; => LPWSTR buf, buf1, buf2 = NULL, lastErrorMsg = NULL; LPCWSTR lem;
+
+# The nppplugins' build (premake) copies two of Solution Hub's headers into a shared folder for the
+# plugins that talk to it, nppplugin_solutionhub_interface: they are included from where they are.
+files: nppplugin_*/nppplugin_*/src/*
+line: #include "nppplugin_solutionhub_interface/
+replace: #include "nppplugin_solutionhub_interface/ => #include "../../nppplugin_solutionhub/src/
+
+# The nppplugins' pugixml 1.0 declares the standard library's templates in std itself, where libc++
+# defines them in an inline namespace: its configuration header includes the library's declarations
+# instead (in place of two comment lines), and pugixml's own are left out.
+files: nppplugin_*/nppplugin_shared/pugixml/pugiconfig.hpp
+line: // Uncomment this to enable wchar_t mode
+replace: // Uncomment this to enable wchar_t mode => #include <iosfwd>
+
+files: nppplugin_*/nppplugin_shared/pugixml/pugiconfig.hpp
+line: // Uncomment this to disable XPath
+replace: // Uncomment this to disable XPath => #include <iterator>
+
+files: nppplugin_*/nppplugin_shared/pugixml/pugixml.hpp
+line: ;
+regex: ^(\s*)((template <class _\w+(, class _\w+)*> (class|struct) (allocator|char_traits|basic_istream|basic_ostream|basic_string))|struct bidirectional_iterator_tag); => $1// $2: declared by the standard library's headers
+
+# Solution Hub includes Visual C++'s internal <xutility> for std::min: <algorithm> has it.
+files: nppplugin_*/nppplugin_solutionhub/src/*
+line: #include <xutility>
+replace: #include <xutility> => #include <algorithm>
+
+# Visual C++ leniencies of the nppplugins: a dependent type without typename, std::not1 and
+# std::ptr_fun (removed in C++17), and the overloaded wcscmp named without a call (the runtime adds a
+# char16_t form, which the conditional cannot choose by itself).
+files: nppplugin_*/nppplugin_solutionhub/src/nppplugin_solutionhub.cpp
+line: for (m_t::iterator i = m.begin()
+replace: for (m_t::iterator i => for (typename m_t::iterator i
+
+files: nppplugin_*/nppplugin_solutionhub/src/nppplugin_solutionhub.cpp
+line: std::not1(std::ptr_fun<int, int>(
+regex: std::not1\(std::ptr_fun<int, int>\(([\w:]+)\)\) => [](int c) { return !$1(c); }
+
+files: nppplugin_*/nppplugin_shared/string/string_utils.cpp
+line: comp comparer = (case_sensitive ? wcscmp : _wcsicmp);
+replace: (case_sensitive ? wcscmp : _wcsicmp) => (case_sensitive ? static_cast<comp>(wcscmp) : static_cast<comp>(_wcsicmp))
+
+# Solution Hub UI gives literals to the list view's column texts and its tree list's item texts, which
+# are not const in Windows' headers: they are only read.
+files: nppplugin_*/nppplugin_solutionhub_ui/src/nppplugin_solutionhub_ui.cpp
+line: wchar_t *scolumns[2] = { L"Solution Name", L"Connections" };
+regex: (L"[^"]*") => const_cast<wchar_t *>($1)
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: pText:_T("");
+replace: pText:_T(""); => pText:const_cast<LPTSTR>(_T(""));
+
+# The tree list switches on its insert positions, pointers (TVI_ROOT...) made integers, which Visual
+# C++ takes as constants: their values are written out.
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_ROOT\) => case 0xFFFFFFFFFFFF0000ULL /* TVI_ROOT */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_FIRST\) => case 0xFFFFFFFFFFFF0001ULL /* TVI_FIRST */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_LAST\) => case 0xFFFFFFFFFFFF0002ULL /* TVI_LAST */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_SORT\) => case 0xFFFFFFFFFFFF0003ULL /* TVI_SORT */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_AFTER\) => case 0xFFFF0005ULL /* TVI_AFTER */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_BEFORE\) => case 0xFFFF0006ULL /* TVI_BEFORE */
+
+files: nppplugin_*/nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+line: case U(TVI_
+regex: case U\(TVI_SORTEX\) => case 0xFFFF0007ULL /* TVI_SORTEX */
+
+# FixParser's version header is made by CMake from version.h.in, with its project's version.
+files: FixParser/src/plugin/version.h.in
+line: @PROJECT_VERSION@
+replace: @PROJECT_VERSION@ => 0.1.3
+
+# HTML Tag's SimpleIni takes Windows' branches only when _WIN32 is defined, which it is not here: the
+# plugin expects them (wide file names, Windows' conversions and line ends), which the runtime has.
+files: HTMLTag/deps/simpleini/SimpleIni.h
+line: _WIN32
+regex: ^#\s*ifdef _WIN32\b => #if defined(_WIN32) || defined(NPPMAC)
+
+files: HTMLTag/deps/simpleini/SimpleIni.h
+line: defined(_WIN32)
+regex: defined\(_WIN32\) => (defined(_WIN32) || defined(NPPMAC))
+
+# NppMenuScripts compares a rectangle's sizes with 0L: LONG is long on Windows, a 32-bit int here.
+files: NppMenuScripts/src/main.cpp
+line: std::max(0L, (rc.
+replace: std::max(0L, => std::max<LONG>(0L,

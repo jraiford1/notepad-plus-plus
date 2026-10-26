@@ -17,6 +17,7 @@
 // kernel32 and ole32 memory: Global*, Local*, Heap*, Virtual*, CoTaskMem*.
 
 #include "Immortal.h"
+#include "platform/Platform.h"
 #include <windows.h>
 
 #include <cstdlib>
@@ -24,6 +25,7 @@
 #include <cstring>
 #include <mutex>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <unordered_map>
 
 namespace
@@ -318,4 +320,45 @@ BOOL WINAPI IsBadReadPtr(LPCVOID pointer, UINT_PTR size)
 BOOL WINAPI IsBadWritePtr(LPVOID pointer, UINT_PTR size)
 {
 	return size != 0 && !pointer;
+}
+
+SIZE_T WINAPI VirtualQuery(LPCVOID address, PMEMORY_BASIC_INFORMATION info, SIZE_T size)
+{
+	if (!info || size < sizeof(MEMORY_BASIC_INFORMATION))
+	{
+		SetLastError(ERROR_BAD_LENGTH);
+		return 0;
+	}
+	const uintptr_t pageSize = static_cast<uintptr_t>(::getpagesize());
+	const uintptr_t base = reinterpret_cast<uintptr_t>(address) & ~(pageSize - 1);
+	nppmac::platform::MemoryRegion region;
+	if (!nppmac::platform::memoryRegion(base, region))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return 0;
+	}
+	std::memset(info, 0, sizeof(*info));
+	info->BaseAddress = reinterpret_cast<PVOID>(base);
+	if (region._start > base)
+	{
+		// Between regions: free up to the next one.
+		info->State = MEM_FREE;
+		info->Protect = PAGE_NOACCESS;
+		info->RegionSize = region._start - base;
+		return sizeof(*info);
+	}
+	DWORD protect = PAGE_NOACCESS;
+	if (region._executable)
+		protect = region._writable ? PAGE_EXECUTE_READWRITE : (region._readable ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
+	else if (region._writable)
+		protect = PAGE_READWRITE;
+	else if (region._readable)
+		protect = PAGE_READONLY;
+	info->AllocationBase = reinterpret_cast<PVOID>(region._start);
+	info->AllocationProtect = protect;
+	info->RegionSize = region._start + region._size - base;
+	info->State = MEM_COMMIT;
+	info->Protect = protect;
+	info->Type = MEM_PRIVATE;
+	return sizeof(*info);
 }

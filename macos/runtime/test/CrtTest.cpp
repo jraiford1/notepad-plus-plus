@@ -321,6 +321,17 @@ namespace
 		CHECK(_wcserror_s(tooShort, ENOENT) == 0 && std::u16string{tooShort}.size() == 3);
 	}
 
+	void testVirtualQuery()
+	{
+		// Stack memory is read-write, code executable, and page zero no one's to read.
+		int local = 0;
+		MEMORY_BASIC_INFORMATION info{};
+		CHECK(VirtualQuery(&local, &info, sizeof(info)) == sizeof(info) && info.State == MEM_COMMIT && info.Protect == PAGE_READWRITE);
+		CHECK(reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize > reinterpret_cast<uintptr_t>(&local));
+		CHECK(VirtualQuery(reinterpret_cast<LPCVOID>(&testVirtualQuery), &info, sizeof(info)) == sizeof(info) && info.Protect == PAGE_EXECUTE_READ);
+		CHECK(VirtualQuery(nullptr, &info, sizeof(info)) == 0 || info.State == MEM_FREE || info.Protect == PAGE_NOACCESS);
+	}
+
 	void testAnsiFunctions()
 	{
 		// The ANSI code page is UTF-8: a string changes case where the other case has as many bytes.
@@ -343,6 +354,7 @@ int main()
 	testStringFunctions();
 	testConversionsAndStd();
 	testAnsiFunctions();
+	testVirtualQuery();
 
 	std::cout << (g_checks - g_failures) << "/" << g_checks << " CRT checks passed\n";
 	return g_failures == 0 ? 0 : 1;

@@ -481,6 +481,23 @@ LPSTR WINAPI CharUpperA(LPSTR str)
 	return changeCase(str, upperChar);
 }
 
+// The next and previous characters, a surrogate pair as one; neither goes past the string's ends.
+LPWSTR WINAPI CharNextW(LPCWSTR current)
+{
+	if (!*current)
+		return const_cast<LPWSTR>(current);
+	const bool pair = IS_HIGH_SURROGATE(current[0]) && IS_LOW_SURROGATE(current[1]);
+	return const_cast<LPWSTR>(current + (pair ? 2 : 1));
+}
+
+LPWSTR WINAPI CharPrevW(LPCWSTR start, LPCWSTR current)
+{
+	if (current <= start)
+		return const_cast<LPWSTR>(start);
+	const bool pair = current - start >= 2 && IS_LOW_SURROGATE(current[-1]) && IS_HIGH_SURROGATE(current[-2]);
+	return const_cast<LPWSTR>(current - (pair ? 2 : 1));
+}
+
 DWORD WINAPI CharLowerBuffW(LPWSTR str, DWORD length)
 {
 	for (DWORD i = 0; i < length; ++i)

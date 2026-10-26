@@ -28,6 +28,7 @@
 #include <secext.h>
 #include <sensapi.h>
 #include <tlhelp32.h>
+#include <winternl.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -39,6 +40,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <libkern/OSByteOrder.h>
+#include <crt_externs.h>
 #include <libproc.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
@@ -306,6 +308,17 @@ BOOL WINAPI GetVersionExA(LPOSVERSIONINFOA info)
 		extended->wProductType = VER_NT_WORKSTATION;
 	}
 	return TRUE;
+}
+
+// ntdll's: the build number has the flags of a free build in its high bits, as Windows reports it.
+void WINAPI RtlGetNtVersionNumbers(LPDWORD major, LPDWORD minor, LPDWORD build)
+{
+	if (major)
+		*major = reportedMajorVersion;
+	if (minor)
+		*minor = reportedMinorVersion;
+	if (build)
+		*build = reportedBuild | 0xF0000000;
 }
 
 DWORD WINAPI GetVersion()
@@ -699,6 +712,18 @@ int WINAPI GetUserDefaultLocaleName(LPWSTR name, int size)
 	return writeFormatted(nppmac::toUtf16(nppmac::platform::preferredLanguage()), name, size);
 }
 
+LCID WINAPI LocaleNameToLCID(LPCWSTR name, DWORD)
+{
+	if (!name)
+		return GetUserDefaultLCID(); // LOCALE_NAME_USER_DEFAULT
+	if (!*name)
+		return LOCALE_INVARIANT; // LOCALE_NAME_INVARIANT
+	const LCID lcid = nppmac::platform::windowsLocaleCode(nppmac::toUtf8(name));
+	if (lcid == 0)
+		SetLastError(ERROR_INVALID_PARAMETER);
+	return lcid;
+}
+
 // --- Environment ----------------------------------------------------------------------------------
 
 DWORD WINAPI GetEnvironmentVariableW(LPCWSTR name, LPWSTR buffer, DWORD size)
@@ -728,6 +753,27 @@ BOOL WINAPI SetEnvironmentVariableW(LPCWSTR name, LPCWSTR value)
 	const std::string key = nppmac::toUtf8(name);
 	const int result = value ? ::setenv(key.c_str(), nppmac::toUtf8(value).c_str(), 1) : ::unsetenv(key.c_str());
 	return result == 0 ? TRUE : FALSE;
+}
+
+LPWCH WINAPI GetEnvironmentStringsW()
+{
+	// The environment block: each NAME=value, ended by an empty string.
+	std::u16string block;
+	for (char** variable = *_NSGetEnviron(); *variable; ++variable)
+	{
+		block += nppmac::toUtf16(*variable);
+		block.push_back(u'\0');
+	}
+	block.push_back(u'\0');
+	auto* copy = new char16_t[block.size()];
+	std::copy(block.begin(), block.end(), copy);
+	return copy;
+}
+
+BOOL WINAPI FreeEnvironmentStringsW(LPWCH block)
+{
+	delete[] block;
+	return TRUE;
 }
 
 DWORD WINAPI ExpandEnvironmentStringsW(LPCWSTR source, LPWSTR dest, DWORD size)
@@ -1172,10 +1218,46 @@ DWORD WINAPI FormatMessageW(DWORD flags, LPCVOID source, DWORD messageId, DWORD,
 
 	if (flags & FORMAT_MESSAGE_ALLOCATE_BUFFER)
 	{
+		// The buffer is where the allocated message's address goes.
+		if (!buffer)
+		{
+			SetLastError(ERROR_INVALID_PARAMETER);
+			return 0;
+		}
 		auto* allocated = static_cast<LPWSTR>(LocalAlloc(LMEM_FIXED, (message.size() + 1) * sizeof(char16_t)));
 		std::copy(message.begin(), message.end(), allocated);
 		allocated[message.size()] = u'\0';
 		*reinterpret_cast<LPWSTR*>(buffer) = allocated;
+		return static_cast<DWORD>(message.size());
+	}
+	if (message.size() + 1 > size)
+	{
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return 0;
+	}
+	return copyToBuffer(message, buffer, size);
+}
+
+DWORD WINAPI FormatMessageA(DWORD flags, LPCVOID source, DWORD messageId, DWORD language, LPSTR buffer, DWORD size, va_list* arguments)
+{
+	// The W form's message, in UTF-8 (the ANSI code page here).
+	const std::u16string wideSource = (flags & FORMAT_MESSAGE_FROM_STRING) && source ? nppmac::toUtf16(static_cast<const char*>(source)) : std::u16string{};
+	LPWSTR wide = nullptr;
+	if (FormatMessageW(flags | FORMAT_MESSAGE_ALLOCATE_BUFFER, (flags & FORMAT_MESSAGE_FROM_STRING) ? wideSource.c_str() : source, messageId, language,
+		reinterpret_cast<LPWSTR>(&wide), 0, arguments) == 0)
+		return 0;
+	const std::string message = nppmac::toUtf8(wide);
+	LocalFree(wide);
+	if (flags & FORMAT_MESSAGE_ALLOCATE_BUFFER)
+	{
+		if (!buffer)
+		{
+			SetLastError(ERROR_INVALID_PARAMETER);
+			return 0;
+		}
+		auto* allocated = static_cast<LPSTR>(LocalAlloc(LMEM_FIXED, message.size() + 1));
+		std::memcpy(allocated, message.c_str(), message.size() + 1);
+		*reinterpret_cast<LPSTR*>(buffer) = allocated;
 		return static_cast<DWORD>(message.size());
 	}
 	if (message.size() + 1 > size)

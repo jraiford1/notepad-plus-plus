@@ -60,6 +60,11 @@
 	SNDMSG((hwndLV), LVM_SETITEMCOUNT, (WPARAM)(cItems), (LPARAM)(dwFlags))
 #endif
 
+// The Windows SDK's older name, which Wine's header does not keep.
+#ifndef LPTV_HITTESTINFO
+#define LPTV_HITTESTINFO LPTVHITTESTINFO
+#endif
+
 #ifndef LVCDI_ITEM
 #define LVCDI_ITEM 0x00000000
 #define LVCDI_GROUP 0x00000001

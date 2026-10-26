@@ -23,6 +23,8 @@
 #include "platform/Platform.h"
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cerrno>
 #include <cstdlib>
 #include <copyfile.h>
@@ -33,6 +35,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <mutex>
+#include <optional>
 #include <memory>
 #include <poll.h>
 #include <sys/attr.h>
@@ -181,8 +184,51 @@ using namespace nppmac::kernel;
 
 namespace
 {
+	// An I/O completion port: the completions of the overlapped operations of the files associated with
+	// it, queued for the threads that wait on it (GetQueuedCompletionStatus).
+	class CompletionPort : public KernelObject
+	{
+	public:
+		struct Packet
+		{
+			DWORD _error = ERROR_SUCCESS;
+			DWORD _bytes = 0;
+			ULONG_PTR _key = 0;
+			LPOVERLAPPED _overlapped = nullptr;
+		};
+
+		void post(const Packet& packet)
+		{
+			{
+				std::lock_guard lock{_mutex};
+				_packets.push_back(packet);
+			}
+			_posted.notify_one();
+		}
+
+		// The next packet, or none after the timeout (milliseconds; INFINITE waits for one).
+		std::optional<Packet> wait(DWORD milliseconds)
+		{
+			std::unique_lock lock{_mutex};
+			const auto available = [this] { return !_packets.empty(); };
+			if (milliseconds == INFINITE)
+				_posted.wait(lock, available);
+			else if (!_posted.wait_for(lock, std::chrono::milliseconds{milliseconds}, available))
+				return std::nullopt;
+			Packet packet = _packets.front();
+			_packets.pop_front();
+			return packet;
+		}
+
+	private:
+		std::mutex _mutex;
+		std::condition_variable _posted;
+		std::deque<Packet> _packets;
+	};
+
 	// The FSEvents watch behind ReadDirectoryChangesW: changes are kept until a read is pending, then
-	// written into its buffer and completed by an APC on the thread that issued the read.
+	// written into its buffer and completed: by an APC on the thread that issued the read, through the
+	// overlapped event, or on the completion port the folder's handle is associated with.
 	class DirectoryWatch
 	{
 	public:
@@ -210,11 +256,12 @@ namespace
 			return _watcher->isWatching();
 		}
 
-		void read(BYTE* buffer, DWORD length, DWORD filter, LPOVERLAPPED overlapped, LPOVERLAPPED_COMPLETION_ROUTINE completion)
+		void read(BYTE* buffer, DWORD length, DWORD filter, LPOVERLAPPED overlapped, LPOVERLAPPED_COMPLETION_ROUTINE completion,
+			std::shared_ptr<CompletionPort> port, ULONG_PTR portKey)
 		{
 			std::lock_guard lock{_mutex};
 			_filter = filter;
-			_request = Request{buffer, length, overlapped, completion, currentThreadObject()};
+			_request = Request{buffer, length, overlapped, completion, currentThreadObject(), std::move(port), portKey};
 			deliver();
 		}
 
@@ -234,6 +281,8 @@ namespace
 			LPOVERLAPPED _overlapped = nullptr;
 			LPOVERLAPPED_COMPLETION_ROUTINE _completion = nullptr;
 			std::shared_ptr<KernelObject> _thread;
+			std::shared_ptr<CompletionPort> _port;
+			ULONG_PTR _portKey = 0;
 		};
 
 		bool wanted(const nppmac::platform::DirectoryChange& change) const
@@ -307,7 +356,11 @@ namespace
 				request._overlapped->Internal = error;
 				request._overlapped->InternalHigh = bytes;
 			}
-			if (request._completion)
+			if (request._port)
+			{
+				request._port->post({error, bytes, request._portKey, request._overlapped});
+			}
+			else if (request._completion)
 			{
 				LPOVERLAPPED_COMPLETION_ROUTINE completion = request._completion;
 				LPOVERLAPPED overlapped = request._overlapped;
@@ -349,6 +402,9 @@ namespace
 
 		// Set by the first ReadDirectoryChangesW on a folder.
 		std::shared_ptr<DirectoryWatch> _watch;
+		// The completion port its overlapped operations complete on (CreateIoCompletionPort), with its key.
+		std::shared_ptr<CompletionPort> _port;
+		ULONG_PTR _portKey = 0;
 		// An end of a pipe (CreatePipe): reads return what is there, as on Windows.
 		bool _pipe = false;
 
@@ -891,8 +947,70 @@ BOOL WINAPI ReadDirectoryChangesW(HANDLE handle, LPVOID buffer, DWORD length, BO
 	}
 	if (returned)
 		*returned = 0;
-	file->_watch->read(static_cast<BYTE*>(buffer), length, filter, overlapped, completion);
+	file->_watch->read(static_cast<BYTE*>(buffer), length, filter, overlapped, completion, file->_port, file->_portKey);
 	SetLastError(ERROR_IO_PENDING);
+	return TRUE;
+}
+
+// --- I/O completion ports -------------------------------------------------------------------------
+
+HANDLE WINAPI CreateIoCompletionPort(HANDLE fileHandle, HANDLE existingPort, ULONG_PTR key, DWORD)
+{
+	std::shared_ptr<CompletionPort> port = existingPort ? lookup<CompletionPort>(existingPort) : std::make_shared<CompletionPort>();
+	if (!port)
+	{
+		SetLastError(ERROR_INVALID_HANDLE);
+		return nullptr;
+	}
+	if (fileHandle != INVALID_HANDLE_VALUE)
+	{
+		auto file = lookup<File>(fileHandle);
+		if (!file)
+		{
+			SetLastError(ERROR_INVALID_HANDLE);
+			return nullptr;
+		}
+		file->_port = port;
+		file->_portKey = key;
+	}
+	return existingPort ? existingPort : createHandle(port);
+}
+
+BOOL WINAPI GetQueuedCompletionStatus(HANDLE portHandle, LPDWORD bytes, PULONG_PTR key, LPOVERLAPPED* overlapped, DWORD milliseconds)
+{
+	auto port = lookup<CompletionPort>(portHandle);
+	if (!port || !bytes || !key || !overlapped)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	const std::optional<CompletionPort::Packet> packet = port->wait(milliseconds);
+	if (!packet)
+	{
+		*overlapped = nullptr;
+		SetLastError(WAIT_TIMEOUT);
+		return FALSE;
+	}
+	*bytes = packet->_bytes;
+	*key = packet->_key;
+	*overlapped = packet->_overlapped;
+	if (packet->_error != ERROR_SUCCESS)
+	{
+		SetLastError(packet->_error);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL WINAPI PostQueuedCompletionStatus(HANDLE portHandle, DWORD bytes, ULONG_PTR key, LPOVERLAPPED overlapped)
+{
+	auto port = lookup<CompletionPort>(portHandle);
+	if (!port)
+	{
+		SetLastError(ERROR_INVALID_HANDLE);
+		return FALSE;
+	}
+	port->post({ERROR_SUCCESS, bytes, key, overlapped});
 	return TRUE;
 }
 
@@ -1202,6 +1320,11 @@ BOOL WINAPI CreateDirectoryW(LPCWSTR pathName, LPSECURITY_ATTRIBUTES)
 		return FALSE;
 	}
 	return TRUE;
+}
+
+BOOL WINAPI CreateDirectoryA(LPCSTR pathName, LPSECURITY_ATTRIBUTES security)
+{
+	return CreateDirectoryW(nppmac::toUtf16(pathName ? pathName : "").c_str(), security);
 }
 
 BOOL WINAPI RemoveDirectoryW(LPCWSTR pathName)
@@ -1571,6 +1694,28 @@ BOOL WINAPI GetVolumeInformationW(LPCWSTR rootPath, LPWSTR volumeName, DWORD vol
 	if (fileSystemName && fileSystemNameSize > 0)
 		wcsncpy_s(fileSystemName, fileSystemNameSize, fromPosixPath(info.f_fstypename).c_str(), _TRUNCATE);
 	return TRUE;
+}
+
+// The process's standard streams, each a handle of its own (closing one leaves the stream itself open).
+HANDLE WINAPI GetStdHandle(DWORD which)
+{
+	static const HANDLE streams[] = {
+		createHandle(std::make_shared<File>(::dup(STDIN_FILENO), std::string{}, false)),
+		createHandle(std::make_shared<File>(::dup(STDOUT_FILENO), std::string{}, false)),
+		createHandle(std::make_shared<File>(::dup(STDERR_FILENO), std::string{}, false)),
+	};
+	switch (which)
+	{
+		case STD_INPUT_HANDLE:
+			return streams[0];
+		case STD_OUTPUT_HANDLE:
+			return streams[1];
+		case STD_ERROR_HANDLE:
+			return streams[2];
+		default:
+			SetLastError(ERROR_INVALID_PARAMETER);
+			return INVALID_HANDLE_VALUE;
+	}
 }
 
 // Windows' device control codes: none has a meaning for macOS devices.

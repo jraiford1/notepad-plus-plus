@@ -26,6 +26,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <pthread.h>
@@ -1686,6 +1687,121 @@ BOOL WINAPI SetKeyboardState(LPBYTE state)
 HKL WINAPI GetKeyboardLayout(DWORD)
 {
 	return reinterpret_cast<HKL>(static_cast<uintptr_t>(0x04090409)); // en-US
+}
+
+// The one keyboard layout above is all there is: macOS input sources are the user's to choose, in the
+// menu bar. Asking for it, or activating it, succeeds; any other layout is not there.
+UINT WINAPI GetKeyboardLayoutList(INT size, HKL* layouts)
+{
+	if (size == 0)
+		return 1;
+	if (!layouts)
+		return 0;
+	layouts[0] = GetKeyboardLayout(0);
+	return 1;
+}
+
+HKL WINAPI LoadKeyboardLayoutW(LPCWSTR id, UINT)
+{
+	// A layout's identifier is eight hexadecimal digits, its language in the low four.
+	const HKL layout = GetKeyboardLayout(0);
+	if (id && (wcstoul(id, nullptr, 16) & 0xFFFF) == LOWORD(reinterpret_cast<uintptr_t>(layout)))
+		return layout;
+	SetLastError(ERROR_INVALID_PARAMETER);
+	return nullptr;
+}
+
+HKL WINAPI ActivateKeyboardLayout(HKL layout, UINT)
+{
+	const HKL current = GetKeyboardLayout(0);
+	if (layout == current || layout == reinterpret_cast<HKL>(HKL_NEXT) || layout == reinterpret_cast<HKL>(HKL_PREV))
+		return current;
+	SetLastError(ERROR_INVALID_PARAMETER);
+	return nullptr;
+}
+
+// System-wide hot keys: WM_HOTKEY goes to the window when the combination is pressed in any program.
+// Ctrl is Command, as for every shortcut here, and the Windows key is Control.
+namespace
+{
+	std::map<std::pair<HWND, int>, unsigned>& registeredHotKeys()
+	{
+		static auto* keys = new std::map<std::pair<HWND, int>, unsigned>;
+		return *keys;
+	}
+}
+
+BOOL WINAPI RegisterHotKey(HWND hwnd, int id, UINT modifiers, UINT virtualKey)
+{
+	if (registeredHotKeys().count({hwnd, id}))
+	{
+		SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);
+		return FALSE;
+	}
+	// The key's macOS code: the one whose key is this virtual key (letters and digits by their place
+	// on a US keyboard).
+	int keyCode = -1;
+	for (unsigned short code = 0; code < 0x80 && keyCode < 0; ++code)
+	{
+		if (virtualKeyFor(code, {}) == virtualKey)
+			keyCode = code;
+	}
+	if (keyCode < 0)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	unsigned hotKeyModifiers = 0;
+	if (modifiers & MOD_CONTROL)
+		hotKeyModifiers |= nppmac::ui::hotKeyCommand;
+	if (modifiers & MOD_ALT)
+		hotKeyModifiers |= nppmac::ui::hotKeyOption;
+	if (modifiers & MOD_WIN)
+		hotKeyModifiers |= nppmac::ui::hotKeyControl;
+	if (modifiers & MOD_SHIFT)
+		hotKeyModifiers |= nppmac::ui::hotKeyShift;
+	const LPARAM lParam = MAKELPARAM(modifiers & (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN), virtualKey);
+	const unsigned token = nppmac::ui::registerHotKey(static_cast<unsigned short>(keyCode), hotKeyModifiers, [hwnd, id, lParam]
+	{
+		PostMessageW(hwnd, WM_HOTKEY, static_cast<WPARAM>(id), lParam);
+	});
+	if (!token)
+	{
+		SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);
+		return FALSE;
+	}
+	registeredHotKeys()[{hwnd, id}] = token;
+	return TRUE;
+}
+
+BOOL WINAPI UnregisterHotKey(HWND hwnd, int id)
+{
+	auto it = registeredHotKeys().find({hwnd, id});
+	if (it == registeredHotKeys().end())
+	{
+		SetLastError(ERROR_HOTKEY_NOT_REGISTERED);
+		return FALSE;
+	}
+	nppmac::ui::unregisterHotKey(it->second);
+	registeredHotKeys().erase(it);
+	return TRUE;
+}
+
+// Input method contexts: macOS input methods attach to the focused view, not to contexts a program is
+// given (ImmGetContext gives none), so associating one with a window changes nothing.
+HIMC WINAPI ImmAssociateContext(HWND, HIMC)
+{
+	return nullptr;
+}
+
+BOOL WINAPI ImmAssociateContextEx(HWND, HIMC, DWORD)
+{
+	return TRUE;
+}
+
+BOOL WINAPI ImmNotifyIME(HIMC, DWORD, DWORD, DWORD)
+{
+	return FALSE;
 }
 
 UINT WINAPI MapVirtualKeyW(UINT code, UINT mapType)

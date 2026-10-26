@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -234,6 +235,19 @@ namespace nppmac::ui
 
 	// Drag and drop of files onto windows.
 	void setAcceptsFiles(NativeView* view, bool accepts);
+
+	// A system-wide hot key: pressing the key (a macOS virtual key code) with exactly these modifiers
+	// calls the function, on the main thread. A token for unregistering, or 0 when the combination
+	// is taken.
+	enum HotKeyModifier : unsigned
+	{
+		hotKeyCommand = 1,
+		hotKeyOption = 2,
+		hotKeyControl = 4,
+		hotKeyShift = 8,
+	};
+	unsigned registerHotKey(unsigned short keyCode, unsigned modifiers, std::function<void()> pressed);
+	void unregisterHotKey(unsigned token);
 
 	// Mouse capture: while set, mouse events outside the view still go to it.
 	void setCapture(NativeView* view);

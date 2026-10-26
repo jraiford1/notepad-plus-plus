@@ -1,4 +1,12 @@
 {
+	"BatPathIntelliSense": {
+		"folder-name": "BatPathIntelliSense",
+		"display-name": "BAT Path IntelliSense",
+		"version": "0.1.0",
+		"description": "File and directory path completion for Windows .bat / .cmd files. Typing .\\ ..\\ C:\\ or \\\\server\\share\\ pops up a candidate list, inserts a trailing backslash for directories, and drills into the next level. Ported from the VS Code extension bat-path-intellisense.",
+		"author": "nicehero",
+		"homepage": "https://github.com/nicehero/NppBatPathIntelliSense"
+	},
 	"BetterMultiSelection": {
 		"folder-name": "BetterMultiSelection",
 		"display-name": "BetterMultiSelection",
@@ -93,6 +101,24 @@
 		"author": "Ruberoid",
 		"homepage": "https://github.com/Ruberoid/npp_emoji_description"
 	},
+	"FileTools": {
+		"folder-name": "FileTools",
+		"display-name": "Datamodder File Tools",
+		"version": "1.3.1.6",
+		"npp-compatible-versions": "[8.3,]",
+		"description": "Tidy, validate and convert YAML, JSON and CSV directly in Notepad++.\r\nFeatures:\r\n- Reindent / tidy YAML (comments preserved)\r\n- Full conversion matrix: YAML, JSON, CSV and Parquet (via duckdb.exe) all reach each other\r\n- JSON: pretty-print, minify, sort keys, escape/unescape\r\n- CSV: align, compact, delimiter convert, sort, transpose, add/remove quotes\r\n- Settings dialog with saved profiles",
+		"author": "Datamodder",
+		"homepage": "https://datamodder.com/utils/file-tools"
+	},
+	"FixParser": {
+		"folder-name": "FixParser",
+		"display-name": "FixParser",
+		"version": "0.1.3",
+		"npp-compatible-versions": "[8.9.0,]",
+		"description": "Pretty-print and inspect FIX protocol logs: field/value decoding, hover quickview, and a dockable message inspector.",
+		"author": "Chris Taylor",
+		"homepage": "https://github.com/chtaylo3/fix-parser"
+	},
 	"FoldingLineHider": {
 		"folder-name": "FoldingLineHider",
 		"display-name": "Folding Line Hider",
@@ -101,6 +127,15 @@
 		"description": "This Notepad++ plugin can hide the unsightly folding lines, and for convenience, you can fold and unfold the current level using the Alt + Left/Right keys.",
 		"author": "leonardchai@gmail.com",
 		"homepage": "https://github.com/leonardchai/FoldingLineHider"
+	},
+	"FormatSQL": {
+		"folder-name": "FormatSQL",
+		"display-name": "Datamodder SQL Formatter",
+		"version": "1.3.2.17",
+		"npp-compatible-versions": "[8.3,]",
+		"description": "Formats, minifies and converts SQL directly in Notepad++.\r\nFeatures:\r\n- Format / minify SQL, format-on-save, format-and-copy\r\n- Multi-dialect conversion (ANSI, Snowflake, MS SQL, PostgreSQL, MySQL, Databricks)\r\n- Quote, comment-style, boolean and number-format conversion\r\n- Configurable casing, alignment, structure and spacing rules with saved profiles",
+		"author": "Datamodder",
+		"homepage": "https://datamodder.com/utils/sql-formatter"
 	},
 	"FWDataViz": {
 		"folder-name": "FWDataViz",
@@ -139,6 +174,24 @@
 		"description": "Hex editor. Some reported issues, however many bugs fixed in latest release.",
 		"author": "Jens Lorenz",
 		"homepage": "https://github.com/chcg/NPP_HexEditor"
+	},
+	"HLASMLexer": {
+		"folder-name": "HLASMLexer",
+		"display-name": "HLASM Lexer - Column-Aware Syntax Highlighting",
+		"version": "1.1.1",
+		"description": "Column-aware syntax highlighting for IBM HLASM. Understands the 80-column punch card layout — labels, operations, operands, continuation markers and sequence numbers are each highlighted by their column position, not just keywords.",
+		"author": "Zane Hambly",
+		"homepage": "https://github.com/Zaneham/hlasm-npp"
+	},
+	"HTMLTag": {
+		"folder-name": "HTMLTag",
+		"display-name": "HTML Tag",
+		"version": "1.6.1.0",
+		"npp-compatible-versions": "[8.3,]",
+		"old-versions-compatibility": "[,1.1][,8.2.1]",
+		"description": "Provides three core functions:\r\n- HTML and XML tag jumping, like the built-in brace matching and selection\r\n of tags and/or contents.\r\n- HTML entity encoding/decoding (example: é to &eacute;)\r\n- JS character encoding/decoding (example: é to \\u00E9)",
+		"author": "Martijn Coppoolse",
+		"homepage": "https://github.com/rdipardo/nppHTMLTag"
 	},
 	"IndentByFold": {
 		"folder-name": "IndentByFold",
@@ -266,6 +319,15 @@
 		"author": "Helder Sepulveda",
 		"homepage": "https://github.com/heldersepu/nppfavorites"
 	},
+	"NppFoldTail": {
+		"folder-name": "NppFoldTail",
+		"display-name": "NppFoldTail",
+		"version": "0.8.2",
+		"npp-compatible-versions": "[8.9.8.1,]",
+		"description": "A Notepad++ plugin for cleaner, more readable code folding.",
+		"author": "Sean Lin",
+		"homepage": "https://github.com/seantw/NppFoldTail"
+	},
 	"NppJavaPlugin": {
 		"folder-name": "NppJavaPlugin",
 		"display-name": "Java Plugin",
@@ -273,6 +335,55 @@
 		"description": "Allows Java Code Compilation and Execution directly from Notepad++.",
 		"author": "Dominik Cebula",
 		"homepage": "https://github.com/dominikcebula/npp-java-plugin"
+	},
+	"NppLdapFormatter": {
+		"folder-name": "NppLdapFormatter",
+		"display-name": "LDAP Formatter",
+		"version": "1.0.0",
+		"npp-compatible-versions": "[8.9.8.1,]",
+		"description": "Validate and format LDAP filters as readable multiline expressions or compact single-line expressions. Preserves the original text on errors and supports atomic undo.",
+		"author": "Ignacio Javier Julio Posada",
+		"homepage": "https://github.com/ignaciojulio/npp-ldap-formatter"
+	},
+	"NppMenuScripts": {
+		"folder-name": "NppMenuScripts",
+		"display-name": "NppMenuScripts",
+		"version": "1.0.1.0",
+		"description": "Lets you create custom script menus and run JavaScript, Perl, and Python scripts from Notepad++.",
+		"author": "Sean Lin",
+		"homepage": "https://github.com/seantw/NppMenuScripts"
+	},
+	"nppplugin_ofis2": {
+		"folder-name": "nppplugin_ofis2",
+		"display-name": "Open File In Solution",
+		"version": "3.0.1",
+		"description": "Lets you index specific folders and possible specific types of resources (XML, CPP, PY files) for a fast indexing of files.",
+		"author": "IncredibleJunior",
+		"homepage": "https://www.incrediblejunior.com/npp_plugins/"
+	},
+	"nppplugin_solutionhub": {
+		"folder-name": "nppplugin_solutionhub",
+		"display-name": "Solution Hub",
+		"version": "3.0.1",
+		"description": "Base requirement for several plugins from incfred.",
+		"author": "IncredibleJunior",
+		"homepage": "https://www.incrediblejunior.com/npp_plugins/"
+	},
+	"nppplugin_solutionhub_ui": {
+		"folder-name": "nppplugin_solutionhub_ui",
+		"display-name": "Solution Hub UI",
+		"version": "3.0.1",
+		"description": "Basic UI to create and setup solutions used by the SolutionHub.",
+		"author": "IncredibleJunior",
+		"homepage": "https://www.incrediblejunior.com/npp_plugins/"
+	},
+	"nppplugin_solutiontools": {
+		"folder-name": "nppplugin_solutiontools",
+		"display-name": "Solution Tools",
+		"version": "3.0.1",
+		"description": "Configurable priority-based fileswitching (most commonly used when switching between .h and .cpp). Configurable what extensions map to which targets and in what order.\n'goto file' implementation, Ex. stand on a line, press whatever shortcut(or left mouseclick on the line) you have bound to the GOTO command on a line like :\r\n#include \"somefile.h\"\r\nor\r\nrequire 'some_path/to_a_luafile'",
+		"author": "IncredibleJunior",
+		"homepage": "https://www.incrediblejunior.com/npp_plugins/"
 	},
 	"NppPluginDemo": {
 		"folder-name": "NppPluginDemo",
@@ -283,6 +394,14 @@
 		"description": "Notepad++ Plugin Demo is written from Notepad++ Plugin Template to demonstrate the usage of plugin API.",
 		"author": "Don HO",
 		"homepage": "https://github.com/npp-plugins/plugindemo"
+	},
+	"NppPluginOpenHost": {
+		"folder-name": "NppPluginOpenHost",
+		"display-name": "NppPluginOpenHost",
+		"version": "1.1.0.0",
+		"description": "Allow to open Host file on Windows",
+		"author": "jejemorg",
+		"homepage": "https://github.com/jejemorg/NppPluginOpenHost/"
 	},
 	"NppPluginTemplate": {
 		"folder-name": "NppPluginTemplate",
@@ -354,6 +473,14 @@
 		"author": "Karlheinz Graf",
 		"homepage": "https://github.com/rainman74/NPPTextFX2"
 	},
+	"NppVim": {
+		"folder-name": "NppVim",
+		"display-name": "NppVim",
+		"version": "1.14.4.0",
+		"description": "A Notepad++ plugin that adds Vim-style editing and key bindings.",
+		"author": "h-jangra",
+		"homepage": "https://github.com/h-jangra/NppVim"
+	},
 	"NppZenHankaku": {
 		"folder-name": "NppZenHankaku",
 		"display-name": "NppZenHankaku",
@@ -362,6 +489,22 @@
 		"description": "Convert between full-width (zenkaku) and half-width (hankaku) characters: alphanumerics, katakana, symbols, and spaces. Supports multiple and rectangular selections.",
 		"author": "RivieraSystems",
 		"homepage": "https://github.com/RivieraSystems/NppZenHankaku"
+	},
+	"NX_ASCII_Database_Helper": {
+		"folder-name": "NX_ASCII_Database_Helper",
+		"display-name": "NX ASCII Database Helper",
+		"version": "3.0.0",
+		"description": "This is a Notepad++ plugin for Siemens NX CAM ASCII Database file, which help the user list all of type in database and format file.",
+		"author": "Xuefeng",
+		"homepage": "https://github.com/ZhuXuefengGitHub/NX_ASCII_Database_Helper"
+	},
+	"OCamlLexer": {
+		"folder-name": "OCamlLexer",
+		"display-name": "OCaml Lexer",
+		"version": "1.0.0",
+		"description": "Syntax highlighting, folding and live linting for OCaml. A Scintilla ILexer5 lexer, so OCaml registers as a real language, with nested comments, quoted strings and char literals kept apart from type variables. Bundles the olint linter, which draws diagnostics inline on open and save.",
+		"author": "Zane Hambly",
+		"homepage": "https://github.com/Zaneham/ocaml-npp"
 	},
 	"Papyrus": {
 		"folder-name": "Papyrus",
@@ -390,6 +533,15 @@
 		"description": "Reverse lines in the selection or document. It works like the unix tac command.",
 		"author": "Query Kuma",
 		"homepage": "https://github.com/querykuma/qkNppReverseLines"
+	},
+	"QueryFiles": {
+		"folder-name": "QueryFiles",
+		"display-name": "Datamodder Query Files",
+		"version": "1.3.1.0",
+		"npp-compatible-versions": "[8.3,]",
+		"description": "Run SQL on CSV, Parquet, JSON and Excel files directly in Notepad++, powered by DuckDB (duckdb.exe).\r\nFeatures:\r\n- Query this file: the open data file becomes THIS in a new SQL tab\r\n- Join files on disk: from 'orders.parquet' join 'customers.csv' ...\r\n- Results as text in a tab, or as a sortable table in a docked panel\r\n- Describe / Summarize THIS, toolbar button, cancel and timeout",
+		"author": "Datamodder",
+		"homepage": "https://datamodder.com/utils/query-files"
 	},
 	"QuickText": {
 		"folder-name": "QuickText",
@@ -436,6 +588,30 @@
 		"author": "Frank Fesevur",
 		"homepage": "https://www.fesevur.com/selectquotedtext"
 	},
+	"SessionMgr": {
+		"folder-name": "SessionMgr",
+		"display-name": "Session Manager",
+		"version": "1.4.4",
+		"description": "Session manager. IMPORTANT: If you are upgrading from a version older than 1.2 then, immediately after the upgrade, open the Settings dialog and reconfigure your settings.",
+		"author": "Mike Foster",
+		"homepage": "https://mfoster.com/npp/SessionMgr.html"
+	},
+	"SimplifyJson": {
+		"folder-name": "SimplifyJson",
+		"display-name": "Simplify Json",
+		"version": "1.0.1",
+		"description": "SimplifyJson provides practical JSON tools for Notepad++: escape and unescape JSON strings, beautify JSON with readable indentation, and minify JSON by removing unnecessary whitespace. Commands operate on the selected text or the entire document and validate JSON before formatting.",
+		"author": "Vipul Patil",
+		"homepage": "https://github.com/analystvipul/SimplifyJson"
+	},
+	"SqlColumnHighlighter": {
+		"folder-name": "SqlColumnHighlighter",
+		"display-name": "SQL Column Highlighter",
+		"version": "1.0.0.0",
+		"description": "Click a column name in a SQL INSERT statement to highlight its value(s); double-click a value to highlight its column. All rows are highlighted for multi-row INSERTs.",
+		"author": "zhgao",
+		"homepage": "https://github.com/zhgao/npp-sql-column-highlighter"
+	},
 	"SurroundSelection": {
 		"folder-name": "SurroundSelection",
 		"display-name": "SurroundSelection",
@@ -468,6 +644,15 @@
 		"description": "Hopefully a decent URL Encoder and Decoder plug-in for Notepad++ which helps to make developer's life easier by providing facility to encode/decode the URL within Notepad++. \r\n\r\nHow it works:\r\n1. Configure setting from menu (Plugins->URL Plugin->URL Plugin Settings). It is not mandatory, but recommended.\r\n2. Select text/URL which you want to encode/decode.\r\n3. Perform your task via Plugins->URL Plugin->Encode/Decode URL.\r\n\r\n",
 		"author": "Rajendra Singh",
 		"homepage": "https://github.com/SinghRajenM/nppURLPlugin"
+	},
+	"VSCodeKeymapNpp": {
+		"folder-name": "VSCodeKeymapNpp",
+		"display-name": "VSCode Keymap NPP",
+		"version": "0.2.0",
+		"npp-compatible-versions": "[8.8.6,]",
+		"description": "Ports the stock Windows VS Code shortcuts to Notepad++ as far as Notepad++ can reasonably follow them.\r\nMaps clean Notepad++ or Scintilla equivalents, blocks conflicting fallthrough in strict mode, and keeps the rest documented in the coverage report.",
+		"author": "philip",
+		"homepage": "https://github.com/14ag/vscode-to-notepadpp"
 	},
 	"XBrackets": {
 		"folder-name": "XBrackets",

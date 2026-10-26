@@ -22,6 +22,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
 
@@ -56,6 +58,30 @@ namespace nppmac::platform
 	{
 		NSArray<NSString*>* languages = NSLocale.preferredLanguages;
 		return languages.count > 0 ? toString(languages.firstObject) : std::string{"en-US"};
+	}
+
+	bool memoryRegion(uintptr_t address, MemoryRegion& region)
+	{
+		mach_vm_address_t start = address;
+		mach_vm_size_t size = 0;
+		vm_region_basic_info_data_64_t info{};
+		mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+		mach_port_t object = MACH_PORT_NULL;
+		if (mach_vm_region(mach_task_self(), &start, &size, VM_REGION_BASIC_INFO_64, reinterpret_cast<vm_region_info_t>(&info), &count, &object)
+			!= KERN_SUCCESS)
+			return false;
+		region._start = static_cast<uintptr_t>(start);
+		region._size = static_cast<uintptr_t>(size);
+		region._readable = (info.protection & VM_PROT_READ) != 0;
+		region._writable = (info.protection & VM_PROT_WRITE) != 0;
+		region._executable = (info.protection & VM_PROT_EXECUTE) != 0;
+		return true;
+	}
+
+	unsigned windowsLocaleCode(const std::string& name)
+	{
+		NSString* identifier = [NSLocale canonicalLocaleIdentifierFromString:[NSString stringWithUTF8String:name.c_str()]];
+		return [NSLocale windowsLocaleCodeFromLocaleIdentifier:identifier];
 	}
 
 	void activateApplication()
@@ -118,6 +144,9 @@ namespace nppmac::platform
 
 	std::string applicationSupportDirectory()
 	{
+		// Test runs keep what is stored per user (plugins' settings) in a folder of their own.
+		if (const char* testFolder = std::getenv("NPPMAC_TEST_APPDATA"); testFolder && *testFolder)
+			return testFolder;
 		return directory(NSApplicationSupportDirectory);
 	}
 

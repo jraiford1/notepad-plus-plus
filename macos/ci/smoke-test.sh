@@ -68,7 +68,7 @@ run()
 	shift
 	local log="$work/$name.log"
 	# perl's alarm is the timeout macOS has without coreutils.
-	env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
+	env NPPMAC_TEST_RUN=1 NPPMAC_TEST_APPDATA="$work/appdata" NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
 		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="${runSettings:-$settings}" ${files[@]+"${files[@]}"} > "$log" 2>&1
 	local status=$?
 	if [ $status -ne 0 ]; then
