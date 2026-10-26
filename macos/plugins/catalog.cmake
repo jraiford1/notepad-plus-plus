@@ -404,3 +404,44 @@ nppmac_add_external_plugin(XBrackets
 	INCLUDES XBrackets
 	DEFINES XBRACKETS_EXPORTS
 	FILES XBrackets/XBrackets_Config.json)
+
+nppmac_add_external_plugin(FWDataViz
+	DISPLAY_NAME "Fixed-width Data Visualizer"
+	VERSION 2.6.7.0
+	GIT https://github.com/shriprem/FWDataViz.git
+	COMMIT 6b088aac6698cba953974e93032c7599d24f217d
+	SOURCES src/ConfigIO.cpp src/Darkmode/DarkMode.cpp src/Darkmode/NppDarkMode.cpp src/Darkmode/NPP_Plugin_Darkmode.cpp src/Dialogs/AboutDialog.cpp src/Dialogs/ConfigureDialog.cpp src/Dialogs/DataExtractDialog.cpp src/Dialogs/EximFileTypeDialog.cpp src/Dialogs/FieldTypeDialog.cpp src/Dialogs/FoldStructDialog.cpp src/Dialogs/JumpToField.cpp src/Dialogs/PreferencesDialog.cpp src/Dialogs/StyleDefComponent.cpp src/Dialogs/ThemeDialog.cpp src/Dialogs/VisualizerPanel.cpp src/NPP/dpiManagerV2.cpp src/NPP/StaticDialog.cpp src/SubmenuManager.cpp src/Utils.cpp src/VisualizerMain.cpp src/PluginDefinition.cpp
+	RC_FILES src/Resources/AboutUI.rc src/Resources/VisualizerPlugin.rc src/Resources/VisualizerUI.rc
+	INCLUDES vs.proj
+	DEFINES _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(NestedDSV
+	DISPLAY_NAME "NestedDSV Data Visualizer"
+	VERSION 1.1.0.1
+	GIT https://github.com/shriprem/NestedDSV.git
+	COMMIT dd4eb5c2bb5c046c35fdf69c12dd67ea45e56058
+	SOURCES src/ConfigIO.cpp src/Darkmode/DarkMode.cpp src/Darkmode/NppDarkMode.cpp src/Darkmode/NPP_Plugin_Darkmode.cpp src/Dialogs/AboutDialog.cpp src/Dialogs/ConfigureDialog.cpp src/Dialogs/DataExtractDialog.cpp src/Dialogs/EximFileTypeDialog.cpp src/Dialogs/FieldTypeDialog.cpp src/Dialogs/FoldStructDialog.cpp src/Dialogs/JumpToField.cpp src/Dialogs/NestedDSVPanel.cpp src/Dialogs/PreferencesDialog.cpp src/Dialogs/StyleDefComponent.cpp src/Dialogs/ThemeDialog.cpp src/NestedDSVMain.cpp src/NPP/dpiManagerV2.cpp src/NPP/StaticDialog.cpp src/PluginDefinition.cpp src/SubmenuManager.cpp src/Utils.cpp
+	RC_FILES src/Resources/AboutUI.rc src/Resources/NestedDSVPlugin.rc src/Resources/NestedDSVUI.rc
+	INCLUDES vs.proj
+	DEFINES _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING _CRT_NONSTDC_NO_DEPRECATE _CRT_NON_CONFORMING_SWPRINTFS=1)
+
+nppmac_add_external_plugin(NppSnippets
+	DISPLAY_NAME Snippets
+	VERSION 1.7.1
+	GIT https://github.com/ffes/nppsnippets.git
+	COMMIT 24248b69b45d0ddf45e04f9749b597469a376616
+	SOURCES DlgAbout.cpp DlgConsole.cpp DlgEditLanguages.cpp DlgEditLibrary.cpp DlgEditSnippet.cpp DlgImportLibrary.cpp DlgOptions.cpp Language.cpp Library.cpp NppOptions.cpp NppSnippets.cpp Options.cpp Snippets.cpp SnippetsDB.cpp sqlite3.c SqliteDB.cpp WaitCursor.cpp
+	RC_FILES NppSnippets_res.rc
+	INCLUDES .
+	DEFINES NPPSNIPPETS_EXPORTS
+	FILES misc/Template.sqlite)
+
+nppmac_add_external_plugin(NppTags
+	DISPLAY_NAME NppTags
+	VERSION 0.9.1
+	GIT https://github.com/ffes/npptags.git
+	COMMIT 08bb850c24bca62ab3e29fb991a74c41470eea93
+	SOURCES DlgAbout.cpp DlgOptions.cpp DlgSelectTag.cpp DlgTree.cpp NppOptions.cpp NppTags.cpp Options.cpp readtags.c sqlite3.c SqliteDB.cpp Tag.cpp TagsDatabase.cpp TreeBuilder.cpp TreeBuilderCpp.cpp TreeBuilderCSharp.cpp TreeBuilderJava.cpp TreeBuilderRst.cpp TreeBuilderSql.cpp WaitCursor.cpp
+	RC_FILES NppTags_res.rc
+	INCLUDES .
+	DEFINES NppTags_EXPORTS)

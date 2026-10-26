@@ -95,3 +95,27 @@ replace: void LoggingCommandExecutor::Execute( => void Execute(
 files: NppJavaPlugin/src/Components/CRichEdit.cpp
 line: AddString(_T("\r\n"), color);
 replace: AddString(_T("\r\n"), color); => AddString(const_cast<LPTSTR>(_T("\r\n")), color);
+
+# NppTags names its list's columns with literals in an array of WCHAR *, given to LVCOLUMN's pszText.
+files: NppTags/DlgSelectTag.cpp
+line: WCHAR *szCols[NR_COLS]
+replace: WCHAR *szCols[NR_COLS] => const WCHAR *szCols[NR_COLS]
+
+files: NppTags/DlgSelectTag.cpp
+line: col.pszText = szCols[i];
+replace: col.pszText = szCols[i]; => col.pszText = const_cast<LPWSTR>(szCols[i]);
+
+# NppTags lists the kinds of tags as literals in an array of WCHAR *.
+files: NppTags/TreeBuilder*.cpp
+line: WCHAR* types[nr_types]
+replace: WCHAR* types[nr_types] => const WCHAR* types[nr_types]
+
+# NppSnippets and NppTags open their SQLite databases by Windows paths ('\' separators), which the
+# file functions take but SQLite's own open() does not: they open them by the macOS path.
+files: NppSnippets/SqliteDB.cpp
+line: sqlite3_open16(_dbFile.c_str(), &_db)
+replace: sqlite3_open16(_dbFile.c_str(), &_db) => sqlite3_open(nppmac::nativePath(std::u16string_view{_dbFile.c_str()}).c_str(), &_db)
+
+files: NppTags/SqliteDB.cpp
+line: sqlite3_open16(_dbFile, &_db)
+replace: sqlite3_open16(_dbFile, &_db) => sqlite3_open(nppmac::nativePath(std::u16string_view{_dbFile}).c_str(), &_db)

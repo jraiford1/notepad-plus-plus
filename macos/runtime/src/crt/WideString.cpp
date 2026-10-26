@@ -493,8 +493,14 @@ namespace nppmac
 	{
 		va_list args;
 		va_start(args, format);
-		const std::string text = crt::formatNarrow(format, args);
+		const int result = vsprintf_s(buffer, size, format, args);
 		va_end(args);
+		return result;
+	}
+
+	int vsprintf_s(char* buffer, size_t size, const char* format, va_list args)
+	{
+		const std::string text = crt::formatNarrow(format, args);
 		if (!buffer || size == 0)
 			return -1;
 		if (text.size() >= size)
@@ -722,50 +728,70 @@ size_t mbstowcs(char16_t* dest, const char* src, size_t count)
 	return n;
 }
 
+namespace
+{
+	// _splitpath_s and _wsplitpath_s: a path's drive ("C:"), folder (with its last separator), name and
+	// extension (with its dot).
+	template <typename Char>
+	errno_t splitPath(const Char* path, Char* drive, size_t driveSize, Char* dir, size_t dirSize, Char* fileName, size_t fileNameSize,
+		Char* ext, size_t extSize)
+	{
+		using View = std::basic_string_view<Char>;
+		if (!path)
+			return EINVAL;
+
+		View rest{path};
+		View drivePart;
+		if (rest.size() >= 2 && rest[1] == Char{':'})
+		{
+			drivePart = rest.substr(0, 2);
+			rest.remove_prefix(2);
+		}
+
+		const Char separators[] = {Char{'/'}, Char{'\\'}, Char{}};
+		const size_t lastSeparator = rest.find_last_of(separators);
+		const View dirPart = lastSeparator == View::npos ? View{} : rest.substr(0, lastSeparator + 1);
+		const View namePart = lastSeparator == View::npos ? rest : rest.substr(lastSeparator + 1);
+		const size_t lastDot = namePart.find_last_of(Char{'.'});
+		const View stemPart = lastDot == View::npos ? namePart : namePart.substr(0, lastDot);
+		const View extPart = lastDot == View::npos ? View{} : namePart.substr(lastDot);
+
+		auto copyPart = [](Char* dest, size_t destSize, View part) -> errno_t
+		{
+			if (!dest)
+				return 0;
+			if (part.size() >= destSize)
+			{
+				if (destSize > 0)
+					dest[0] = Char{};
+				return ERANGE;
+			}
+			std::copy(part.begin(), part.end(), dest);
+			dest[part.size()] = Char{};
+			return 0;
+		};
+
+		errno_t result = copyPart(drive, driveSize, drivePart);
+		if (result == 0)
+			result = copyPart(dir, dirSize, dirPart);
+		if (result == 0)
+			result = copyPart(fileName, fileNameSize, stemPart);
+		if (result == 0)
+			result = copyPart(ext, extSize, extPart);
+		return result;
+	}
+}
+
 errno_t _wsplitpath_s(const char16_t* path, char16_t* drive, size_t driveSize, char16_t* dir, size_t dirSize,
 	char16_t* fileName, size_t fileNameSize, char16_t* ext, size_t extSize)
 {
-	if (!path)
-		return EINVAL;
+	return splitPath(path, drive, driveSize, dir, dirSize, fileName, fileNameSize, ext, extSize);
+}
 
-	std::u16string_view rest{path};
-	std::u16string_view drivePart;
-	if (rest.size() >= 2 && rest[1] == u':')
-	{
-		drivePart = rest.substr(0, 2);
-		rest.remove_prefix(2);
-	}
-
-	const size_t lastSeparator = rest.find_last_of(u"/\\");
-	const std::u16string_view dirPart = lastSeparator == std::u16string_view::npos ? std::u16string_view{} : rest.substr(0, lastSeparator + 1);
-	const std::u16string_view namePart = lastSeparator == std::u16string_view::npos ? rest : rest.substr(lastSeparator + 1);
-	const size_t lastDot = namePart.find_last_of(u'.');
-	const std::u16string_view stemPart = lastDot == std::u16string_view::npos ? namePart : namePart.substr(0, lastDot);
-	const std::u16string_view extPart = lastDot == std::u16string_view::npos ? std::u16string_view{} : namePart.substr(lastDot);
-
-	auto copyPart = [](char16_t* dest, size_t destSize, std::u16string_view part) -> errno_t
-	{
-		if (!dest)
-			return 0;
-		if (part.size() >= destSize)
-		{
-			if (destSize > 0)
-				dest[0] = u'\0';
-			return ERANGE;
-		}
-		std::copy(part.begin(), part.end(), dest);
-		dest[part.size()] = u'\0';
-		return 0;
-	};
-
-	errno_t result = copyPart(drive, driveSize, drivePart);
-	if (result == 0)
-		result = copyPart(dir, dirSize, dirPart);
-	if (result == 0)
-		result = copyPart(fileName, fileNameSize, stemPart);
-	if (result == 0)
-		result = copyPart(ext, extSize, extPart);
-	return result;
+errno_t _splitpath_s(const char* path, char* drive, size_t driveSize, char* dir, size_t dirSize, char* fileName, size_t fileNameSize,
+	char* ext, size_t extSize)
+{
+	return splitPath(path, drive, driveSize, dir, dirSize, fileName, fileNameSize, ext, extSize);
 }
 
 void _wsplitpath(const char16_t* path, char16_t* drive, char16_t* dir, char16_t* fileName, char16_t* ext)

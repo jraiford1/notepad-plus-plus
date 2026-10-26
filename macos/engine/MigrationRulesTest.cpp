@@ -27,6 +27,7 @@ namespace
 		const char* _name = nullptr;
 		std::string _input;
 		std::string _expected;
+		nppmigrate::Language _language = nppmigrate::Language::cpp;
 	};
 
 	const std::vector<TestCase> g_testCases = {
@@ -47,6 +48,8 @@ namespace
 		{"wstringstream", "std::wstringstream ss;", "nppmac::u16stringstream ss;"},
 		{"wregex", "std::wregex re(L\"a+\"); std::wsmatch m;", "nppmac::wregex re(u\"a+\"); nppmac::wsmatch m;"},
 		{"wregex unqualified", "wsregex_iterator it;", "nppmac::wsregex_iterator it;"},
+		{"wifstream", "std::wifstream in{path};", "nppmac::wifstream in{path};"},
+		{"C file", "FILE* f = fopen(name, \"r\"); const wchar_t* w = L\"x\";", "FILE* f = fopen(name, \"r\"); const char16_t* w = u\"x\";", nppmigrate::Language::c},
 		{"wstring_convert", "std::wstring_convert<std::codecvt_utf8<wchar_t>> c;", "nppmac::wstring_convert<std::codecvt_utf8<char16_t>> c;"},
 		{"unqualified to_wstring", "auto s = to_wstring(42);", "auto s = nppmac::to_u16string(42);"},
 		{"std::to_wstring", "auto s = std::to_wstring(42);", "auto s = nppmac::to_u16string(42);"},
@@ -82,13 +85,13 @@ int main()
 	int failures = 0;
 	for (const TestCase& testCase : g_testCases)
 	{
-		const std::string actual = nppmigrate::migrateSource(testCase._input)._text;
+		const std::string actual = nppmigrate::migrateSource(testCase._input, testCase._language)._text;
 		if (actual != testCase._expected)
 		{
 			++failures;
 			std::cerr << "FAIL: " << testCase._name << "\n  expected: " << testCase._expected << "\n  actual:   " << actual << "\n";
 		}
-		else if (nppmigrate::migrateSource(actual)._text != actual && testCase._input != testCase._expected)
+		else if (nppmigrate::migrateSource(actual, testCase._language)._text != actual && testCase._input != testCase._expected)
 		{
 			// Running the rules on their own output must change nothing.
 			++failures;

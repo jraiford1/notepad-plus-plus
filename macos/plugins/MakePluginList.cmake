@@ -30,7 +30,8 @@ string(REPLACE "|" ";" names "${NAMES}")
 file(READ "${INFO}" info)
 file(MAKE_DIRECTORY "${RESOURCES}/plugins-catalog" "${RESOURCES}/plugins/Config")
 
-set(entries "")
+# The entries are joined as text: a CMake list would split one at a ';' in its description.
+set(joined "")
 foreach(name IN LISTS names)
 	set(dll "${PLUGIN_DIR}/${name}/${name}.dll")
 	string(JSON entry ERROR_VARIABLE missing GET "${info}" "${name}")
@@ -55,9 +56,11 @@ foreach(name IN LISTS names)
 	file(SHA256 "${zip}" sha256)
 	string(JSON entry SET "${entry}" id "\"${sha256}\"")
 	string(JSON entry SET "${entry}" repository "\"plugins-catalog/${name}.zip\"")
-	list(APPEND entries "${entry}")
+	if(joined)
+		string(APPEND joined ",\n")
+	endif()
+	string(APPEND joined "${entry}")
 endforeach()
 
-list(JOIN entries ",\n" joined)
 file(WRITE "${RESOURCES}/plugins/Config/nppPluginList.json"
 	"{\n\"name\": \"Notepad++ plugin list (macOS)\",\n\"version\": \"1.0\",\n\"npp-plugins\": [\n${joined}\n]\n}\n")

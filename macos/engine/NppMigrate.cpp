@@ -640,7 +640,8 @@ int main(int argc, char* argv[])
 		{
 			if (!applyFixups(fixups, relative.generic_string(), fixupPath, content, appliedFixups))
 				return exitFixupError;
-			const nppmigrate::MigrationResult result = nppmigrate::migrateSource(content);
+			const nppmigrate::Language language = file.extension() == ".c" ? nppmigrate::Language::c : nppmigrate::Language::cpp;
+			const nppmigrate::MigrationResult result = nppmigrate::migrateSource(content, language);
 			content = result._text;
 			++migratedFiles;
 			if (result.totalRewrites() != 0)

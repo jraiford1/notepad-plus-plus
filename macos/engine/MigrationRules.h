@@ -53,6 +53,12 @@ namespace nppmigrate
 		size_t totalRewrites() const;
 	};
 
+	enum class Language
+	{
+		cpp,
+		c, // no C++ replacements (the runtime's nppmac:: names): C code uses the C library as it is
+	};
+
 	// Rewrites one source file. The result is a pure function of the input text.
-	MigrationResult migrateSource(const std::string& source);
+	MigrationResult migrateSource(const std::string& source, Language language = Language::cpp);
 }

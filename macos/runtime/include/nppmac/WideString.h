@@ -88,6 +88,10 @@ int _wcsicmp(const char16_t* lhs, const char16_t* rhs);
 int _wcsnicmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int _wcsicoll(const char16_t* lhs, const char16_t* rhs);
 char16_t* _wcsdup(const char16_t* str);
+inline char16_t* wcsdup(const char16_t* str)
+{
+	return _wcsdup(str);
+}
 char16_t* _wcslwr(char16_t* str);
 char16_t* _wcsupr(char16_t* str);
 int _wtoi(const char16_t* str);
@@ -113,6 +117,24 @@ size_t mbstowcs(char16_t* dest, const char* src, size_t count);
 errno_t _wsplitpath_s(const char16_t* path, char16_t* drive, size_t driveSize, char16_t* dir, size_t dirSize,
 	char16_t* fileName, size_t fileNameSize, char16_t* ext, size_t extSize);
 void _wsplitpath(const char16_t* path, char16_t* drive, char16_t* dir, char16_t* fileName, char16_t* ext);
+errno_t _splitpath_s(const char* path, char* drive, size_t driveSize, char* dir, size_t dirSize, char* fileName, size_t fileNameSize,
+	char* ext, size_t extSize);
+// The absolute form of a path (GetFullPathName); a buffer of its own (malloc) when absolute is null.
+char16_t* _wfullpath(char16_t* absolute, const char16_t* relative, size_t size);
+
+// The CRT's forms for arrays, which take their sizes.
+template <size_t driveSize, size_t dirSize, size_t fileNameSize, size_t extSize>
+errno_t _wsplitpath_s(const char16_t* path, char16_t (&drive)[driveSize], char16_t (&dir)[dirSize], char16_t (&fileName)[fileNameSize],
+	char16_t (&ext)[extSize])
+{
+	return _wsplitpath_s(path, drive, driveSize, dir, dirSize, fileName, fileNameSize, ext, extSize);
+}
+
+template <size_t driveSize, size_t dirSize, size_t fileNameSize, size_t extSize>
+errno_t _splitpath_s(const char* path, char (&drive)[driveSize], char (&dir)[dirSize], char (&fileName)[fileNameSize], char (&ext)[extSize])
+{
+	return _splitpath_s(path, drive, driveSize, dir, dirSize, fileName, fileNameSize, ext, extSize);
+}
 errno_t _wmakepath_s(char16_t* path, size_t size, const char16_t* drive, const char16_t* dir, const char16_t* fileName, const char16_t* ext);
 
 // "Secure" variants: on error they return a non-zero errno_t and leave an empty string, like the CRT
@@ -173,12 +195,19 @@ namespace nppmac
 	int vsprintf(char* buffer, const char* format, va_list args);
 	int vsnprintf(char* buffer, size_t count, const char* format, va_list args);
 	int sprintf_s(char* buffer, size_t size, const char* format, ...);
+	int vsprintf_s(char* buffer, size_t size, const char* format, va_list args);
 	int snprintf_s(char* buffer, size_t size, size_t count, const char* format, ...);
 
 	template <size_t size, typename... Args>
 	int sprintf_s(char (&buffer)[size], const char* format, Args... args)
 	{
 		return sprintf_s(buffer, size, format, args...);
+	}
+
+	template <size_t size>
+	int vsprintf_s(char (&buffer)[size], const char* format, va_list args)
+	{
+		return vsprintf_s(buffer, size, format, args);
 	}
 
 	std::string toUtf8(std::u16string_view str);
@@ -399,6 +428,98 @@ namespace nppmac
 	using ifstream = PathStream<std::ifstream, std::ios_base::in>;
 	using ofstream = PathStream<std::ofstream, std::ios_base::out>;
 	using fstream = PathStream<std::fstream, std::ios_base::in | std::ios_base::out>;
+
+	// What the classic locale makes of a file's bytes in a wide stream on Windows: one wide character
+	// for each byte. (libc++'s codecvt<char16_t, char> is UTF-8, and deprecated.)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	class ByteConversion : public std::codecvt<char16_t, char, std::mbstate_t>
+	{
+	public:
+		explicit ByteConversion(size_t refs = 0) : std::codecvt<char16_t, char, std::mbstate_t>{refs} {}
+
+	protected:
+		result do_out(state_type&, const char16_t* from, const char16_t* fromEnd, const char16_t*& fromNext, char* to, char* toEnd,
+			char*& toNext) const override {
+			while (from < fromEnd && to < toEnd)
+				*to++ = static_cast<char>(*from++);
+			fromNext = from;
+			toNext = to;
+			return from == fromEnd ? ok : partial;
+		}
+
+		result do_in(state_type&, const char* from, const char* fromEnd, const char*& fromNext, char16_t* to, char16_t* toEnd,
+			char16_t*& toNext) const override {
+			while (from < fromEnd && to < toEnd)
+				*to++ = static_cast<unsigned char>(*from++);
+			fromNext = from;
+			toNext = to;
+			return from == fromEnd ? ok : partial;
+		}
+
+		result do_unshift(state_type&, char* to, char*, char*& toNext) const override {
+			toNext = to;
+			return noconv;
+		}
+
+		int do_encoding() const noexcept override {
+			return 1;
+		}
+
+		bool do_always_noconv() const noexcept override {
+			return false;
+		}
+
+		int do_length(state_type&, const char* from, const char* fromEnd, size_t most) const override {
+			return static_cast<int>(std::min(static_cast<size_t>(fromEnd - from), most));
+		}
+
+		int do_max_length() const noexcept override {
+			return 1;
+		}
+	};
+#pragma clang diagnostic pop
+
+	// Wide file streams (std::wifstream...), on char16_t: byte for byte unless the code imbues another
+	// conversion (codecvt_utf16, codecvt_utf8_utf16), as it does for Windows. Their locale has the
+	// char16_t ctype (Char16Facets.h), which getline and the >> operators use.
+	template <typename Stream, std::ios_base::openmode defaultMode>
+	class WidePathStream : public PathStream<Stream, defaultMode>
+	{
+	public:
+		WidePathStream() {
+			useClassicConversion();
+		}
+
+		explicit WidePathStream(const char16_t* fileName, std::ios_base::openmode mode = defaultMode) {
+			useClassicConversion();
+			this->open(fileName, mode);
+		}
+
+		explicit WidePathStream(const std::u16string& fileName, std::ios_base::openmode mode = defaultMode) {
+			useClassicConversion();
+			this->open(fileName, mode);
+		}
+
+		explicit WidePathStream(const std::string& fileName, std::ios_base::openmode mode = defaultMode) {
+			useClassicConversion();
+			Stream::open(nativePath(std::string_view{fileName}), mode);
+		}
+
+		explicit WidePathStream(const char* fileName, std::ios_base::openmode mode = defaultMode) {
+			useClassicConversion();
+			Stream::open(nativePath(std::string_view{fileName}), mode);
+		}
+
+	private:
+		void useClassicConversion() {
+			this->imbue(std::locale{std::locale{this->getloc(), new ByteConversion}, new std::ctype<char16_t>});
+		}
+	};
+
+	using wifstream = WidePathStream<std::basic_ifstream<char16_t>, std::ios_base::in>;
+	using wofstream = WidePathStream<std::basic_ofstream<char16_t>, std::ios_base::out>;
+	using wfstream = WidePathStream<std::basic_fstream<char16_t>, std::ios_base::in | std::ios_base::out>;
 
 	using u16ostringstream = u16stringstream;
 	using u16istringstream = u16stringstream;
