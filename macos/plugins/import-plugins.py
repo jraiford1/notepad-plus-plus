@@ -50,7 +50,7 @@ def is_release_x64(condition):
 
 def read_project(path):
 	root = ElementTree.parse(path).getroot()
-	project = {'type': None, 'sources': [], 'rc': [], 'includes': [], 'defines': []}
+	project = {'type': None, 'sources': [], 'rc': [], 'includes': [], 'defines': [], 'rc_defines': [], 'references': []}
 	for group in root.iter(MSBUILD + 'PropertyGroup'):
 		if is_release_x64(group.get('Condition')):
 			kind = group.find(MSBUILD + 'ConfigurationType')
@@ -74,9 +74,16 @@ def read_project(path):
 					project['sources'].append(include)
 			elif tag == 'ResourceCompile':
 				project['rc'].append(include)
+			elif tag == 'ProjectReference':
+				project['references'].append(include)
 	for group in root.iter(MSBUILD + 'ItemDefinitionGroup'):
 		if not is_release_x64(group.get('Condition')):
 			continue
+		resource_settings = group.find(MSBUILD + 'ResourceCompile')
+		if resource_settings is not None:
+			rc_defines = resource_settings.find(MSBUILD + 'PreprocessorDefinitions')
+			if rc_defines is not None and rc_defines.text:
+				project['rc_defines'] += [d for d in rc_defines.text.split(';') if d and '%(' not in d]
 		compile_settings = group.find(MSBUILD + 'ClCompile')
 		if compile_settings is None:
 			continue
@@ -87,6 +94,48 @@ def read_project(path):
 		if defines is not None and defines.text:
 			project['defines'] += [d for d in defines.text.split(';') if d and '%(' not in d]
 	return project
+
+
+def project_properties(path, seen=None):
+	# The MSBuild properties a project defines, itself and in the .props files it imports (as Version.props
+	# gives a version to its resources): their first value, conditions aside ("if not set yet").
+	seen = seen if seen is not None else set()
+	properties = {}
+	if path in seen or not os.path.isfile(path):
+		return properties
+	seen.add(path)
+	try:
+		root = ElementTree.parse(path).getroot()
+	except ElementTree.ParseError:
+		return properties
+	namespace = MSBUILD if root.tag.startswith(MSBUILD) else ''
+	for element in root:
+		tag = element.tag.replace(MSBUILD, '')
+		imported = (element.get('Project') or '').replace('\\', '/')
+		imported = imported.replace('$(MSBuildThisFileDirectory)', '').replace('$(MSBuildProjectDirectory)', '.')
+		if tag == 'Import' and imported and '$(' not in imported:
+			imported = os.path.normpath(os.path.join(os.path.dirname(path), imported))
+			for key, value in project_properties(imported, seen).items():
+				properties.setdefault(key, value)
+		elif tag == 'PropertyGroup':
+			for prop in element:
+				key = prop.tag.replace(namespace, '').replace(MSBUILD, '')
+				if prop.text and key not in properties:
+					properties[key] = prop.text.strip()
+	return properties
+
+
+def expand(value, properties, depth=0):
+	# $(Name) replaced by the property's value; None when one is not known.
+	def replace(match):
+		known = properties.get(match.group(1))
+		if known is None or depth > 10:
+			raise KeyError(match.group(1))
+		return expand(known, properties, depth + 1)
+	try:
+		return re.sub(r'\$\((\w+)\)', replace, value)
+	except KeyError:
+		return None
 
 
 def find_project(checkout, name):
@@ -149,7 +198,23 @@ def entry(name, plugin, checkout):
 	solution = solution_dir(checkout, path)
 	includes = [repository_path(checkout, project_dir, i, solution) for i in project['includes']]
 	includes = [os.path.relpath(project_dir, checkout)] + [i for i in includes if i]
+	# Static libraries of the same repository the project links (project references): their sources
+	# are built into the plugin, with their include folders.
+	for reference in project['references']:
+		library_path = os.path.normpath(os.path.join(project_dir, reference))
+		if not os.path.isfile(library_path) or os.path.relpath(library_path, checkout).startswith('..'):
+			continue
+		library = read_project(library_path)
+		if library['type'] != 'StaticLibrary':
+			continue
+		library_dir = os.path.dirname(library_path)
+		sources += [repository_path(checkout, library_dir, s) for s in library['sources']]
+		library_includes = [repository_path(checkout, library_dir, i, solution) for i in library['includes']]
+		includes += [os.path.relpath(library_dir, checkout)] + [i for i in library_includes if i]
 	defines = [d for d in project['defines'] if d not in WINDOWS_ONLY_DEFINES and not d.startswith('$(')]
+	properties = project_properties(path)
+	rc_defines = [expand(d, properties) for d in project['rc_defines'] if d not in WINDOWS_ONLY_DEFINES]
+	rc_defines = [d for d in rc_defines if d and d not in ('_UNICODE', 'UNICODE')]
 	if None in sources or None in rc_files:
 		return None, 'sources outside the repository'
 	remote = subprocess.run(['git', '-C', checkout, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
@@ -165,6 +230,8 @@ def entry(name, plugin, checkout):
 	lines.append(f'\tINCLUDES {cmake_list(sorted(set(includes), key=includes.index))}')
 	if defines:
 		lines.append(f'\tDEFINES {cmake_list(defines)}')
+	if rc_defines:
+		lines.append(f'\tRC_DEFINES {cmake_list(rc_defines)}')
 	lines[-1] += ')'
 	return '\n'.join(lines), None
 

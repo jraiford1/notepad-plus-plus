@@ -24,3 +24,8 @@
 #endif
 
 #include_next <tchar.h>
+
+// _T() is __TEXT(), which <windows.h> defines (winnt.rh): code that only includes <tchar.h> has it too.
+#ifndef __TEXT
+#define __TEXT(string) u##string
+#endif

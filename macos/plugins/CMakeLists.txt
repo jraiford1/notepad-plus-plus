@@ -22,7 +22,7 @@
 #     nppmac_add_plugin(<Name> SOURCE_DIR <dir> SOURCES <file>...)
 
 function(nppmac_add_plugin name)
-	cmake_parse_arguments(plugin "NPP_HEADERS" "SOURCE_DIR" "SOURCES;RC_FILES;RC_INCLUDES" ${ARGN})
+	cmake_parse_arguments(plugin "NPP_HEADERS" "SOURCE_DIR" "SOURCES;RC_FILES;RC_INCLUDES;RC_DEFINES" ${ARGN})
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 	set(generatedSources "")
 	foreach(source IN LISTS plugin_SOURCES)
@@ -87,6 +87,9 @@ function(nppmac_add_plugin name)
 			set(wideFile "${rcGeneratedDirectory}/${rcName}.wide.rc")
 			file(RELATIVE_PATH wideText "${rcDirectory}" "${wideFile}")
 			set(rcDefines -DRC_INVOKED -D_WIN64 -DUNICODE -D_UNICODE)
+			foreach(define IN LISTS plugin_RC_DEFINES)
+				list(APPEND rcDefines "-D${define}")
+			endforeach()
 			add_custom_command(
 				OUTPUT "${partFile}"
 				COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${name}/res"
@@ -115,11 +118,13 @@ endfunction()
 # A plugin from the official plugin list, built from its own sources: fetched at configure time at a
 # pinned commit (or taken from NPPMAC_PLUGIN_SOURCES/<name>, a local checkout), then built as above.
 # Paths are relative to its repository: SOURCES and RC_FILES as its project lists them, INCLUDES its
-# project's include folders (relative to the repository; the migrated copies are used).
+# project's include folders (relative to the repository; the migrated copies are used), RC_DEFINES the
+# definitions its resource compiler is given (MSBuild properties such as a version, resolved), FILES
+# what its Windows package has beside the DLL (a default configuration...), copied there as they are.
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
 option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
 function(nppmac_add_external_plugin name)
-	cmake_parse_arguments(plugin "" "GIT;COMMIT;VERSION;DISPLAY_NAME" "SOURCES;RC_FILES;INCLUDES;DEFINES" ${ARGN})
+	cmake_parse_arguments(plugin "" "GIT;COMMIT;VERSION;DISPLAY_NAME" "SOURCES;RC_FILES;INCLUDES;DEFINES;RC_DEFINES;FILES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
 		set(sourceDir "${NPPMAC_PLUGIN_SOURCES}/${name}")
 	else()
@@ -142,7 +147,8 @@ function(nppmac_add_external_plugin name)
 			endif()
 		endif()
 	endif()
-	nppmac_add_plugin(${name} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES})
+	nppmac_add_plugin(${name} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES}
+		RC_DEFINES ${plugin_RC_DEFINES})
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 
 	# version_git.h, which some plugins make before building with their version_git.sh (from git
@@ -173,6 +179,16 @@ function(nppmac_add_external_plugin name)
 	if(NOT "NOMINMAX" IN_LIST plugin_DEFINES)
 		target_compile_options(${name} PRIVATE -UNOMINMAX)
 	endif()
+	# The files beside the DLL, listed in <Name>.files for packing (MakePluginList.cmake) and the tests.
+	set(fileNames "")
+	foreach(dataFile IN LISTS plugin_FILES)
+		get_filename_component(fileName "${dataFile}" NAME)
+		add_custom_command(TARGET ${name} POST_BUILD
+			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${sourceDir}/${dataFile}" "${CMAKE_CURRENT_BINARY_DIR}/${name}/${fileName}"
+			VERBATIM)
+		string(APPEND fileNames "${fileName}\n")
+	endforeach()
+	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}/${name}.files" "${fileNames}")
 	set_property(GLOBAL APPEND PROPERTY NPPMAC_CATALOG_PLUGINS ${name})
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_VERSION "${plugin_VERSION}")
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_DISPLAY_NAME "${plugin_DISPLAY_NAME}")

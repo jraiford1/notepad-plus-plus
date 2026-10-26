@@ -547,6 +547,27 @@ int WINAPIV wsprintfW(LPWSTR buffer, LPCWSTR format, ...)
 	return result < 0 ? 1023 : result;
 }
 
+int WINAPIV wsprintfA(LPSTR buffer, LPCSTR format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const int result = wvsprintfA(buffer, format, args);
+	va_end(args);
+	return result;
+}
+
+int WINAPI wvsprintfA(LPSTR buffer, LPCSTR format, va_list args)
+{
+	// At most 1024 characters, formatted as the Microsoft CRT does.
+	const int result = nppmac::vsnprintf(buffer, 1024, format, args);
+	if (result < 0 || result >= 1024)
+	{
+		buffer[1023] = '\0';
+		return 1023;
+	}
+	return result;
+}
+
 int WINAPI wvsprintfW(LPWSTR buffer, LPCWSTR format, va_list args)
 {
 	const int result = _vsnwprintf(buffer, 1024, format, args);

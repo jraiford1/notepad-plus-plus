@@ -118,6 +118,18 @@ namespace nppmac::filesystem
 			return _path.has_filename();
 		}
 
+		bool has_stem() const {
+			return _path.has_stem();
+		}
+
+		bool has_root_path() const {
+			return _path.has_root_path();
+		}
+
+		bool has_relative_path() const {
+			return _path.has_relative_path();
+		}
+
 		bool has_extension() const {
 			return _path.has_extension();
 		}
@@ -128,6 +140,10 @@ namespace nppmac::filesystem
 
 		bool is_absolute() const {
 			return _path.is_absolute();
+		}
+
+		bool is_relative() const {
+			return _path.is_relative();
 		}
 
 		path& replace_extension(const path& replacement = {}) {

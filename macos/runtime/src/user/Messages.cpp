@@ -999,6 +999,19 @@ void WINAPI PostQuitMessage(int exitCode)
 	nppmac::ui::wakeEventLoop();
 }
 
+// Whether the user drags from the point: there is no modal mouse loop to tell, so a press stays a
+// click (the drag, if any, comes as mouse moves).
+BOOL WINAPI DragDetect(HWND, POINT)
+{
+	return FALSE;
+}
+
+// Window procedures here all take UTF-16 messages: the ANSI forms are the same calls.
+LRESULT WINAPI CallWindowProcA(WNDPROC proc, HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	return CallWindowProcW(proc, hwnd, message, wParam, lParam);
+}
+
 LRESULT WINAPI CallWindowProcW(WNDPROC proc, HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	return proc ? proc(hwnd, message, wParam, lParam) : 0;

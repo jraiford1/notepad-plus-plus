@@ -19,8 +19,10 @@
 
 #include <windows.h>
 #include <strsafe.h>
+#include <codecvt>
 #include <cstdio>
 #include <iostream>
+#include <regex>
 #include <string>
 
 namespace
@@ -204,8 +206,9 @@ namespace
 		CHECK_EQUAL(ss.str(), u"value=42 ff");
 
 		nppmac::u16stringstream strings;
-		strings << std::u16string{u"text"} << u'!';
-		CHECK_EQUAL(strings.str(), u"text!");
+		char16_t buffer16[8] = u"buf";
+		strings << std::u16string{u"text"} << u'!' << buffer16;
+		CHECK_EQUAL(strings.str(), u"text!buf");
 		CHECK(strings.getloc() == std::locale::classic());
 
 		nppmac::u16stringstream hex;
@@ -218,6 +221,26 @@ namespace
 		while (nppmac::getline(lines, line))
 			all += line + u";";
 		CHECK_EQUAL(all, u"one;two;");
+
+		// UTF-8 to and from UTF-16 (std::wstring_convert of a wchar_t codecvt once migrated).
+		nppmac::wstring_convert<std::codecvt_utf8_utf16<char16_t>> utf16;
+		CHECK_EQUAL(utf16.from_bytes("caf\xC3\xA9 \xF0\x9F\x98\x80"), u"caf\u00E9 \U0001F600");
+		CHECK(utf16.to_bytes(u"caf\u00E9") == "caf\xC3\xA9");
+		nppmac::wstring_convert<std::codecvt_utf8<char16_t>, char16_t> ucs(new std::codecvt_utf8<char16_t>);
+		CHECK_EQUAL(ucs.from_bytes(std::string{"\xF0\x9F\x98\x80"}), u"\U0001F600");
+
+		// Regular expressions on UTF-16 text (std::wregex once migrated).
+		const std::u16string sentence = u"Hello World, hello again 123";
+		CHECK_EQUAL(std::regex_replace(sentence, nppmac::wregex(u"hello", std::regex_constants::icase), u"bye"), u"bye World, bye again 123");
+		nppmac::wsmatch found;
+		CHECK(std::regex_search(sentence, found, nppmac::wregex(u"(\\d+)")) && found.position(1) == 25 && found[1].str() == u"123");
+		const nppmac::wregex word(u"[[:alpha:]]+");
+		int words = 0;
+		for (nppmac::wsregex_iterator it(sentence.begin(), sentence.end(), word), end; it != end; ++it)
+			++words;
+		CHECK(words == 4);
+		CHECK(std::regex_match(u"a.c", nppmac::wregex(u"a.c")));
+		CHECK(!std::regex_match(u"a\nc", nppmac::wregex(u"a.c")));
 
 		CHECK(nppmac::isdigit(u'7', std::locale::classic()));
 		CHECK(!nppmac::isdigit(u'x', std::locale::classic()));

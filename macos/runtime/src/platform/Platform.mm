@@ -141,6 +141,11 @@ namespace nppmac::platform
 		return toString(NSUserName());
 	}
 
+	std::string fullUserName()
+	{
+		return toString(NSFullUserName());
+	}
+
 	std::string computerName()
 	{
 		NSString* name = NSHost.currentHost.localizedName;

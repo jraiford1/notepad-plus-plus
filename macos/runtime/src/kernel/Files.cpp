@@ -30,12 +30,15 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <mutex>
+#include <memory>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 using nppmac::kernel::KernelObject;
@@ -776,6 +779,83 @@ BOOL WINAPI CancelIo(HANDLE handle)
 	if (file->_watch)
 		file->_watch->cancel();
 	return TRUE;
+}
+
+// --- Change notifications ------------------------------------------------------------------------
+
+namespace
+{
+	// A change notification is an event, set when the folder changes (any change: the filter is not
+	// narrowed down), with the watcher that sets it.
+	nppmac::Immortal<std::mutex> g_changeNotificationsMutexStorage;
+	std::mutex& g_changeNotificationsMutex = g_changeNotificationsMutexStorage._value;
+
+	std::unordered_map<HANDLE, std::unique_ptr<nppmac::platform::DirectoryWatcher>>& changeNotifications()
+	{
+		static auto* notifications = new std::unordered_map<HANDLE, std::unique_ptr<nppmac::platform::DirectoryWatcher>>;
+		return *notifications;
+	}
+}
+
+HANDLE WINAPI FindFirstChangeNotificationW(LPCWSTR path, BOOL subtree, DWORD)
+{
+	const std::string folder = toPosixPath(path ? path : u"");
+	struct stat info{};
+	if (::stat(folder.c_str(), &info) != 0 || !S_ISDIR(info.st_mode))
+	{
+		SetLastError(ERROR_PATH_NOT_FOUND);
+		return INVALID_HANDLE_VALUE;
+	}
+	HANDLE event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	auto watcher = std::make_unique<nppmac::platform::DirectoryWatcher>(folder, subtree != FALSE, [event](std::vector<nppmac::platform::DirectoryChange>)
+	{
+		SetEvent(event);
+	});
+	if (!watcher->isWatching())
+	{
+		CloseHandle(event);
+		SetLastError(ERROR_INVALID_FUNCTION);
+		return INVALID_HANDLE_VALUE;
+	}
+	std::lock_guard lock{g_changeNotificationsMutex};
+	changeNotifications()[event] = std::move(watcher);
+	return event;
+}
+
+HANDLE WINAPI FindFirstChangeNotificationA(LPCSTR path, BOOL subtree, DWORD filter)
+{
+	return FindFirstChangeNotificationW(nppmac::toUtf16(path ? path : "").c_str(), subtree, filter);
+}
+
+BOOL WINAPI FindNextChangeNotification(HANDLE notification)
+{
+	std::lock_guard lock{g_changeNotificationsMutex};
+	if (!changeNotifications().contains(notification))
+	{
+		SetLastError(ERROR_INVALID_HANDLE);
+		return FALSE;
+	}
+	// Watching goes on; the next change sets the event again.
+	return ResetEvent(notification);
+}
+
+BOOL WINAPI FindCloseChangeNotification(HANDLE notification)
+{
+	std::unique_ptr<nppmac::platform::DirectoryWatcher> watcher;
+	{
+		std::lock_guard lock{g_changeNotificationsMutex};
+		const auto found = changeNotifications().find(notification);
+		if (found == changeNotifications().end())
+		{
+			SetLastError(ERROR_INVALID_HANDLE);
+			return FALSE;
+		}
+		watcher = std::move(found->second);
+		changeNotifications().erase(found);
+	}
+	// Stopped before its event goes away.
+	watcher.reset();
+	return CloseHandle(notification);
 }
 
 BOOL WINAPI ReadDirectoryChangesW(HANDLE handle, LPVOID buffer, DWORD length, BOOL subtree, DWORD filter, LPDWORD returned, LPOVERLAPPED overlapped, LPOVERLAPPED_COMPLETION_ROUTINE completion)

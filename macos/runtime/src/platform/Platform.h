@@ -53,6 +53,7 @@ namespace nppmac::platform
 	std::string desktopDirectory();
 	std::string homeDirectory();
 	std::string userName();
+	std::string fullUserName(); // as the user's account shows it ("Jane Appleseed")
 	std::string computerName();
 
 	// Opens a URL or a file with its default application. Returns false on failure.

@@ -25,9 +25,11 @@
 #include "user/DarkMode.h"
 
 #include <dbghelp.h>
+#include <secext.h>
 #include <sensapi.h>
 #include <tlhelp32.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdio>
@@ -724,6 +726,80 @@ BOOL WINAPI GetUserNameW(LPWSTR buffer, LPDWORD size)
 	return TRUE;
 }
 
+BOOL WINAPI GetComputerNameA(LPSTR buffer, LPDWORD size)
+{
+	const std::string name = nppmac::platform::computerName();
+	if (name.size() + 1 > *size)
+	{
+		*size = static_cast<DWORD>(name.size() + 1);
+		SetLastError(ERROR_BUFFER_OVERFLOW);
+		return FALSE;
+	}
+	std::memcpy(buffer, name.c_str(), name.size() + 1);
+	*size = static_cast<DWORD>(name.size());
+	return TRUE;
+}
+
+BOOL WINAPI GetUserNameA(LPSTR buffer, LPDWORD size)
+{
+	const std::string name = nppmac::platform::userName();
+	if (name.size() + 1 > *size)
+	{
+		*size = static_cast<DWORD>(name.size() + 1);
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return FALSE;
+	}
+	std::memcpy(buffer, name.c_str(), name.size() + 1);
+	*size = static_cast<DWORD>(name.size() + 1);
+	return TRUE;
+}
+
+// secur32's names of the user: the display name is the account's full name; the SAM name
+// "computer\\user". Other forms (directory service names) do not exist here.
+BOOLEAN WINAPI GetUserNameExW(EXTENDED_NAME_FORMAT format, LPWSTR buffer, PULONG size)
+{
+	std::u16string name;
+	if (format == NameDisplay)
+		name = nppmac::toUtf16(nppmac::platform::fullUserName());
+	else if (format == NameSamCompatible)
+		name = nppmac::toUtf16(nppmac::platform::computerName() + "\\" + nppmac::platform::userName());
+	if (name.empty())
+	{
+		SetLastError(ERROR_NONE_MAPPED);
+		return FALSE;
+	}
+	if (!size || name.size() + 1 > *size)
+	{
+		if (size)
+			*size = static_cast<ULONG>(name.size() + 1);
+		SetLastError(ERROR_MORE_DATA);
+		return FALSE;
+	}
+	std::copy(name.begin(), name.end(), buffer);
+	buffer[name.size()] = u'\0';
+	*size = static_cast<ULONG>(name.size());
+	return TRUE;
+}
+
+BOOLEAN WINAPI GetUserNameExA(EXTENDED_NAME_FORMAT format, LPSTR buffer, PULONG size)
+{
+	char16_t wide[256]{};
+	ULONG wideSize = 256;
+	if (!GetUserNameExW(format, wide, &wideSize))
+		return FALSE;
+	const std::string name = nppmac::toUtf8(wide);
+	if (!size || name.size() + 1 > *size)
+	{
+		if (size)
+			*size = static_cast<ULONG>(name.size() + 1);
+		SetLastError(ERROR_MORE_DATA);
+		return FALSE;
+	}
+	std::memcpy(buffer, name.c_str(), name.size() + 1);
+	*size = static_cast<ULONG>(name.size());
+	return TRUE;
+}
+
 LPWSTR WINAPI GetCommandLineW()
 {
 	return const_cast<LPWSTR>(nppmac::commandLine());
@@ -851,22 +927,24 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR moduleName)
 
 DWORD WINAPI GetModuleFileNameW(HMODULE module, LPWSTR buffer, DWORD size)
 {
-	std::string file;
+	std::u16string path;
 	if (module && module != mainModule())
 	{
-		// A plugin's own file: plugins find their folder from it.
-		file = nppmac::kernel::libraryPath(module);
+		// A plugin's own file: plugins find their folder from it, looking for the last '\\' as on
+		// Windows, so it has Windows' separators (which the file functions take as well).
+		const std::string file = nppmac::kernel::libraryPath(module);
 		if (file.empty())
 		{
 			SetLastError(ERROR_MOD_NOT_FOUND);
 			return 0;
 		}
+		path = nppmac::toUtf16(file);
+		std::replace(path.begin(), path.end(), u'/', u'\\');
 	}
 	else
 	{
-		file = nppmac::platform::resourcesDirectory() + "/notepad++.exe";
+		path = nppmac::toUtf16(nppmac::platform::resourcesDirectory() + "/notepad++.exe");
 	}
-	const std::u16string path = nppmac::toUtf16(file);
 	if (path.size() + 1 > size)
 	{
 		// Truncated and terminated, as Windows does.
