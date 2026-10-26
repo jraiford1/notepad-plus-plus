@@ -109,6 +109,10 @@ namespace nppmac::ui
 		// view the owner paints into the view's surface before this returns.
 		virtual void nativePaint(const Rect& dirty) = 0;
 
+		// The view gave its surface up, as it is not shown (on Windows a window that is not shown has
+		// no pixels): all of it is to be painted again when it is shown.
+		virtual void nativePixelsLost() = 0;
+
 		// A top-level window was moved or resized by the user or the system (screen coordinates).
 		virtual void nativeFrameChanged(const Rect& windowRect, const Rect& clientRectOnScreen) = 0;
 

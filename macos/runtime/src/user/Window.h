@@ -131,6 +131,7 @@ namespace nppmac::user
 
 		// ui::ViewOwner
 		void nativePaint(const ui::Rect& dirty) override;
+		void nativePixelsLost() override;
 		void nativeFrameChanged(const ui::Rect& windowRect, const ui::Rect& clientRectOnScreen) override;
 		void nativeCloseRequested() override;
 		void nativeActivated(bool active) override;

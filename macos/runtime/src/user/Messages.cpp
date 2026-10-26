@@ -593,6 +593,12 @@ namespace nppmac::user
 			window->_eraseBackground = false;
 	}
 
+	void Window::nativePixelsLost()
+	{
+		if (!_nativeControl)
+			invalidate(this, nullptr, true);
+	}
+
 	void Window::nativePaint(const ui::Rect& dirty)
 	{
 		if (_nativeControl || _painting)
