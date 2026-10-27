@@ -28,6 +28,12 @@
 #define NPPMAC_WINE_UNIX_LIB_SET
 #endif
 
+// Wine defines _WIN64 for a 64-bit target without a value (here and in basetsd.h): Visual C++'s is 1,
+// as code testing it with #if needs.
+#ifndef _WIN64
+#define _WIN64 1
+#endif
+
 #include_next <minwindef.h>
 
 #ifdef NPPMAC_WINE_UNIX_LIB_SET

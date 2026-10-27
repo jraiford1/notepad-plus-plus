@@ -560,6 +560,14 @@ HRESULT WINAPI SHGetFolderPathW(HWND, int csidl, HANDLE, DWORD, LPWSTR path)
 	return S_OK;
 }
 
+HRESULT WINAPI SHGetFolderPathA(HWND window, int csidl, HANDLE token, DWORD flags, LPSTR path)
+{
+	char16_t wide[MAX_PATH]{};
+	const HRESULT result = SHGetFolderPathW(window, csidl, token, flags, wide);
+	lstrcpynA(path, nppmac::toUtf8(wide).c_str(), MAX_PATH);
+	return result;
+}
+
 HRESULT WINAPI SHGetKnownFolderPath(REFKNOWNFOLDERID id, DWORD flags, HANDLE, PWSTR* path)
 {
 	*path = nullptr;
@@ -860,6 +868,13 @@ BOOL WINAPI WinHelpW(HWND, LPCWSTR, UINT, ULONG_PTR)
 {
 	SetLastError(ERROR_NOT_SUPPORTED);
 	return FALSE;
+}
+
+// Completion of file names and addresses typed in an edit control: not offered here, the control stays
+// as it is.
+HRESULT WINAPI SHAutoComplete(HWND, DWORD)
+{
+	return S_OK;
 }
 
 HRESULT WINAPI SHGetSpecialFolderLocation(HWND, int csidl, PIDLIST_ABSOLUTE* idList)

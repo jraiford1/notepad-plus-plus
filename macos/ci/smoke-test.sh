@@ -29,6 +29,8 @@ set -u
 app="${1:?usage: smoke-test.sh <Notepad++ executable> [<HelloMac plugin>]}"
 plugin="${2:-}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/npp-smoke.XXXXXX")"
+# What the runs store per user (plugins' settings) goes here, not to the user's Application Support.
+mkdir -p "$work/appdata"
 pluginFolder="$(dirname "$app")/../Resources/plugins/HelloMac"
 # The third argument: the folder of the catalog's built plugins (<Name>/<Name>.dll), all loaded together.
 catalog="${3:-}"
@@ -68,7 +70,7 @@ run()
 	shift
 	local log="$work/$name.log"
 	# perl's alarm is the timeout macOS has without coreutils.
-	env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
+	env NPPMAC_TEST_RUN=1 NPPMAC_TEST_APPDATA="$work/appdata" NPPMAC_QUIET_STUBS=1 NPPMAC_SNAPSHOT="$work/$name.png" NPPMAC_SNAPSHOT_DELAY=5 NPPMAC_SNAPSHOT_EXIT=1 "$@" \
 		perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="${runSettings:-$settings}" ${files[@]+"${files[@]}"} > "$log" 2>&1
 	local status=$?
 	if [ $status -ne 0 ]; then
@@ -225,7 +227,8 @@ if [ -n "$catalog" ] && [ -d "$catalog" ]; then
 	mkdir -p "$work/plugins-load-settings"
 	if runSettings="$work/plugins-load-settings" run plugins-load NPPMAC_DUMP_TREE=1; then
 		# The Plugins menu's submenus: its entries one level in, but its own commands.
-		loaded="$(awk '/^Plugins$/ {in_menu=1; next} /^[^ ]/ {in_menu=0} in_menu && /^  [^ ]/ {print}' "$work/plugins-load.log" \
+		# A submenu whose plugin gives it no name (SessionMgr names it only after Notepad++ asks) counts too.
+		loaded="$(awk '/^Plugins$/ {in_menu=1; next} /^[^ ]/ {in_menu=0} in_menu && /^  ([^ ]|$)/ {print}' "$work/plugins-load.log" \
 			| grep -v -e '^  Open Plugins Folder' -e '^  Plugins Admin' -e '^  -' | wc -l | tr -d ' ')"
 		if [ "$loaded" -ge "${#catalogInstalled[@]}" ]; then
 			echo "ok   plugins-load (${#catalogInstalled[@]} plugins)"

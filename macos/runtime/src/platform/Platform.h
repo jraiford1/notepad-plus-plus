@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,20 @@ namespace nppmac::platform
 {
 	// The first preferred language, as a BCP 47 tag ("en-US", "ja-JP", "zh-Hans-CN").
 	std::string preferredLanguage();
+
+	// A region of the process's memory: the one holding the address, or else the next one up.
+	struct MemoryRegion
+	{
+		uintptr_t _start = 0;
+		uintptr_t _size = 0;
+		bool _readable = false;
+		bool _writable = false;
+		bool _executable = false;
+	};
+	// False when no region holds the address or comes after it.
+	bool memoryRegion(uintptr_t address, MemoryRegion& region);
+	// The Windows locale identifier (LCID) of a locale name ("en-US", "fr"), 0 when it has none.
+	unsigned windowsLocaleCode(const std::string& name);
 
 	// Brings the program to the front, as a window it shows or a modal panel needs. A test run
 	// (NPPMAC_TEST_RUN=1) never does: it must not take the keyboard from whoever uses the Mac.

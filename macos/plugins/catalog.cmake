@@ -555,3 +555,262 @@ nppmac_add_external_plugin(Papyrus
 	INCLUDES src src/external/gsl/include src/external/lexilla src/external/npp src/external/scintilla
 	CXX_STANDARD 23
 	PACKAGE_DIR dist)
+
+# Plugins without a Visual Studio project: written by hand from their build scripts (MinGW, CMake,
+# premake, nmake), with the libraries those fetch pinned (FETCH).
+
+nppmac_add_external_plugin(HLASMLexer
+	DISPLAY_NAME "HLASM Lexer - Column-Aware Syntax Highlighting"
+	VERSION 1.1.1
+	GIT https://github.com/Zaneham/hlasm-npp.git
+	COMMIT fe7541565cd0e0af319b08600a80629dd46fb45e
+	SOURCES src/hlasm_ilexer.cpp
+	RC_FILES src/HLASMLexer.rc
+	INCLUDES src obj
+	CONCATENATE obj/hlasm_config_xml.h src/config_xml_head.inc config/HLASMLexer.xml src/config_xml_tail.inc)
+
+nppmac_add_external_plugin(OCamlLexer
+	DISPLAY_NAME "OCaml Lexer"
+	VERSION 1.0.0
+	GIT https://github.com/Zaneham/ocaml-npp.git
+	COMMIT aaedbd468c710931352c6ca78badee5a6141e8f8
+	SOURCES src/ocaml_ilexer.cpp
+	RC_FILES src/OCamlLexer.rc
+	INCLUDES src obj
+	CONCATENATE obj/ocaml_config_xml.h src/config_xml_head.inc config/OCamlLexer.xml src/config_xml_tail.inc)
+
+nppmac_add_external_plugin(NppFoldTail
+	DISPLAY_NAME NppFoldTail
+	VERSION 0.8.2
+	GIT https://github.com/seantw/NppFoldTail.git
+	COMMIT 1295965a3787ce60043b4b03856e26acb7542fc0
+	SOURCES src/plugin.cpp
+	RC_FILES src/plugin.rc
+	INCLUDES src)
+
+nppmac_add_external_plugin(BatPathIntelliSense
+	DISPLAY_NAME "BAT Path IntelliSense"
+	VERSION 0.1.0
+	GIT https://github.com/nicehero/NppBatPathIntelliSense.git
+	COMMIT c8f49b3b461b5db622d376ca16a9afc86f6123e5
+	SOURCES src/Options.cpp src/PathCompletion.cpp src/Plugin.cpp src/Utf8.cpp
+	RC_FILES src/BatPathIntelliSense.rc
+	INCLUDES sdk src)
+
+nppmac_add_external_plugin(SqlColumnHighlighter
+	DISPLAY_NAME "SQL Column Highlighter"
+	VERSION 1.0.0.0
+	GIT https://github.com/zhgao/npp-sql-column-highlighter.git
+	COMMIT c7a9fd9462c1215aaf2a432d354e0ebec48bb89c
+	SOURCES src/Highlighter.cpp src/PluginMain.cpp
+	RC_FILES src/version.rc
+	INCLUDES src
+	DEFINES 
+	_CRT_SECURE_NO_WARNINGS )
+
+nppmac_add_external_plugin(NX_ASCII_Database_Helper
+	DISPLAY_NAME "NX ASCII Database Helper"
+	VERSION 3.0.0
+	GIT https://github.com/ZhuXuefengGitHub/NX_ASCII_Database_Helper.git
+	COMMIT fa4ddf7043ae2b1fd3b1861b9c73ae10b86795c1
+	SOURCES src/DockingFeature/GoToLineDlg.cpp src/DockingFeature/StaticDialog.cpp src/ExplorerDialog.cpp src/NppPluginDemo.cpp src/PluginDefinition.cpp
+	RC_FILES src/ExplorerDialog.rc src/DockingFeature/goLine.rc src/NppPluginDemo.rc
+	INCLUDES src src/DockingFeature)
+
+nppmac_add_external_plugin(NppPluginOpenHost
+	DISPLAY_NAME NppPluginOpenHost
+	VERSION 1.1.0.0
+	GIT https://github.com/jejemorg/NppPluginOpenHost.git
+	COMMIT 1f3ce08dedc043b80dc4f821739d993ba84bdb83
+	SOURCES src/NppPluginDemo.cpp src/PluginDefinition.cpp
+	RC_FILES src/NppPluginDemo.rc
+	INCLUDES src)
+
+nppmac_add_external_plugin(VSCodeKeymapNpp
+	DISPLAY_NAME "VSCode Keymap NPP"
+	VERSION 0.2.0
+	GIT https://github.com/14ag/vscode-to-notepadpp.git
+	COMMIT 29209e4680ecffdd47203d9c79db8b3cb9c6258d
+	SOURCES src/VSCodeKeymapPlugin.cpp
+	INCLUDES include
+	DEFINES WIN32_LEAN_AND_MEAN
+	NOMINMAX )
+
+nppmac_add_external_plugin(SimplifyJson
+	DISPLAY_NAME "Simplify Json"
+	VERSION 1.0.1
+	GIT https://github.com/analystvipul/SimplifyJson.git
+	COMMIT 231df4c7b8f506c086cceb74522f716cc220f712
+	SOURCES src/PluginDefinition.cpp src/NppJsonTools.cpp src/JsonUtils.cpp
+	RC_FILES src/NppJsonTools.rc
+	INCLUDES src)
+
+nppmac_add_external_plugin(NppVim
+	DISPLAY_NAME NppVim
+	VERSION 1.14.4.0
+	GIT https://github.com/h-jangra/NppVim.git
+	COMMIT e67c85e0f50962259f4cad7868136df4a57f77c0
+	SOURCES src/CommandMode.cpp src/Marks.cpp src/Motion.cpp src/NormalMode.cpp src/Keymap.cpp src/Registers.cpp src/EditorOps.cpp src/NppVim.cpp src/TextObject.cpp src/Utils.cpp src/VisualMode.cpp src/ConfigManager.cpp src/OptionRegistry.cpp src/RcParser.cpp
+	RC_FILES plugin/NppVim.rc
+	INCLUDES include plugin)
+
+nppmac_add_external_plugin(FileTools
+	DISPLAY_NAME "Datamodder File Tools"
+	VERSION 1.3.1.6
+	GIT https://github.com/dm-utils/filetools.git
+	COMMIT 5a61a8fe48366d1631bee893442f96fc6b4a1d2c
+	SOURCES src/dllmain.cpp src/settings_dialog.cpp src/yaml_tidy.cpp src/yaml_convert.cpp src/json_tools.cpp src/csv_tools.cpp
+	RC_FILES src/settings.rc
+	INCLUDES . src)
+
+nppmac_add_external_plugin(FormatSQL
+	DISPLAY_NAME "Datamodder SQL Formatter"
+	VERSION 1.3.2.17
+	GIT https://github.com/dm-utils/formatsql.git
+	COMMIT def4e18a33978a8c2e7c1605120ec612c9d0833c
+	SOURCES src/dllmain.cpp src/formatter.cpp src/settings_dialog.cpp src/dialects.cpp src/settings_io.cpp
+	RC_FILES src/settings.rc
+	INCLUDES . src)
+
+nppmac_add_external_plugin(QueryFiles
+	DISPLAY_NAME "Datamodder Query Files"
+	VERSION 1.3.1.0
+	GIT https://github.com/dm-utils/queryfiles.git
+	COMMIT 016236a03c024e857fc784ae4c7b783a935d12e9
+	SOURCES src/dllmain.cpp src/settings_dialog.cpp src/result_grid.cpp src/sql_text.cpp src/duck_runner.cpp
+	RC_FILES src/settings.rc
+	INCLUDES . src)
+
+# SessionMgr: its 1.4.4 release, tagged on the fork's appveyor branch (master stops at 1.4.2).
+nppmac_add_external_plugin(SessionMgr
+	DISPLAY_NAME "Session Manager"
+	VERSION 1.4.4
+	GIT https://github.com/chcg/npp-session-manager.git
+	COMMIT 1d6063799cef25a2b9d3bafbb70b430e291f5484
+	SOURCES src/SessionMgr.cpp src/Settings.cpp src/DlgDelete.cpp src/DlgNew.cpp src/DlgRename.cpp src/DlgSessions.cpp src/DlgSettings.cpp src/DllMain.cpp src/Menu.cpp src/Properties.cpp src/ContextMenu.cpp src/System.cpp src/Util.cpp src/xml/tinyxml2.cpp
+	RC_FILES src/res/resource.rc
+	INCLUDES src src/npp src/xml src/res)
+
+nppmac_add_external_plugin(NppLdapFormatter
+	DISPLAY_NAME "LDAP Formatter"
+	VERSION 1.0.0
+	GIT https://github.com/ignaciojulio/npp-ldap-formatter.git
+	COMMIT 21c66c880bdee037c61c01e756aa17127f39b163
+	SOURCES src/BuildInfo.cpp src/LdapParser.cpp src/CoreBudget.cpp src/ScintillaGateway.cpp src/PluginController.cpp src/PluginDiagnostics.cpp src/PluginWorker.cpp src/PluginDefinition.cpp src/PluginExports.cpp
+	INCLUDES include
+	DEFINES WIN32_LEAN_AND_MEAN
+	NOMINMAX 
+	NPP_HEADERS)
+
+# The nppplugins (premake): its build defines the revision, contact and repository strings.
+nppmac_add_external_plugin(nppplugin_solutionhub
+	DISPLAY_NAME "Solution Hub"
+	VERSION 3.0.1
+	GIT https://github.com/incrediblejr/nppplugins.git
+	COMMIT ffa2e923f367c54582d5d8d45db0373b851d0a0b
+	SOURCES nppplugin_shared/file/file_system.cpp nppplugin_shared/ini/simple_ini.cpp nppplugin_shared/json/json_reader.cpp nppplugin_shared/json/json_value.cpp nppplugin_shared/json/json_writer.cpp nppplugin_shared/json_aux/json_aux.cpp nppplugin_shared/npp/plugin/npp_plugin_interface.cpp nppplugin_shared/pugixml/pugixml.cpp nppplugin_shared/resizer/Resizer.cpp nppplugin_shared/string/string_utils.cpp nppplugin_shared/thread/thread.cpp nppplugin_shared/win32/ui_aux.cpp nppplugin_shared/win32/win_aux.cpp nppplugin_solutionhub/src/file_repository.cpp nppplugin_solutionhub/src/file_repository_common.cpp nppplugin_solutionhub/src/folder_monitor.cpp nppplugin_solutionhub/src/nppplugin.cpp nppplugin_solutionhub/src/nppplugin_solutionhub.cpp
+	INCLUDES nppplugin_shared nppplugin_solutionhub/src
+	DEFINES WIN32_LEAN_AND_MEAN VC_EXTRALEAN _CRT_SECURE_NO_WARNINGS "REVISION_HASH=\"ffa2e923f367c54582d5d8d45db0373b851d0a0b\"" "CONTACT_EMAIL=\"fredrik@incrediblejunior.com\"" "REPO_PATH=\"https://github.com/incrediblejr/nppplugins\"" "PLUGIN_VERSION=\"3.0.1\""
+	PACKAGE_DIR nppplugin_solutionhub/resources
+	NPP_HEADERS)
+
+nppmac_add_external_plugin(nppplugin_ofis2
+	DISPLAY_NAME "Open File In Solution"
+	VERSION 3.0.1
+	GIT https://github.com/incrediblejr/nppplugins.git
+	COMMIT ffa2e923f367c54582d5d8d45db0373b851d0a0b
+	SOURCES nppplugin_shared/file/file_system.cpp nppplugin_shared/ini/simple_ini.cpp nppplugin_shared/json/json_reader.cpp nppplugin_shared/json/json_value.cpp nppplugin_shared/json/json_writer.cpp nppplugin_shared/json_aux/json_aux.cpp nppplugin_shared/npp/plugin/npp_plugin_interface.cpp nppplugin_shared/pugixml/pugixml.cpp nppplugin_shared/resizer/Resizer.cpp nppplugin_shared/string/string_utils.cpp nppplugin_shared/thread/thread.cpp nppplugin_shared/win32/ui_aux.cpp nppplugin_shared/win32/win_aux.cpp nppplugin_ofis2/src/nppplugin.cpp nppplugin_ofis2/src/nppplugin_ofis2.cpp
+	RC_FILES nppplugin_ofis2/src/nppplugin_ofis2.rc.template
+	INCLUDES nppplugin_shared nppplugin_ofis2/src
+	DEFINES WIN32_LEAN_AND_MEAN VC_EXTRALEAN _CRT_SECURE_NO_WARNINGS "REVISION_HASH=\"ffa2e923f367c54582d5d8d45db0373b851d0a0b\"" "CONTACT_EMAIL=\"fredrik@incrediblejunior.com\"" "REPO_PATH=\"https://github.com/incrediblejr/nppplugins\"" "PLUGIN_VERSION=\"3.0.1\""
+	PACKAGE_DIR nppplugin_ofis2/resources
+	NPP_HEADERS)
+
+nppmac_add_external_plugin(nppplugin_solutionhub_ui
+	DISPLAY_NAME "Solution Hub UI"
+	VERSION 3.0.1
+	GIT https://github.com/incrediblejr/nppplugins.git
+	COMMIT ffa2e923f367c54582d5d8d45db0373b851d0a0b
+	SOURCES nppplugin_shared/file/file_system.cpp nppplugin_shared/ini/simple_ini.cpp nppplugin_shared/json/json_reader.cpp nppplugin_shared/json/json_value.cpp nppplugin_shared/json/json_writer.cpp nppplugin_shared/json_aux/json_aux.cpp nppplugin_shared/npp/plugin/npp_plugin_interface.cpp nppplugin_shared/pugixml/pugixml.cpp nppplugin_shared/resizer/Resizer.cpp nppplugin_shared/string/string_utils.cpp nppplugin_shared/thread/thread.cpp nppplugin_shared/win32/ui_aux.cpp nppplugin_shared/win32/win_aux.cpp nppplugin_solutionhub_ui/src/nppplugin.cpp nppplugin_solutionhub_ui/src/nppplugin_solutionhub_ui.cpp nppplugin_solutionhub_ui/src/treelist/TreeListWnd.cpp
+	RC_FILES nppplugin_solutionhub_ui/src/nppplugin_solutionhub_ui.rc.template
+	INCLUDES nppplugin_shared nppplugin_solutionhub_ui/src
+	DEFINES WIN32_LEAN_AND_MEAN VC_EXTRALEAN _CRT_SECURE_NO_WARNINGS "REVISION_HASH=\"ffa2e923f367c54582d5d8d45db0373b851d0a0b\"" "CONTACT_EMAIL=\"fredrik@incrediblejunior.com\"" "REPO_PATH=\"https://github.com/incrediblejr/nppplugins\"" "PLUGIN_VERSION=\"3.0.1\""
+	NPP_HEADERS)
+
+nppmac_add_external_plugin(nppplugin_solutiontools
+	DISPLAY_NAME "Solution Tools"
+	VERSION 3.0.1
+	GIT https://github.com/incrediblejr/nppplugins.git
+	COMMIT ffa2e923f367c54582d5d8d45db0373b851d0a0b
+	SOURCES nppplugin_shared/file/file_system.cpp nppplugin_shared/ini/simple_ini.cpp nppplugin_shared/json/json_reader.cpp nppplugin_shared/json/json_value.cpp nppplugin_shared/json/json_writer.cpp nppplugin_shared/json_aux/json_aux.cpp nppplugin_shared/npp/plugin/npp_plugin_interface.cpp nppplugin_shared/pugixml/pugixml.cpp nppplugin_shared/resizer/Resizer.cpp nppplugin_shared/string/string_utils.cpp nppplugin_shared/thread/thread.cpp nppplugin_shared/win32/ui_aux.cpp nppplugin_shared/win32/win_aux.cpp nppplugin_solutiontools/src/nppplugin.cpp nppplugin_solutiontools/src/nppplugin_solutiontools.cpp
+	INCLUDES nppplugin_shared nppplugin_solutiontools/src
+	DEFINES WIN32_LEAN_AND_MEAN VC_EXTRALEAN _CRT_SECURE_NO_WARNINGS "REVISION_HASH=\"ffa2e923f367c54582d5d8d45db0373b851d0a0b\"" "CONTACT_EMAIL=\"fredrik@incrediblejunior.com\"" "REPO_PATH=\"https://github.com/incrediblejr/nppplugins\"" "PLUGIN_VERSION=\"3.0.1\""
+	PACKAGE_DIR nppplugin_solutiontools/resources
+	NPP_HEADERS)
+
+# FixParser fetches pugixml with vcpkg and plugintemplate's headers with CMake.
+nppmac_add_external_plugin(FixParser
+	DISPLAY_NAME FixParser
+	VERSION 0.1.3
+	GIT https://github.com/chtaylo3/fix-parser.git
+	COMMIT 96d8b05a49db78015b92b4bbf783cc7f6a6d846a
+	SOURCES src/core/DelimiterNormalizer.cpp src/core/Dictionary.cpp src/core/DictionaryCache.cpp src/core/DictionarySelector.cpp src/core/FixParser.cpp src/core/FixTokenizer.cpp src/core/MessageFramer.cpp src/core/PrettyPrinter.cpp src/plugin/PluginDefinition.cpp src/plugin/dllmain.cpp src/ui/FieldRenderer.cpp src/ui/FixPanel.cpp npp-sdk/src/DockingFeature/StaticDialog.cpp third_party/pugixml/src/pugixml.cpp
+	RC_FILES src/ui/FixPanel.rc
+	INCLUDES src/core src/plugin src/ui generated npp-sdk/src npp-sdk/src/DockingFeature third_party/pugixml/src
+	CONCATENATE generated/version.h src/plugin/version.h.in
+	FETCH npp-sdk https://github.com/npp-plugins/plugintemplate.git d180d263d2275a9fe0ca35a8715cb48152d40bd3 third_party/pugixml https://github.com/zeux/pugixml.git db78afc2b7d8f043b4bc6b185635d949ea2ed2a8)
+
+# HTMLTag fetches plugintemplate and SimpleIni with CPM.
+nppmac_add_external_plugin(HTMLTag
+	DISPLAY_NAME "HTML Tag"
+	VERSION 1.6.1.0
+	GIT https://github.com/rdipardo/nppHTMLTag.git
+	COMMIT 4bac411c58a4f37706681756b3d4623b44bf15a0
+	SOURCES src/LibNppPlugin/include/SciTextObjects.cpp src/LibNppPlugin/include/TextConv.cpp src/LibNppPlugin/FuncArray.cpp src/LibNppPlugin/PluginBase.cpp src/LibNppPlugin/LocalizedPlugin.cpp src/Forms/AboutDlg.cpp src/TagFinder.cpp src/Entities.cpp src/Unicode.cpp src/HtmlTag.cpp src/prj/DllMain.cpp deps/plugintemplate/src/DockingFeature/StaticDialog.cpp
+	RC_FILES src/prj/HTMLTag.rc
+	INCLUDES src src/Forms src/LibNppPlugin src/LibNppPlugin/include deps/plugintemplate/src deps/plugintemplate/src/DockingFeature deps/simpleini
+	DEFINES _WINDOWS _USRDLL NOATOM NOGDICAPMASKS NOMETAFILE NOMINMAX NOMSG NOOPENFILE NORASTEROPS NOSCROLL NOSOUND NOTEXTMETRIC NOWH NOCOMM NOKANJI NOCRYPT NOMCX WIN32_LEAN_AND_MEAN SCI_DISABLE_PROVISIONAL _CRT_SECURE_NO_WARNINGS
+	FETCH deps/plugintemplate https://github.com/npp-plugins/plugintemplate.git fa7f8557bec136b98ef287697c96dfa33d65e133 deps/simpleini https://github.com/brofield/simpleini.git 09c21bda1dc1b578fa55f4a005d79b0afd481296)
+
+# NppMenuScripts is built with MinGW, whose windows.h gives C++ no min and max macros (NOMINMAX); its
+# script fetches cJSON from master, pinned here at the latest release.
+nppmac_add_external_plugin(NppMenuScripts
+	DISPLAY_NAME NppMenuScripts
+	VERSION 1.0.1.0
+	GIT https://github.com/seantw/NppMenuScripts.git
+	COMMIT 422219e80ce6e84e538e829fa429998dc686ae6c
+	SOURCES src/main.cpp third_party/cJSON/cJSON.c
+	RC_FILES src/resource.rc
+	INCLUDES . src third_party/cJSON
+	DEFINES NPPMENUSCRIPTS_DEBUG_DEFAULT=0 NOMINMAX
+	FILES i18n.json menu-helper.js menu_helper.py MenuHelper.pm package.json workspace-template
+	CONCATENATE third_party/cJSON.h third_party/cJSON/cJSON.h
+	FETCH third_party/cJSON https://github.com/DaveGamble/cJSON.git c859b25da02955fef659d658b8f324b5cde87be3)
+
+# NppEditorConfig's script downloads editorconfig-core-c and PCRE2, configured here as their CMake
+# builds would.
+nppmac_add_external_plugin(NppEditorConfig
+	DISPLAY_NAME EditorConfig
+	VERSION 0.4.0
+	GIT https://github.com/editorconfig/editorconfig-notepad-plus-plus.git
+	COMMIT 136337da8c028a8bedec07285622b154ef1896c1
+	SOURCES src/DlgAbout.cpp src/NppPluginEditorConfig.cpp src/PluginDefinition.cpp deps/editorconfig/src/lib/ec_glob.c deps/editorconfig/src/lib/editorconfig.c deps/editorconfig/src/lib/editorconfig_handle.c deps/editorconfig/src/lib/ini.c deps/editorconfig/src/lib/misc.c deps/pcre2/src/pcre2_auto_possess.c deps/pcre2/src/pcre2_chartables.c deps/pcre2/src/pcre2_chkdint.c deps/pcre2/src/pcre2_compile.c deps/pcre2/src/pcre2_compile_class.c deps/pcre2/src/pcre2_config.c deps/pcre2/src/pcre2_context.c deps/pcre2/src/pcre2_convert.c deps/pcre2/src/pcre2_dfa_match.c deps/pcre2/src/pcre2_error.c deps/pcre2/src/pcre2_extuni.c deps/pcre2/src/pcre2_find_bracket.c deps/pcre2/src/pcre2_jit_compile.c deps/pcre2/src/pcre2_maketables.c deps/pcre2/src/pcre2_match.c deps/pcre2/src/pcre2_match_data.c deps/pcre2/src/pcre2_newline.c deps/pcre2/src/pcre2_ord2utf.c deps/pcre2/src/pcre2_pattern_info.c deps/pcre2/src/pcre2_script_run.c deps/pcre2/src/pcre2_serialize.c deps/pcre2/src/pcre2_string_utils.c deps/pcre2/src/pcre2_study.c deps/pcre2/src/pcre2_substitute.c deps/pcre2/src/pcre2_substring.c deps/pcre2/src/pcre2_tables.c deps/pcre2/src/pcre2_ucd.c deps/pcre2/src/pcre2_valid_utf.c deps/pcre2/src/pcre2_xclass.c
+	INCLUDES src deps/editorconfig/include deps/editorconfig/src deps/pcre2/src
+	DEFINES HAVE_CONFIG_H PCRE2_CODE_UNIT_WIDTH=8 PCRE2_STATIC
+	CONFIGURE deps/editorconfig/src/config.h.in deps/editorconfig/src/config.h deps/pcre2/src/config.h.generic deps/pcre2/src/config.h deps/pcre2/src/pcre2.h.generic deps/pcre2/src/pcre2.h deps/pcre2/src/pcre2_chartables.c.dist deps/pcre2/src/pcre2_chartables.c
+	CONFIGURE_VARIABLES UNIX=1 HAVE_STRCASECMP=1 HAVE_STRDUP=1 HAVE_STRNDUP=1 HAVE__BOOL=1 HAVE_CONST=1 PCRE2_STATIC=1 PROJECT_VERSION_MAJOR=0 PROJECT_VERSION_MINOR=12 PROJECT_VERSION_PATCH=10 PROJECT_VERSION_SUFFIX=
+	FETCH deps/editorconfig https://github.com/editorconfig/editorconfig-core-c.git 99d757d197677d270644791f13fffe2644659985 deps/pcre2 https://github.com/PCRE2Project/pcre2.git b2bd4254b379b9d7dc9a3dda060a7e27009ccdff)
+
+# NppBplistPlugin gets libplist from vcpkg, which builds it without a configuration header: the features
+# macOS has are defined (the MSVC patches vcpkg adds are not needed).
+nppmac_add_external_plugin(NppBplistPlugin
+	DISPLAY_NAME "Notepad++ bplist plugin"
+	VERSION 3.0.0.0
+	GIT https://github.com/azerg/NppBplistPlugin.git
+	COMMIT 50dfe8ee181b7a8aae6d90f1c607b8d03d265243
+	SOURCES src/NppBplistPlugin/src/AboutWnd.cpp src/NppBplistPlugin/src/BplistMngr.cpp src/NppBplistPlugin/src/NppPluginMain.cpp src/NppBplistPlugin/src/PlistMngr.cpp src/NppBplistPlugin/src/PluginDefinition.cpp deps/libplist/src/base64.c deps/libplist/src/bplist.c deps/libplist/src/bytearray.c deps/libplist/src/hashtable.c deps/libplist/src/jplist.c deps/libplist/src/jsmn.c deps/libplist/src/oplist.c deps/libplist/src/out-default.c deps/libplist/src/out-limd.c deps/libplist/src/out-plutil.c deps/libplist/src/plist.c deps/libplist/src/ptrarray.c deps/libplist/src/time64.c deps/libplist/src/xplist.c deps/libplist/libcnary/node.c deps/libplist/libcnary/node_list.c
+	RC_FILES src/NppBplistPlugin/src/rsrc.rc
+	INCLUDES src/NppBplistPlugin/src deps/libplist/include deps/libplist/src deps/libplist/libcnary/include
+	DEFINES HAVE_ATTRIBUTE_CONSTRUCTOR HAVE_MEMMEM HAVE_STRNDUP HAVE_STRPTIME HAVE_GMTIME_R HAVE_LOCALTIME_R HAVE_TM_TM_GMTOFF HAVE_TM_TM_ZONE
+	CXX_STANDARD 23
+	FETCH deps/libplist https://github.com/libimobiledevice/libplist.git 2d8d7ef272db06783989f77ba1ed80aa0f4d2dfd)

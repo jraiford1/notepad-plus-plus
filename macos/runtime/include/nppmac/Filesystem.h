@@ -23,6 +23,8 @@
 #pragma once
 
 #include <filesystem>
+#include <iterator>
+#include <ostream>
 
 #include "nppmac/WideString.h"
 #include <string>
@@ -37,6 +39,7 @@ namespace nppmac::filesystem
 	public:
 		using value_type = char16_t;
 		using string_type = std::u16string;
+		using format = std::filesystem::path::format;
 
 		path() = default;
 		path(const std::filesystem::path& p) : _path{p} {}
@@ -47,6 +50,12 @@ namespace nppmac::filesystem
 		path(std::u16string_view p) : _path{nativePath(p)} {}
 		path(const char* p) : _path{nativePath(std::string_view{p})} {}
 		path(const std::string& p) : _path{nativePath(std::string_view{p})} {}
+		// The format (native or generic) changes nothing: '\\' is a separator either way, as on Windows.
+		template <typename Source>
+		path(const Source& p, format) : path(p) {}
+		template <typename Iterator>
+		path(Iterator first, Iterator last, format = format::auto_format)
+			: path(std::basic_string<typename std::iterator_traits<Iterator>::value_type>(first, last)) {}
 
 		operator const std::filesystem::path&() const {
 			return _path;
@@ -177,6 +186,11 @@ namespace nppmac::filesystem
 
 		friend bool operator==(const path& lhs, const path& rhs) {
 			return lhs._path == rhs._path;
+		}
+
+		// Written quoted, as std::filesystem::path is.
+		friend std::ostream& operator<<(std::ostream& out, const path& p) {
+			return out << p._path;
 		}
 
 	private:

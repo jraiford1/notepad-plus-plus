@@ -138,10 +138,13 @@ Visual Studio project. [import-plugins.py](plugins/import-plugins.py) writes an 
 checkout of the plugin (with the static libraries the project links from its own repository, its
 forced includes, character set and C++ standard, and its resource compiler's definitions, MSBuild
 properties resolved); `FILES` or `PACKAGE_DIR` adds by hand what the plugin's Windows package has
-beside the DLL (a default configuration, a lexer's styles). A plugin is listed once it builds and
-loads, and work in progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written
-only for Windows itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech)
-are left out. Code that many plugins share (their template) and that
+beside the DLL (a default configuration, a lexer's styles). A plugin without a Visual Studio project
+(built with MinGW, CMake, premake or nmake) has its entry written by hand from its build script: the
+libraries the script fetches are pinned with `FETCH`, the files it configures or puts together are
+made with `CONFIGURE` and `CONCATENATE`. A plugin is listed once it builds and loads, and work in
+progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written only for Windows
+itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech, TortoiseSVN) are
+left out. Code that many plugins share (their template) and that
 clang reads differently from Visual C++ is adjusted by
 [plugins/plugin-text-rules.txt](plugins/plugin-text-rules.txt). Of the 220 plugins in the official
 list, 126 are C or C++ on GitHub (the others are .NET, Delphi and so on, which cannot be built here),
@@ -171,9 +174,10 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
 | `NPPMAC_TEST_IME=<composing>[\|<committed>]` | after the typing, plays an input method on the focus window: composes the first text, a second later commits the second |
 | `NPPMAC_TEST_PRINT_PDF=<path>` | printing takes the default printer's settings without the print panel and writes the job's PDF there instead of printing it |
-| `NPPMAC_TEST_COMMAND=<id>` | sends a menu command (`IDM_*` value) after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
 | `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
 | `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |
+| `NPPMAC_TEST_APPDATA=<folder>` | stands for `~/Library/Application Support`, where Notepad++ keeps what it stores per user besides `-settingsDir` (plugins' settings) |
+| `NPPMAC_TEST_COMMAND=<id>[,<id>...]` | sends menu commands (`IDM_*` values), half a second apart, after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
 | `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree, the native windows and the menu bar |
 | `NPPMAC_TRACE_PAINT=1`, `NPPMAC_TRACE_MESSAGEBOX=1`, `NPPMAC_TRACE_WINDOWS=1` | trace painting, message boxes, window creation |
 | `NPPMAC_QUIET_STUBS=1` | do not log calls to stubbed functions |

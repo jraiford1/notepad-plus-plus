@@ -29,7 +29,7 @@ target_include_directories(nppRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_source_files_properties(${nppRuntimeSources} PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 # The COM interface identifiers (nppUuid, made with the app) for the runtime's own COM objects.
 target_link_libraries(nppRuntime PUBLIC nppUuid)
-target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework QuartzCore" "-framework IOSurface" "-framework CoreText" "-framework PDFKit" "-framework Metal" iconv)
+target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders "-framework Cocoa" "-framework Carbon" "-framework QuartzCore" "-framework IOSurface" "-framework CoreText" "-framework PDFKit" "-framework Metal" iconv)
 # The Scintilla window class talks to Scintilla's Cocoa view.
 target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include" "${NPP_ROOT}/scintilla/cocoa")
 

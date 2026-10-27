@@ -30,6 +30,7 @@
 #include <xlocale.h>
 
 #include "nppmac/WideString.h"
+#include <mbstring.h>
 #include "MsvcFormat.h"
 
 namespace
@@ -433,12 +434,9 @@ int _vscwprintf(const char16_t* format, va_list args)
 	return static_cast<int>(nppmac::crt::formatWide(format, args).size());
 }
 
-int swprintf_s(char16_t* buffer, size_t size, const char16_t* format, ...)
+int vswprintf_s(char16_t* buffer, size_t size, const char16_t* format, va_list args)
 {
-	va_list args;
-	va_start(args, format);
 	const std::u16string text = nppmac::crt::formatWide(format, args);
-	va_end(args);
 	if (!buffer || size == 0)
 		return -1;
 	if (text.size() >= size)
@@ -448,6 +446,15 @@ int swprintf_s(char16_t* buffer, size_t size, const char16_t* format, ...)
 	}
 	writeTruncated(buffer, size, text);
 	return static_cast<int>(text.size());
+}
+
+int swprintf_s(char16_t* buffer, size_t size, const char16_t* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const int result = vswprintf_s(buffer, size, format, args);
+	va_end(args);
+	return result;
 }
 
 int _snwprintf_s(char16_t* buffer, size_t size, size_t count, const char16_t* format, ...)
@@ -703,6 +710,11 @@ namespace
 FILE* _wfopen(const char16_t* fileName, const char16_t* mode)
 {
 	return std::fopen(nppmac::nativePath(std::u16string_view{fileName}).c_str(), posixMode(mode, false).c_str());
+}
+
+int _mbsicmp(const unsigned char* lhs, const unsigned char* rhs)
+{
+	return _wcsicmp(nppmac::toUtf16(reinterpret_cast<const char*>(lhs)).c_str(), nppmac::toUtf16(reinterpret_cast<const char*>(rhs)).c_str());
 }
 
 errno_t _wcserror_s(char16_t* buffer, size_t size, int error)

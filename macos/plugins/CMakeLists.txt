@@ -30,6 +30,7 @@ function(nppmac_add_plugin name)
 	endforeach()
 	set(migrationReport "${CMAKE_CURRENT_BINARY_DIR}/${name}/migration-report.tsv")
 	file(GLOB_RECURSE pluginFiles CONFIGURE_DEPENDS "${plugin_SOURCE_DIR}/*")
+	list(FILTER pluginFiles EXCLUDE REGEX "/\\.git/")
 	# Sources written in a code page (a plugin from a Chinese or Japanese Windows): ENCODING names it.
 	set(encodingOption "")
 	if(plugin_ENCODING)
@@ -131,14 +132,20 @@ endfunction()
 # for a project whose TCHAR is char (the Win32 A functions; Unicode is the default), CXX_STANDARD the
 # C++ standard its project asks for when newer than the build's (C++20), RC_DEFINES the
 # definitions its resource compiler is given (MSBuild properties such as a version, resolved), FILES
-# what its Windows package has beside the DLL (a default configuration...), copied there as they are,
+# what its Windows package has beside the DLL (a default configuration..., or a folder with what is in
+# it), copied there as they are,
 # PACKAGE_DIR the folder of its repository that is the rest of its package (copied beside the DLL,
-# subfolders and all), ENCODING the code page its sources are written in when they are not Unicode
-# (GBK, SHIFT_JIS...).
+# subfolders and all), CONCATENATE a file its build script makes before compiling by putting files of
+# its repository end to end (the file, then the parts; from the migrated copies), ENCODING the code page
+# its sources are written in when they are not Unicode (GBK, SHIFT_JIS...), FETCH the libraries its build
+# fetches (CPM, vcpkg, a download script), each a folder of its checkout, a git repository and a
+# commit, CONFIGURE the files its build configures (a template, then the file), with CMake's
+# configure_file and the CONFIGURE_VARIABLES given (NAME=value), and NPP_HEADERS for a project built against Notepad++'s own plugin headers (from its
+# repository) rather than copies of its own.
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
 option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
 function(nppmac_add_external_plugin name)
-	cmake_parse_arguments(plugin "" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES" ${ARGN})
+	cmake_parse_arguments(plugin "NPP_HEADERS" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES;CONCATENATE;FETCH;CONFIGURE;CONFIGURE_VARIABLES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
 		set(sourceDir "${NPPMAC_PLUGIN_SOURCES}/${name}")
 	else()
@@ -161,7 +168,45 @@ function(nppmac_add_external_plugin name)
 			endif()
 		endif()
 	endif()
-	nppmac_add_plugin(${name} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES}
+	# Its libraries, cloned into its checkout at their pinned commits, as submodules would be.
+	set(fetches ${plugin_FETCH})
+	while(fetches)
+		list(POP_FRONT fetches folder repository commit)
+		set(dependencyDir "${sourceDir}/${folder}")
+		set(fetched "")
+		if(EXISTS "${dependencyDir}/.nppmac-commit")
+			file(READ "${dependencyDir}/.nppmac-commit" fetched)
+		endif()
+		if(NOT fetched STREQUAL commit)
+			file(REMOVE_RECURSE "${dependencyDir}")
+			execute_process(COMMAND git clone --quiet --filter=blob:none "${repository}" "${dependencyDir}" RESULT_VARIABLE cloned)
+			execute_process(COMMAND git -C "${dependencyDir}" checkout --quiet "${commit}" RESULT_VARIABLE checkedOut)
+			if(NOT cloned EQUAL 0 OR NOT checkedOut EQUAL 0)
+				message(WARNING "Plugin ${name}: cannot fetch ${repository} at ${commit}; left out")
+				return()
+			endif()
+			file(WRITE "${dependencyDir}/.nppmac-commit" "${commit}")
+		endif()
+	endwhile()
+	# Configured files (a fetched C library's config.h...), written beside the migrated copies, which they
+	# join unchanged: they are the build's, not the project's sources.
+	foreach(variable IN LISTS plugin_CONFIGURE_VARIABLES)
+		string(FIND "${variable}" "=" equals)
+		string(SUBSTRING "${variable}" 0 ${equals} variableName)
+		math(EXPR valueStart "${equals} + 1")
+		string(SUBSTRING "${variable}" ${valueStart} -1 variableValue)
+		set(${variableName} "${variableValue}")
+	endforeach()
+	set(configures ${plugin_CONFIGURE})
+	while(configures)
+		list(POP_FRONT configures template configured)
+		configure_file("${sourceDir}/${template}" "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated/${configured}" @ONLY)
+	endwhile()
+	set(nppHeaders "")
+	if(plugin_NPP_HEADERS)
+		set(nppHeaders NPP_HEADERS)
+	endif()
+	nppmac_add_plugin(${name} ${nppHeaders} SOURCE_DIR "${sourceDir}" SOURCES ${plugin_SOURCES} RC_FILES ${plugin_RC_FILES} RC_INCLUDES ${plugin_INCLUDES}
 		RC_DEFINES ${plugin_RC_DEFINES} ENCODING "${plugin_ENCODING}")
 	set(generatedDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/generated")
 
@@ -182,6 +227,18 @@ function(nppmac_add_external_plugin name)
 			"#define COPYRIGHT_STR \"${copyright}\"\n"
 			"#define VERSION_GIT_STR \"v${version}\"\n"
 			"#define VERSION_GIT_WSTR u\"v${version}\"\n")
+	endif()
+	if(plugin_CONCATENATE)
+		list(POP_FRONT plugin_CONCATENATE concatenated)
+		set(concatenated "${generatedDir}/${concatenated}")
+		list(TRANSFORM plugin_CONCATENATE PREPEND "${generatedDir}/")
+		get_filename_component(concatenatedDir "${concatenated}" DIRECTORY)
+		add_custom_command(OUTPUT "${concatenated}"
+			COMMAND "${CMAKE_COMMAND}" -E make_directory "${concatenatedDir}"
+			COMMAND "${CMAKE_COMMAND}" -E cat ${plugin_CONCATENATE} > "${concatenated}"
+			DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${name}/migration-report.tsv"
+			VERBATIM)
+		target_sources(${name} PRIVATE "${concatenated}")
 	endif()
 	foreach(include IN LISTS plugin_INCLUDES)
 		target_include_directories(${name} PRIVATE "${generatedDir}/${include}")
@@ -206,6 +263,19 @@ function(nppmac_add_external_plugin name)
 	set(fileNames "")
 	foreach(dataFile IN LISTS plugin_FILES)
 		get_filename_component(fileName "${dataFile}" NAME)
+		if(IS_DIRECTORY "${sourceDir}/${dataFile}")
+			# A folder goes with its name and everything in it.
+			file(GLOB_RECURSE folderFiles RELATIVE "${sourceDir}/${dataFile}" "${sourceDir}/${dataFile}/*")
+			foreach(folderFile IN LISTS folderFiles)
+				get_filename_component(packageFolder "${CMAKE_CURRENT_BINARY_DIR}/${name}/${fileName}/${folderFile}" DIRECTORY)
+				add_custom_command(TARGET ${name} POST_BUILD
+					COMMAND "${CMAKE_COMMAND}" -E make_directory "${packageFolder}"
+					COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${sourceDir}/${dataFile}/${folderFile}" "${CMAKE_CURRENT_BINARY_DIR}/${name}/${fileName}/${folderFile}"
+					VERBATIM)
+				string(APPEND fileNames "${fileName}/${folderFile}\n")
+			endforeach()
+			continue()
+		endif()
 		add_custom_command(TARGET ${name} POST_BUILD
 			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${sourceDir}/${dataFile}" "${CMAKE_CURRENT_BINARY_DIR}/${name}/${fileName}"
 			VERBATIM)

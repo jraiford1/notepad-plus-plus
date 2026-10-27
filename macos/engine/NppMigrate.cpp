@@ -105,10 +105,13 @@ namespace
 		bool _matchedFile = false;
 	};
 
-	// A file's extension in lower case: Windows does not tell .H from .h, nor .CPP from .cpp.
+	// A file's extension in lower case: Windows does not tell .H from .h, nor .CPP from .cpp. A
+	// configuration template's (version.h.in, which CMake makes version.h of) is the file's it makes.
 	std::string extensionOf(const fs::path& path)
 	{
 		std::string ext = path.extension().string();
+		if (ext == ".in" && path.stem().has_extension())
+			ext = path.stem().extension().string();
 		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		return ext;
 	}
@@ -677,10 +680,16 @@ int main(int argc, char* argv[])
 
 	// Sort so that the report, like the output, does not depend on directory iteration order.
 	std::vector<fs::path> files;
-	for (const auto& entry : fs::recursive_directory_iterator{sourceRoot})
+	for (auto entry = fs::recursive_directory_iterator{sourceRoot}; entry != fs::recursive_directory_iterator{}; ++entry)
 	{
-		if (entry.is_regular_file())
-			files.push_back(entry.path());
+		// A git repository's own files (a plugin's checkout, a library fetched into it) are not its code.
+		if (entry->is_directory() && entry->path().filename() == ".git")
+		{
+			entry.disable_recursion_pending();
+			continue;
+		}
+		if (entry->is_regular_file())
+			files.push_back(entry->path());
 	}
 	std::sort(files.begin(), files.end());
 

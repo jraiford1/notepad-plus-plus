@@ -211,6 +211,26 @@ int main()
 	}
 	CHECK(FindFirstChangeNotificationW(u"/no/such/folder", FALSE, FILE_NOTIFY_CHANGE_FILE_NAME) == INVALID_HANDLE_VALUE);
 
+	// A completion port (Solution Hub's folder monitor): the folder's reads complete on it, with its key.
+	HANDLE watched = ::CreateFileW(nppmac::toUtf16(folder).c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+	HANDLE port = ::CreateIoCompletionPort(watched, nullptr, 42, 0);
+	CHECK(port != nullptr);
+	std::vector<BYTE> changes(4096);
+	OVERLAPPED overlapped{};
+	CHECK(::ReadDirectoryChangesW(watched, changes.data(), static_cast<DWORD>(changes.size()), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME, nullptr, &overlapped, nullptr));
+	DWORD bytes = 0;
+	ULONG_PTR key = 0;
+	LPOVERLAPPED completed = nullptr;
+	CHECK(!::GetQueuedCompletionStatus(port, &bytes, &key, &completed, 10) && completed == nullptr && ::GetLastError() == WAIT_TIMEOUT);
+	::Sleep(300);
+	writeFile(folder + "/ported.txt", "four");
+	CHECK(::GetQueuedCompletionStatus(port, &bytes, &key, &completed, 5000) && key == 42 && completed == &overlapped && bytes > 0);
+	CHECK(::PostQueuedCompletionStatus(port, 0, 7, nullptr));
+	CHECK(::GetQueuedCompletionStatus(port, &bytes, &key, &completed, 0) && key == 7 && completed == nullptr);
+	::CloseHandle(watched);
+	::CloseHandle(port);
+
 	std::system(("rm -rf '" + folder + "'").c_str());
 
 	std::cout << g_checks << " checks, " << g_failures << " failures\n";

@@ -173,6 +173,7 @@ errno_t _wcserror_s(char16_t (&buffer)[size], int error)
 	return _wcserror_s(buffer, size, error);
 }
 int swprintf_s(char16_t* buffer, size_t size, const char16_t* format, ...);
+int vswprintf_s(char16_t* buffer, size_t size, const char16_t* format, va_list args);
 int _snwprintf_s(char16_t* buffer, size_t size, size_t count, const char16_t* format, ...);
 errno_t strcpy_s(char* dest, size_t destSize, const char* src);
 errno_t strncpy_s(char* dest, size_t destSize, const char* src, size_t count);
@@ -289,6 +290,12 @@ namespace nppmac
 			return toUtf16(_stream.str());
 		}
 
+		// The text, valid until the stream changes (C++20's view()).
+		std::u16string_view view() const {
+			_view = str();
+			return _view;
+		}
+
 		void str(std::u16string_view text) {
 			_stream.str(toUtf8(text));
 		}
@@ -389,6 +396,7 @@ namespace nppmac
 	private:
 		std::stringstream _stream;
 		std::unique_ptr<Utf16RestBuffer> _rest;
+		mutable std::u16string _view;
 	};
 
 	// <locale> character classification. For char16_t the classic C rules apply to the BMP code unit
