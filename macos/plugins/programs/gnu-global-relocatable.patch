@@ -1,0 +1,163 @@
+GNU Global's programs, carried in NppGTags' package rather than installed where they were configured,
+find what is beside them, as Global's Windows build does: 'bindir' is the running program's folder and
+'datadir' the share folder beside it (libutil/conf.c), the pygments parser's script is found in that
+'datadir' (plugin-factory/pygments-parser.c), and the script asks the gtags beside it for the ctags
+program (plugin-factory/pygments_parser.py.in). Applied by gnu-global.cmake to Global 6.6.12.
+
+--- a/libutil/conf.c
++++ b/libutil/conf.c
+@@ -36,6 +36,11 @@
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #endif
++#ifdef __APPLE__
++#include <limits.h>
++#include <stdint.h>
++#include <mach-o/dyld.h>
++#endif
+ 
+ #include "gparam.h"
+ #include "char.h"
+@@ -67,6 +72,9 @@
+ static void trim(char *);
+ static const char *readrecord(FILE *, const char *);
+ static void includelabel(FILE *, STRBUF *, const char *, int);
++#ifdef __APPLE__
++static void put_program_dir(STRBUF *);
++#endif
+ 
+ #ifndef isblank
+ #define isblank(c)	((c) == ' ' || (c) == '\t')
+@@ -373,7 +381,31 @@
+ 	}
+ 	return 0;
+ }
++#ifdef __APPLE__
+ /**
++ * put_program_dir: put the directory of the running program.
++ *
++ *	@param[out]	sb	the directory is appended to it
++ *
++ * The programs are carried in a package (Notepad++'s NppGTags plugin)
++ * rather than installed where they were configured, so 'bindir' and
++ * 'datadir' are taken relative to them, as on Windows.
++ */
++static void
++put_program_dir(STRBUF *sb)
++{
++	char path[PATH_MAX], real[PATH_MAX], *p;
++	uint32_t size = sizeof(path);
++
++	if (_NSGetExecutablePath(path, &size) != 0 || realpath(path, real) == NULL)
++		die("cannot get the path of this program.");
++	p = strrchr(real, '/');
++	if (p != NULL)
++		*p = '\0';
++	strbuf_puts(sb, real);
++}
++#endif
++/**
+  * replace_variables: replace variables in the string.
+  *
+  *	@param[in]	sb
+@@ -476,8 +508,13 @@
+ 	 */
+ 	if (!exist) {
+ 		if (!strcmp(name, "bindir")) {
++#ifdef __APPLE__
+ 			if (sb)
++				put_program_dir(sb);
++#else
++			if (sb)
+ 				strbuf_puts(sb, BINDIR);
++#endif
+ 			exist = 1;
+ 		} else if (!strcmp(name, "datadir")) {
+ #if defined(_WIN32) && !defined(__CYGWIN__)
+@@ -500,6 +537,11 @@
+ 				strcpy(name, "../share");
+ 				if (sb)
+ 					strbuf_puts(sb, path);
++			}
++#elif defined(__APPLE__)
++			if (sb) {
++				put_program_dir(sb);
++				strbuf_puts(sb, "/../share");
+ 			}
+ #else
+ 			if (sb)
+--- a/plugin-factory/pygments-parser.c
++++ b/plugin-factory/pygments-parser.c
+@@ -46,6 +46,9 @@
+ #if defined(_WIN32) && !defined(__CYGWIN__)
+ #define PYTHON		"python"
+ #define PYGMENTS_PARSER "../share/gtags/script/pygments_parser.py"
++#elif defined(__APPLE__)
++/* Relative to 'datadir', which is relative to the program (libutil/conf.c). */
++#define PYGMENTS_PARSER "/gtags/script/pygments_parser.py"
+ #else
+ #define PYGMENTS_PARSER (DATADIR "/gtags/script/pygments_parser.py")
+ #endif
+@@ -153,18 +156,36 @@
+ }
+ #else
+ #include <sys/wait.h>
++#ifdef __APPLE__
+ static char *argv[] = {
++	NULL,
++	NULL,
++	NULL
++};
++#else
++static char *argv[] = {
+ 	PYGMENTS_PARSER,
+ 	NULL,
+ 	NULL
+ };
++#endif
+ static pid_t pid;
+ 
+ static void
+ start_process(const struct parser_param *param)
+ {
+ 	int opipe[2], ipipe[2];
++#ifdef __APPLE__
++	char *datadir = param->getconf("datadir");
+ 
++	argv[0] = malloc(strlen(datadir) + sizeof(PYGMENTS_PARSER));
++	if (argv[0] == NULL)
++		param->die("short of memory.");
++	strcpy(argv[0], datadir);
++	strcat(argv[0], PYGMENTS_PARSER);
++	free(datadir);
++#endif
++
+ 	argv[1] = malloc(sizeof(LANGMAP_OPTION) + strlen(param->langmap));
+ 	if (argv[1] == NULL)
+ 		param->die("short of memory.");
+@@ -183,8 +204,8 @@
+ 			param->die("dup2 failed.");
+ 		close(opipe[0]);
+ 		close(ipipe[1]);
+-		execvp(PYGMENTS_PARSER, argv);
+-		param->die("cannot execute '%s'. (execvp failed)", PYGMENTS_PARSER);
++		execvp(argv[0], argv);
++		param->die("cannot execute '%s'. (execvp failed)", argv[0]);
+ 	}
+ 	/* parent process */
+ 	if (pid < 0)
+--- a/plugin-factory/pygments_parser.py.in
++++ b/plugin-factory/pygments_parser.py.in
+@@ -238,7 +238,11 @@
+ 
+ def load_ctags_path():
+     path = ''
+-    p = subprocess.Popen("gtags --config=ctagscom", shell=True,
++    # The gtags of this installation: <prefix>/share/gtags/script -> <prefix>/bin.
++    gtags = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'bin', 'gtags')
++    if not os.path.exists(gtags):
++        gtags = 'gtags'
++    p = subprocess.Popen([gtags, '--config=ctagscom'],
+                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+     if p.wait() == 0:
+         if sys.platform == 'win32' and sys.version_info >= (3,):

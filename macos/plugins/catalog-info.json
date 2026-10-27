@@ -344,6 +344,16 @@
 		"author": "Sean Lin",
 		"homepage": "https://github.com/seantw/NppFoldTail"
 	},
+	"NppGTags": {
+		"folder-name": "NppGTags",
+		"display-name": "NppGTags",
+		"version": "5.2.0",
+		"npp-compatible-versions": "[8.4.7,]",
+		"old-versions-compatibility": "[,5.0.0][8.4.2,8.4.6]",
+		"description": "Front-end to GNU Global source code tagging system (GTags). Provides code indexing and search/navigation tools for various languages.",
+		"author": "Pavel Nedev",
+		"homepage": "https://github.com/pnedev/nppgtags"
+	},
 	"NppJavaPlugin": {
 		"folder-name": "NppJavaPlugin",
 		"display-name": "Java Plugin",
