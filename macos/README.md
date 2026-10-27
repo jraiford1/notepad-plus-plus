@@ -141,8 +141,14 @@ properties resolved); `FILES` or `PACKAGE_DIR` adds by hand what the plugin's Wi
 beside the DLL (a default configuration, a lexer's styles). A plugin without a Visual Studio project
 (built with MinGW, CMake, premake or nmake) has its entry written by hand from its build script: the
 libraries the script fetches are pinned with `FETCH`, the files it configures or puts together are
-made with `CONFIGURE` and `CONCATENATE`. A plugin is listed once it builds and loads, and work in
-progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written only for Windows
+made with `CONFIGURE` and `CONCATENATE`. Programs a plugin's package carries are built from their own
+release sources by a script of [plugins/programs/](plugins/programs), named with `PROGRAMS`: NppGTags'
+GNU Global and Universal Ctags ([gnu-global.cmake](plugins/programs/gnu-global.cmake)), with their own
+configure and make, patched so that Global finds what is beside it as it does on Windows. Their
+configure and libtool cannot work in a path with a space: when the build folder's has one, they are
+built in the user's cache folder (`getconf DARWIN_USER_CACHE_DIR`), in a folder of that build's. A
+plugin is listed once it builds and loads, and work in progress can sit in an uncommitted
+`plugins/catalog-local.cmake`. Plugins written only for Windows
 itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech, TortoiseSVN) are
 left out. Code that many plugins share (their template) and that
 clang reads differently from Visual C++ is adjusted by

@@ -70,6 +70,10 @@ inline char16_t* wcstok(char16_t* str, const char16_t* delimiters)
 {
 	return _wcstok(str, delimiters);
 }
+inline char16_t* wcstok_s(char16_t* str, const char16_t* delimiters, char16_t** context)
+{
+	return wcstok(str, delimiters, context);
+}
 long wcstol(const char16_t* str, char16_t** end, int base);
 unsigned long wcstoul(const char16_t* str, char16_t** end, int base);
 long long wcstoll(const char16_t* str, char16_t** end, int base);
@@ -124,6 +128,12 @@ int _snwprintf(char16_t* buffer, size_t count, const char16_t* format, ...);
 int _vsnwprintf(char16_t* buffer, size_t count, const char16_t* format, va_list args);
 int _scwprintf(const char16_t* format, ...);
 int _vscwprintf(const char16_t* format, va_list args);
+// Wide text in a file stream is in the ANSI code page (UTF-8 here), as in the CRT's text mode.
+int fwprintf(FILE* file, const char16_t* format, ...);
+int fwprintf_s(FILE* file, const char16_t* format, ...);
+int vfwprintf(FILE* file, const char16_t* format, va_list args);
+int fputws(const char16_t* text, FILE* file);
+char16_t* fgetws(char16_t* buffer, int count, FILE* file);
 int _wcsnicmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int wcsnicmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int wcsicmp(const char16_t* lhs, const char16_t* rhs);
@@ -165,6 +175,21 @@ errno_t _wcslwr_s(char16_t* str, size_t size);
 errno_t _wcsupr_s(char16_t* str, size_t size);
 errno_t _itow_s(int value, char16_t* buffer, size_t size, int radix);
 errno_t _wfopen_s(FILE** file, const char16_t* fileName, const char16_t* mode);
+// Conversions between the ANSI code page (UTF-8 here) and UTF-16; count is the most to store (without
+// the terminator) or _TRUNCATE, *converted what was stored with the terminator (or would be, without a
+// destination).
+errno_t mbstowcs_s(size_t* converted, char16_t* dest, size_t destSize, const char* src, size_t count);
+errno_t wcstombs_s(size_t* converted, char* dest, size_t destSize, const char16_t* src, size_t count);
+template <size_t size>
+errno_t mbstowcs_s(size_t* converted, char16_t (&dest)[size], const char* src, size_t count)
+{
+	return mbstowcs_s(converted, dest, size, src, count);
+}
+template <size_t size>
+errno_t wcstombs_s(size_t* converted, char (&dest)[size], const char16_t* src, size_t count)
+{
+	return wcstombs_s(converted, dest, size, src, count);
+}
 // The C library's message for an error number (strerror), cut to fit the buffer.
 errno_t _wcserror_s(char16_t* buffer, size_t size, int error);
 template <size_t size>

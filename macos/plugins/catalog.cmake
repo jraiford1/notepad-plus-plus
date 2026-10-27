@@ -814,3 +814,16 @@ nppmac_add_external_plugin(NppBplistPlugin
 	DEFINES HAVE_ATTRIBUTE_CONSTRUCTOR HAVE_MEMMEM HAVE_STRNDUP HAVE_STRPTIME HAVE_GMTIME_R HAVE_LOCALTIME_R HAVE_TM_TM_GMTOFF HAVE_TM_TM_ZONE
 	CXX_STANDARD 23
 	FETCH deps/libplist https://github.com/libimobiledevice/libplist.git 2d8d7ef272db06783989f77ba1ed80aa0f4d2dfd)
+
+# NppGTags runs GNU Global's programs, which its Windows package carries: they are built from their
+# release sources (programs/gnu-global.cmake).
+nppmac_add_external_plugin(NppGTags
+	DISPLAY_NAME NppGTags
+	VERSION 5.2.0
+	GIT https://github.com/pnedev/nppgtags.git
+	COMMIT dce8041e1b16ab04d1a3e380affd704ab1f06e1d
+	SOURCES src/Common.cpp src/INpp.cpp src/PluginInterface.cpp src/ReadPipe.cpp src/GTags.cpp src/LineParser.cpp src/Cmd.cpp src/CmdEngine.cpp src/DbManager.cpp src/Config.cpp src/DocLocation.cpp src/ActivityWin.cpp src/SearchWin.cpp src/SettingsWin.cpp src/AboutWin.cpp src/AutoCompleteWin.cpp src/ResultWin.cpp
+	RC_FILES src/nppgtags.rc
+	INCLUDES src
+	DEFINES WIN32_LEAN_AND_MEAN NOCOMM
+	PROGRAMS gnu-global)

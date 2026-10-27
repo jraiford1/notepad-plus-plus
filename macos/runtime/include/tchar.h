@@ -18,6 +18,14 @@
 
 #pragma once
 
+#ifdef RC_INVOKED
+// A resource script gets the macros only: the C library is not there.
+#ifndef _T
+#define _T(string) L##string
+#define _TEXT(string) L##string
+#endif
+#else
+
 // macOS has its own wctype_t (and wint_t, which the compiler knows): Wine's are not declared again.
 #ifndef _WCTYPE_T_DEFINED
 #define _WCTYPE_T_DEFINED
@@ -29,3 +37,4 @@
 #ifndef __TEXT
 #define __TEXT(string) u##string
 #endif
+#endif // RC_INVOKED

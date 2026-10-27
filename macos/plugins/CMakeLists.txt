@@ -140,12 +140,14 @@ endfunction()
 # its sources are written in when they are not Unicode (GBK, SHIFT_JIS...), FETCH the libraries its build
 # fetches (CPM, vcpkg, a download script), each a folder of its checkout, a git repository and a
 # commit, CONFIGURE the files its build configures (a template, then the file), with CMake's
-# configure_file and the CONFIGURE_VARIABLES given (NAME=value), and NPP_HEADERS for a project built against Notepad++'s own plugin headers (from its
-# repository) rather than copies of its own.
+# configure_file and the CONFIGURE_VARIABLES given (NAME=value), PROGRAMS the programs its package
+# carries (gtags.exe...), built from their own sources by a script of programs/ (gnu-global for
+# programs/gnu-global.cmake), and NPP_HEADERS for a project built against Notepad++'s own plugin headers
+# (from its repository) rather than copies of its own.
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
 option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
 function(nppmac_add_external_plugin name)
-	cmake_parse_arguments(plugin "NPP_HEADERS" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES;CONCATENATE;FETCH;CONFIGURE;CONFIGURE_VARIABLES" ${ARGN})
+	cmake_parse_arguments(plugin "NPP_HEADERS" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR;PROGRAMS" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES;CONCATENATE;FETCH;CONFIGURE;CONFIGURE_VARIABLES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
 		set(sourceDir "${NPPMAC_PLUGIN_SOURCES}/${name}")
 	else()
@@ -292,6 +294,9 @@ function(nppmac_add_external_plugin name)
 				VERBATIM)
 			string(APPEND fileNames "${packageFile}\n")
 		endforeach()
+	endif()
+	if(plugin_PROGRAMS)
+		include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/programs/${plugin_PROGRAMS}.cmake")
 	endif()
 	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}/${name}.files" "${fileNames}")
 	set_property(GLOBAL APPEND PROPERTY NPPMAC_CATALOG_PLUGINS ${name})

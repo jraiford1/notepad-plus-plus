@@ -386,3 +386,35 @@ regex: defined\(_WIN32\) => (defined(_WIN32) || defined(NPPMAC))
 files: NppMenuScripts/src/main.cpp
 line: std::max(0L, (rc.
 replace: std::max(0L, => std::max<LONG>(0L,
+
+# NppGTags runs GNU Global's programs from its bin folder by their Windows names (gtags.exe...).
+files: NppGTags/src/*.cpp
+line: .exe
+regex: \b(gtags|global|ctags)\.exe\b => $1
+
+# It gives its paths (its programs' folder, a database's) to those programs, which read Windows'
+# separator literally here: its paths (CPath, which reads either separator) are made with '/', and
+# its own file's path, which plugins are given with '\' (GetModuleFileName), is made so too.
+files: NppGTags/src/*
+line: _T("\\
+replace: _T("\\ => _T("/
+
+files: NppGTags/src/CmdEngine.cpp
+line: %s\\
+replace: %s\\ => %s/
+
+files: NppGTags/src/Common.cpp
+line: push_back(_T('\\'))
+replace: push_back(_T('\\')) => push_back(_T('/'))
+
+files: NppGTags/src/Common.cpp
+line: _buf[i] = _T('\\');
+replace: _buf[i] = _T('\\'); => _buf[i] = _T('/');
+
+files: NppGTags/src/Common.cpp
+line: if (_buf[i] == _T('/'))
+replace: if (_buf[i] == _T('/')) => if (_buf[i] == _T('\\'))
+
+files: NppGTags/src/GTags.cpp
+line: moduleFileName.AutoFit();
+replace: moduleFileName.AutoFit(); => moduleFileName.NormalizePathSlashes();
