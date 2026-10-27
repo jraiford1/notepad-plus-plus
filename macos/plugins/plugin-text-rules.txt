@@ -386,3 +386,8 @@ regex: defined\(_WIN32\) => (defined(_WIN32) || defined(NPPMAC))
 files: NppMenuScripts/src/main.cpp
 line: std::max(0L, (rc.
 replace: std::max(0L, => std::max<LONG>(0L,
+
+# NppGTags runs GNU Global's programs from its bin folder by their Windows names (gtags.exe...).
+files: NppGTags/src/*.cpp
+line: .exe
+regex: \b(gtags|global|ctags)\.exe\b => $1

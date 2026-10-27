@@ -420,6 +420,71 @@ int _vsnwprintf(char16_t* buffer, size_t count, const char16_t* format, va_list 
 	return text.size() <= count ? static_cast<int>(text.size()) : -1;
 }
 
+int vfwprintf(FILE* file, const char16_t* format, va_list args)
+{
+	const std::u16string text = nppmac::crt::formatWide(format, args);
+	if (std::fputs(nppmac::toUtf8(text).c_str(), file) < 0)
+		return -1;
+	return static_cast<int>(text.size());
+}
+
+int fwprintf(FILE* file, const char16_t* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const int result = vfwprintf(file, format, args);
+	va_end(args);
+	return result;
+}
+
+int fwprintf_s(FILE* file, const char16_t* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	const int result = vfwprintf(file, format, args);
+	va_end(args);
+	return result;
+}
+
+int fputws(const char16_t* text, FILE* file)
+{
+	return std::fputs(nppmac::toUtf8(text).c_str(), file) < 0 ? -1 : 0;
+}
+
+char16_t* fgetws(char16_t* buffer, int count, FILE* file)
+{
+	// A line (with its '\n'), or as much of it as fits with the terminator: whole characters only.
+	if (!buffer || count <= 0)
+		return nullptr;
+	std::string line;
+	size_t units = 0;
+	int ch = 0;
+	while ((ch = std::fgetc(file)) != EOF)
+	{
+		const auto lead = static_cast<unsigned char>(ch);
+		const size_t length = lead < 0xC0 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+		const size_t needed = length == 4 ? 2 : 1;
+		if (units + needed > static_cast<size_t>(count) - 1)
+		{
+			std::ungetc(ch, file);
+			break;
+		}
+		line.push_back(static_cast<char>(ch));
+		for (size_t i = 1; i < length && (ch = std::fgetc(file)) != EOF; ++i)
+			line.push_back(static_cast<char>(ch));
+		units += needed;
+		if (lead == '\n')
+			break;
+	}
+	if (line.empty())
+		return nullptr;
+	const std::u16string wide = nppmac::toUtf16(line);
+	const size_t size = std::min(wide.size(), static_cast<size_t>(count) - 1);
+	std::copy_n(wide.begin(), size, buffer);
+	buffer[size] = u'\0';
+	return buffer;
+}
+
 int _scwprintf(const char16_t* format, ...)
 {
 	va_list args;
@@ -808,6 +873,73 @@ size_t wcsftime_l(char16_t* buffer, size_t size, const char16_t* format, const s
 	char narrow[1024]{};
 	const size_t length = strftime_l(narrow, sizeof(narrow), nppmac::toUtf8(format).c_str(), time, locale);
 	return copyTime(buffer, size, std::string_view{narrow, length});
+}
+
+errno_t mbstowcs_s(size_t* converted, char16_t* dest, size_t destSize, const char* src, size_t count)
+{
+	if (converted)
+		*converted = 0;
+	if (!src || (!dest && destSize > 0) || (dest && destSize == 0))
+		return EINVAL;
+	const std::u16string wide = nppmac::toUtf16(src);
+	if (!dest)
+	{
+		if (converted)
+			*converted = wide.size() + 1;
+		return 0;
+	}
+	size_t length = count == _TRUNCATE ? wide.size() : std::min(wide.size(), count);
+	errno_t result = 0;
+	if (length + 1 > destSize)
+	{
+		if (count != _TRUNCATE)
+		{
+			dest[0] = u'\0';
+			return ERANGE;
+		}
+		length = destSize - 1;
+		result = STRUNCATE;
+	}
+	std::copy_n(wide.begin(), length, dest);
+	dest[length] = u'\0';
+	if (converted)
+		*converted = length + 1;
+	return result;
+}
+
+errno_t wcstombs_s(size_t* converted, char* dest, size_t destSize, const char16_t* src, size_t count)
+{
+	if (converted)
+		*converted = 0;
+	if (!src || (!dest && destSize > 0) || (dest && destSize == 0))
+		return EINVAL;
+	const std::string narrow = nppmac::toUtf8(src);
+	if (!dest)
+	{
+		if (converted)
+			*converted = narrow.size() + 1;
+		return 0;
+	}
+	size_t length = count == _TRUNCATE ? narrow.size() : std::min(narrow.size(), count);
+	errno_t result = 0;
+	if (length + 1 > destSize)
+	{
+		if (count != _TRUNCATE)
+		{
+			dest[0] = '\0';
+			return ERANGE;
+		}
+		length = destSize - 1;
+		result = STRUNCATE;
+	}
+	// Whole characters only: a cut does not split a UTF-8 sequence.
+	while (length > 0 && length < narrow.size() && (static_cast<unsigned char>(narrow[length]) & 0xC0) == 0x80)
+		--length;
+	std::memcpy(dest, narrow.data(), length);
+	dest[length] = '\0';
+	if (converted)
+		*converted = length + 1;
+	return result;
 }
 
 size_t wcstombs(char* dest, const char16_t* src, size_t count)
