@@ -273,6 +273,14 @@
 		"author": "Mike Tzou (Chocobo1)",
 		"homepage": "https://github.com/Chocobo1/nppAutoDetectIndent"
 	},
+	"NppBplistPlugin": {
+		"folder-name": "NppBplistPlugin",
+		"display-name": "Notepad++ bplist plugin",
+		"version": "3.0.0.0",
+		"description": "Supports viewing/editing binary plist files. Due to the fact that ordinary plist files have XML format, this plugin does not support them. It only loads binary plist files (bplist).",
+		"author": "Sergiy Azarovsky",
+		"homepage": "https://github.com/azerg/NppBplistPlugin"
+	},
 	"nppConverter": {
 		"folder-name": "nppConverter",
 		"display-name": "Npp Converter",
@@ -292,6 +300,14 @@
 		"description": "Compare two lists in the current document.\r\nPlace the two lists separated by one or more blank lines and run the plugin to cross-check their contents.",
 		"author": "Pablo Lopez",
 		"homepage": "https://github.com/pablo-code14/NppCrossCheck"
+	},
+	"NppEditorConfig": {
+		"folder-name": "NppEditorConfig",
+		"display-name": "EditorConfig",
+		"version": "0.4.0",
+		"description": "EditorConfig is a text file that defines coding conventions for a project to help maintain them consistent no matter which text editor you use. This plugin adds support for .editorconfig files to Notepad++. It will automatically discover and apply matching .editorconfig settings to the files that you open for editing. For the EditorConfig recommended use, file format and samples, visit https://editorconfig.org/.",
+		"author": "EditorConfig Team",
+		"homepage": "https://github.com/editorconfig/editorconfig-notepad-plus-plus"
 	},
 	"NppExec": {
 		"folder-name": "NppExec",

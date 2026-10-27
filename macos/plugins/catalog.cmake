@@ -681,11 +681,12 @@ nppmac_add_external_plugin(QueryFiles
 	RC_FILES src/settings.rc
 	INCLUDES . src)
 
+# SessionMgr: its 1.4.4 release, tagged on the fork's appveyor branch (master stops at 1.4.2).
 nppmac_add_external_plugin(SessionMgr
 	DISPLAY_NAME "Session Manager"
 	VERSION 1.4.4
 	GIT https://github.com/chcg/npp-session-manager.git
-	COMMIT 407cded82e99c04537795246a7d201a3832fdd95
+	COMMIT 1d6063799cef25a2b9d3bafbb70b430e291f5484
 	SOURCES src/SessionMgr.cpp src/Settings.cpp src/DlgDelete.cpp src/DlgNew.cpp src/DlgRename.cpp src/DlgSessions.cpp src/DlgSettings.cpp src/DllMain.cpp src/Menu.cpp src/Properties.cpp src/ContextMenu.cpp src/System.cpp src/Util.cpp src/xml/tinyxml2.cpp
 	RC_FILES src/res/resource.rc
 	INCLUDES src src/npp src/xml src/res)
@@ -785,3 +786,31 @@ nppmac_add_external_plugin(NppMenuScripts
 	FILES i18n.json menu-helper.js menu_helper.py MenuHelper.pm package.json workspace-template
 	CONCATENATE third_party/cJSON.h third_party/cJSON/cJSON.h
 	FETCH third_party/cJSON https://github.com/DaveGamble/cJSON.git c859b25da02955fef659d658b8f324b5cde87be3)
+
+# NppEditorConfig's script downloads editorconfig-core-c and PCRE2, configured here as their CMake
+# builds would.
+nppmac_add_external_plugin(NppEditorConfig
+	DISPLAY_NAME EditorConfig
+	VERSION 0.4.0
+	GIT https://github.com/editorconfig/editorconfig-notepad-plus-plus.git
+	COMMIT 136337da8c028a8bedec07285622b154ef1896c1
+	SOURCES src/DlgAbout.cpp src/NppPluginEditorConfig.cpp src/PluginDefinition.cpp deps/editorconfig/src/lib/ec_glob.c deps/editorconfig/src/lib/editorconfig.c deps/editorconfig/src/lib/editorconfig_handle.c deps/editorconfig/src/lib/ini.c deps/editorconfig/src/lib/misc.c deps/pcre2/src/pcre2_auto_possess.c deps/pcre2/src/pcre2_chartables.c deps/pcre2/src/pcre2_chkdint.c deps/pcre2/src/pcre2_compile.c deps/pcre2/src/pcre2_compile_class.c deps/pcre2/src/pcre2_config.c deps/pcre2/src/pcre2_context.c deps/pcre2/src/pcre2_convert.c deps/pcre2/src/pcre2_dfa_match.c deps/pcre2/src/pcre2_error.c deps/pcre2/src/pcre2_extuni.c deps/pcre2/src/pcre2_find_bracket.c deps/pcre2/src/pcre2_jit_compile.c deps/pcre2/src/pcre2_maketables.c deps/pcre2/src/pcre2_match.c deps/pcre2/src/pcre2_match_data.c deps/pcre2/src/pcre2_newline.c deps/pcre2/src/pcre2_ord2utf.c deps/pcre2/src/pcre2_pattern_info.c deps/pcre2/src/pcre2_script_run.c deps/pcre2/src/pcre2_serialize.c deps/pcre2/src/pcre2_string_utils.c deps/pcre2/src/pcre2_study.c deps/pcre2/src/pcre2_substitute.c deps/pcre2/src/pcre2_substring.c deps/pcre2/src/pcre2_tables.c deps/pcre2/src/pcre2_ucd.c deps/pcre2/src/pcre2_valid_utf.c deps/pcre2/src/pcre2_xclass.c
+	INCLUDES src deps/editorconfig/include deps/editorconfig/src deps/pcre2/src
+	DEFINES HAVE_CONFIG_H PCRE2_CODE_UNIT_WIDTH=8 PCRE2_STATIC
+	CONFIGURE deps/editorconfig/src/config.h.in deps/editorconfig/src/config.h deps/pcre2/src/config.h.generic deps/pcre2/src/config.h deps/pcre2/src/pcre2.h.generic deps/pcre2/src/pcre2.h deps/pcre2/src/pcre2_chartables.c.dist deps/pcre2/src/pcre2_chartables.c
+	CONFIGURE_VARIABLES UNIX=1 HAVE_STRCASECMP=1 HAVE_STRDUP=1 HAVE_STRNDUP=1 HAVE__BOOL=1 HAVE_CONST=1 PCRE2_STATIC=1 PROJECT_VERSION_MAJOR=0 PROJECT_VERSION_MINOR=12 PROJECT_VERSION_PATCH=10 PROJECT_VERSION_SUFFIX=
+	FETCH deps/editorconfig https://github.com/editorconfig/editorconfig-core-c.git 99d757d197677d270644791f13fffe2644659985 deps/pcre2 https://github.com/PCRE2Project/pcre2.git b2bd4254b379b9d7dc9a3dda060a7e27009ccdff)
+
+# NppBplistPlugin gets libplist from vcpkg, which builds it without a configuration header: the features
+# macOS has are defined (the MSVC patches vcpkg adds are not needed).
+nppmac_add_external_plugin(NppBplistPlugin
+	DISPLAY_NAME "Notepad++ bplist plugin"
+	VERSION 3.0.0.0
+	GIT https://github.com/azerg/NppBplistPlugin.git
+	COMMIT 50dfe8ee181b7a8aae6d90f1c607b8d03d265243
+	SOURCES src/NppBplistPlugin/src/AboutWnd.cpp src/NppBplistPlugin/src/BplistMngr.cpp src/NppBplistPlugin/src/NppPluginMain.cpp src/NppBplistPlugin/src/PlistMngr.cpp src/NppBplistPlugin/src/PluginDefinition.cpp deps/libplist/src/base64.c deps/libplist/src/bplist.c deps/libplist/src/bytearray.c deps/libplist/src/hashtable.c deps/libplist/src/jplist.c deps/libplist/src/jsmn.c deps/libplist/src/oplist.c deps/libplist/src/out-default.c deps/libplist/src/out-limd.c deps/libplist/src/out-plutil.c deps/libplist/src/plist.c deps/libplist/src/ptrarray.c deps/libplist/src/time64.c deps/libplist/src/xplist.c deps/libplist/libcnary/node.c deps/libplist/libcnary/node_list.c
+	RC_FILES src/NppBplistPlugin/src/rsrc.rc
+	INCLUDES src/NppBplistPlugin/src deps/libplist/include deps/libplist/src deps/libplist/libcnary/include
+	DEFINES HAVE_ATTRIBUTE_CONSTRUCTOR HAVE_MEMMEM HAVE_STRNDUP HAVE_STRPTIME HAVE_GMTIME_R HAVE_LOCALTIME_R HAVE_TM_TM_GMTOFF HAVE_TM_TM_ZONE
+	CXX_STANDARD 23
+	FETCH deps/libplist https://github.com/libimobiledevice/libplist.git 2d8d7ef272db06783989f77ba1ed80aa0f4d2dfd)

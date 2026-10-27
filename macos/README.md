@@ -138,10 +138,13 @@ Visual Studio project. [import-plugins.py](plugins/import-plugins.py) writes an 
 checkout of the plugin (with the static libraries the project links from its own repository, its
 forced includes, character set and C++ standard, and its resource compiler's definitions, MSBuild
 properties resolved); `FILES` or `PACKAGE_DIR` adds by hand what the plugin's Windows package has
-beside the DLL (a default configuration, a lexer's styles). A plugin is listed once it builds and
-loads, and work in progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written
-only for Windows itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech)
-are left out. Code that many plugins share (their template) and that
+beside the DLL (a default configuration, a lexer's styles). A plugin without a Visual Studio project
+(built with MinGW, CMake, premake or nmake) has its entry written by hand from its build script: the
+libraries the script fetches are pinned with `FETCH`, the files it configures or puts together are
+made with `CONFIGURE` and `CONCATENATE`. A plugin is listed once it builds and loads, and work in
+progress can sit in an uncommitted `plugins/catalog-local.cmake`. Plugins written only for Windows
+itself (a tray helper, Explorer's elevation, synthetic keystrokes, Windows speech, TortoiseSVN) are
+left out. Code that many plugins share (their template) and that
 clang reads differently from Visual C++ is adjusted by
 [plugins/plugin-text-rules.txt](plugins/plugin-text-rules.txt). Of the 220 plugins in the official
 list, 126 are C or C++ on GitHub (the others are .NET, Delphi and so on, which cannot be built here),
