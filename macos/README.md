@@ -188,7 +188,7 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
 | `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |
 | `NPPMAC_TEST_APPDATA=<folder>` | stands for `~/Library/Application Support`, where Notepad++ keeps what it stores per user besides `-settingsDir` (plugins' settings) |
-| `NPPMAC_TEST_COMMAND=<id>[,<id>...]` | sends menu commands (`IDM_*` values), half a second apart, after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2) |
+| `NPPMAC_TEST_COMMAND=<id>[,<id>...]` | sends menu commands (`IDM_*` values), half a second apart, after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2); `click:<id>` clicks the button (check box, radio button) with that control id, in any window |
 | `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree, the native windows and the menu bar |
 | `NPPMAC_TRACE_PAINT=1`, `NPPMAC_TRACE_MESSAGEBOX=1`, `NPPMAC_TRACE_WINDOWS=1` | trace painting, message boxes, window creation |
 | `NPPMAC_QUIET_STUBS=1` | do not log calls to stubbed functions |

@@ -423,6 +423,30 @@ void nppmac::ui::windowManagerTestCommand(int id)
 		PostMessageW(target->_hwnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }
 
+void nppmac::ui::windowManagerTestClick(int controlId)
+{
+	using namespace nppmac::user;
+	// The first button with the id, in any window (a dialog's page that is not shown included).
+	const auto find = [controlId](const auto& self, Window* window) -> Window* {
+		for (Window* child : window->_children)
+		{
+			if (child->_id == static_cast<UINT_PTR>(controlId) && child->_class && child->_class->_name == u"Button")
+				return child;
+			if (Window* found = self(self, child))
+				return found;
+		}
+		return nullptr;
+	};
+	for (Window* window : topLevelWindows())
+	{
+		if (Window* button = find(find, window))
+		{
+			PostMessageW(button->_hwnd, BM_CLICK, 0, 0);
+			return;
+		}
+	}
+}
+
 void nppmac::ui::windowManagerApplicationActivated(bool active)
 {
 	using namespace nppmac::user;

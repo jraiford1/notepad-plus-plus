@@ -408,17 +408,20 @@ namespace nppmac::controls
 			HWND parent = GetParent(hwnd);
 			if (!parent)
 				return;
-			HWND sibling = hwnd;
-			for (;;)
+			// Round the group from a control the walk comes back to (as Windows does): the button itself
+			// may be one it skips (hidden, disabled).
+			const HWND start = GetNextDlgGroupItem(parent, hwnd, TRUE);
+			HWND sibling = start;
+			do
 			{
-				sibling = GetNextDlgGroupItem(parent, sibling, FALSE);
-				if (!sibling || sibling == hwnd)
+				if (!sibling)
 					break;
 				char16_t className[16]{};
 				GetClassNameW(sibling, className, 16);
-				if (_wcsicmp(className, WC_BUTTONW) == 0 && typeOf(sibling) == BS_AUTORADIOBUTTON)
+				if (sibling != hwnd && _wcsicmp(className, WC_BUTTONW) == 0 && typeOf(sibling) == BS_AUTORADIOBUTTON)
 					SendMessageW(sibling, BM_SETCHECK, BST_UNCHECKED, 0);
-			}
+				sibling = GetNextDlgGroupItem(parent, sibling, FALSE);
+			} while (sibling != start);
 		}
 
 		// A click: the automatic types change their state, then the parent hears BN_CLICKED.
