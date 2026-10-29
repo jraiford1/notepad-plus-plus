@@ -36,13 +36,22 @@ done
 cmake -S "$root/macos" -B "$build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build" --parallel "$(sysctl -n hw.ncpu)"
 
-# Upstream's sources must be as upstream has them: the port lives in macos/ only. What this branch
-# changed in them since its last merge of upstream must be nothing (upstream itself may have moved on).
+# Upstream's sources must be as upstream has them: the port lives in macos/ only. The one exception is
+# the changes made for upstream itself, listed in macos/upstream-changes.txt. So this branch's copy must
+# be its last merge of upstream with exactly those commits merged in (upstream itself may have moved on).
 if git -C "$root" rev-parse --verify --quiet upstream/master > /dev/null; then
-	base="$(git -C "$root" merge-base HEAD upstream/master)"
-	if ! git -C "$root" diff --quiet "$base" HEAD -- PowerEditor scintilla lexilla boostregex; then
-		echo "This branch changed upstream's sources:"
-		git -C "$root" diff --stat "$base" HEAD -- PowerEditor scintilla lexilla boostregex
+	expected="$(git -C "$root" merge-base HEAD upstream/master)"
+	while read -r commit _; do
+		case "$commit" in '' | '#'*) continue ;; esac
+		if ! tree="$(git -C "$root" merge-tree --write-tree --no-messages "$expected" "$commit")"; then
+			echo "The upstream change $commit (macos/upstream-changes.txt) no longer merges cleanly with upstream."
+			exit 1
+		fi
+		expected="$(git -C "$root" commit-tree "$tree" -p "$expected" -p "$commit" -m "upstream with its changes")"
+	done < "$root/macos/upstream-changes.txt"
+	if ! git -C "$root" diff --quiet "$expected" HEAD -- PowerEditor scintilla lexilla boostregex; then
+		echo "This branch changed upstream's sources beyond macos/upstream-changes.txt:"
+		git -C "$root" diff --stat "$expected" HEAD -- PowerEditor scintilla lexilla boostregex
 		exit 1
 	fi
 fi

@@ -1,0 +1,13 @@
+# Changes to upstream's own code (PowerEditor/, scintilla/, lexilla/, boostregex/) that this fork carries
+# until upstream takes them. Each is one commit on its own branch, made from upstream at master's last
+# upstream merge so that it can be offered to upstream as a pull request, and merged into master.
+#
+# macos/ci/build-and-test.sh checks that master's copy of upstream's directories is upstream's with exactly
+# these commits merged in. The nightly upstream merge stays an ordinary git merge; it stops only where
+# upstream changes the same lines as one of these:
+#   - upstream took the change: resolve the merge with upstream's version and delete its line here;
+#   - upstream moved the code: rebase the change's branch onto upstream/master, resolve the merge the
+#     same way, and put the rebased commit here in place of the old one.
+#
+# <commit>                                  <branch>                    <change>
+0d2f85c10ad5cc97cec10569f272dd129202f91b    w33-standard-icons-large    "Standard icons: large" toolbar option
