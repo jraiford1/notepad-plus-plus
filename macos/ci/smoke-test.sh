@@ -177,6 +177,20 @@ for command in 47000 48011 48009 44084; do
 	run "command-$command" NPPMAC_TEST_COMMAND=$command && echo "ok   command $command"
 done
 
+# Preferences > Toolbar, "Fluent UI: large" (6104): a radio button that is not the first of its group,
+# so clicking it walks the group to uncheck the others. The toolbar then has large icons.
+files=()
+mkdir -p "$work/toolbar-settings"
+if runSettings="$work/toolbar-settings" run toolbar-large NPPMAC_TEST_COMMAND=48011,click:6104 NPPMAC_DUMP_TREE=1; then
+	height="$(grep -m1 'ReBarWindow32 id=0' "$work/toolbar-large.log" | sed -E 's/.* client=[0-9]+x([0-9]+) .*/\1/')"
+	if [ "${height:-0}" -ge 40 ] 2> /dev/null; then
+		echo "ok   toolbar-large"
+	else
+		echo "FAIL toolbar-large: the toolbar is ${height:-not} ${height:+points }high, not large"
+		failures=$((failures + 1))
+	fi
+fi
+
 # A plugin: HelloMac's first command (the first plugin command id, 22000) inserts its greeting, which
 # is then saved through the Save As panel.
 if [ -n "$plugin" ]; then

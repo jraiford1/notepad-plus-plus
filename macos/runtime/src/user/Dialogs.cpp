@@ -560,7 +560,35 @@ HWND WINAPI GetNextDlgTabItem(HWND dialog, HWND control, BOOL previous)
 
 HWND WINAPI GetNextDlgGroupItem(HWND dialog, HWND control, BOOL previous)
 {
-	return GetNextDlgTabItem(dialog, control, previous);
+	Window* window = fromHandle(dialog);
+	if (!window || window->_children.empty())
+		return nullptr;
+	const std::vector<Window*>& children = window->_children;
+	// No control: the first one's group.
+	auto it = control ? std::find_if(children.begin(), children.end(), [control](Window* w) { return w->_hwnd == control; })
+		: children.begin();
+	if (it == children.end())
+		return nullptr;
+	// The group: from the control at or before this one that has WS_GROUP (or the first) to the one before
+	// the next WS_GROUP. Tab stops do not matter: a radio group usually has one, on its first button.
+	const size_t index = static_cast<size_t>(it - children.begin());
+	size_t first = index;
+	while (first > 0 && !(children[first]->_style & WS_GROUP))
+		--first;
+	size_t last = index + 1;
+	while (last < children.size() && !(children[last]->_style & WS_GROUP))
+		++last;
+	// The next (or previous) visible and enabled control of the group, wrapping round within it; the
+	// control itself when there is none.
+	const size_t count = last - first;
+	for (size_t step = 1; step < count; ++step)
+	{
+		const size_t offset = index - first;
+		Window* candidate = children[first + (previous ? offset + count - step : offset + step) % count];
+		if (candidate->_visible && !(candidate->_style & WS_DISABLED))
+			return candidate->_hwnd;
+	}
+	return (*it)->_hwnd;
 }
 
 BOOL WINAPI IsDialogMessageW(HWND dialog, LPMSG msg)

@@ -299,6 +299,8 @@ namespace nppmac::ui
 	void windowManagerDumpTree();
 	// Test aid: sends WM_COMMAND with the id to the active top-level window.
 	void windowManagerTestCommand(int id);
+	// Test aid: clicks (BM_CLICK) the first button with the control id, in any window.
+	void windowManagerTestClick(int controlId);
 	// The program became the active one, or stopped being it (WM_ACTIVATEAPP to its top levels).
 	void windowManagerApplicationActivated(bool active);
 	// Files macOS asks the running program to open (Finder's Open With, a double-click, a drop on the

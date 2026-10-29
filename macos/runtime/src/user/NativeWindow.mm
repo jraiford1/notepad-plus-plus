@@ -1134,7 +1134,8 @@ namespace nppmac::ui
 	}
 
 	// Debugging aid: NPPMAC_TEST_COMMAND=<id>[,<id>...] sends those menu commands, half a second apart,
-	// after NPPMAC_TEST_COMMAND_DELAY seconds (default 2), for dialogs without a shortcut.
+	// after NPPMAC_TEST_COMMAND_DELAY seconds (default 2), for dialogs without a shortcut; click:<id>
+	// clicks the button with that control id instead (a dialog's check box or radio button).
 	void scheduleCommand()
 	{
 		const char* command = std::getenv("NPPMAC_TEST_COMMAND");
@@ -1144,12 +1145,18 @@ namespace nppmac::ui
 		double delay = delayText ? std::atof(delayText) : 2.0;
 		for (const char* next = command; *next;)
 		{
+			const bool click = std::strncmp(next, "click:", 6) == 0;
+			if (click)
+				next += 6;
 			char* end = nullptr;
 			const int id = static_cast<int>(std::strtol(next, &end, 10));
 			if (end == next)
 				break;
 			NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
-				windowManagerTestCommand(id);
+				if (click)
+					windowManagerTestClick(id);
+				else
+					windowManagerTestCommand(id);
 			}];
 			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 			delay += 0.5;
