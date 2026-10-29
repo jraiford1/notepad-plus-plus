@@ -55,3 +55,15 @@ file: WinControls/PluginsAdmin/pluginsAdmin.cpp
 ====
 #if !defined(NDEBUG) || defined(__APPLE__) // if not debug, then it's release (macOS: always the JSON list)
 >>>>
+
+# Preferences has no File Association page on macOS: it registers extensions in the Windows registry,
+# which the runtime keeps only for the session. Finder sets which app opens a file type (Get Info,
+# Change All), and the app offers itself for the extensions its languages know (app/Info.plist.in).
+file: WinControls/Preference/preferenceDlg.cpp
+<<<<
+			_wVector.push_back(DlgInfo(&_fileAssocDlg, L"File Association", L"FileAssoc"));
+====
+#ifndef __APPLE__
+			_wVector.push_back(DlgInfo(&_fileAssocDlg, L"File Association", L"FileAssoc"));
+#endif
+>>>>

@@ -19,13 +19,17 @@
 #import <PDFKit/PDFKit.h>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#include <string_view>
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <vector>
 
 #include "Platform.h"
 
@@ -51,6 +55,57 @@ namespace nppmac::platform
 				return [NSURL fileURLWithPath:string];
 			NSURL* url = [NSURL URLWithString:string];
 			return url.scheme ? url : [NSURL fileURLWithPath:string];
+		}
+
+		constexpr const char* lsregisterPath =
+			"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+
+		// Every path Launch Services has registered for a bundle identifier, deleted copies too. Its
+		// public calls give only the copy it prefers, so they are read from its database's bundle table
+		// (lsregister -dump Bundle): a block per bundle, after a line of dashes, whose "path:" line
+		// ("path: <path> (0x<id>)") comes before its "identifier:" line.
+		std::vector<std::string> registeredCopies(const std::string& identifier)
+		{
+			std::vector<std::string> copies;
+			FILE* dump = popen((std::string{lsregisterPath} + " -dump Bundle 2>/dev/null").c_str(), "r");
+			if (!dump)
+				return copies;
+			std::string path;
+			bool identified = false;
+			char* line = nullptr;
+			size_t capacity = 0;
+			for (ssize_t length; (length = getline(&line, &capacity, dump)) > 0;)
+			{
+				std::string_view text{line, static_cast<size_t>(length)};
+				if (text.back() == '\n')
+					text.remove_suffix(1);
+				const auto value = [&text](std::string_view key) {
+					std::string_view rest = text.substr(key.size());
+					rest.remove_prefix(std::min(rest.find_first_not_of(' '), rest.size()));
+					return rest;
+				};
+				if (text.starts_with("-----"))
+				{
+					path.clear();
+					identified = false;
+				}
+				else if (path.empty() && text.starts_with("path:"))
+				{
+					std::string_view registered = value("path:");
+					if (const size_t id = registered.rfind(" (0x"); id != std::string_view::npos)
+						registered = registered.substr(0, id);
+					path = registered;
+				}
+				else if (!identified && text.starts_with("identifier:"))
+				{
+					identified = true;
+					if (!path.empty() && value("identifier:") == identifier)
+						copies.push_back(path);
+				}
+			}
+			std::free(line);
+			pclose(dump);
+			return copies;
 		}
 	}
 
@@ -89,6 +144,42 @@ namespace nppmac::platform
 		if (std::getenv("NPPMAC_TEST_RUN"))
 			return;
 		[NSApp activateIgnoringOtherApps:YES];
+	}
+
+	void registerApplication()
+	{
+		if (std::getenv("NPPMAC_TEST_RUN"))
+			return;
+		NSString* identifier = NSBundle.mainBundle.bundleIdentifier;
+		// The path as Launch Services spells it (realpath: URLByResolvingSymlinksInPath drops /private
+		// from /private/tmp and /private/var, where it is the real one).
+		char resolvedBundle[PATH_MAX];
+		if (!identifier || ![NSBundle.mainBundle.bundlePath.pathExtension isEqualToString:@"app"]
+			|| !realpath(NSBundle.mainBundle.bundlePath.fileSystemRepresentation, resolvedBundle))
+			return;
+		const std::string ownPath = resolvedBundle;
+		// A downloaded copy run where macOS put it for this launch (App Translocation), a folder that
+		// goes away when it quits, is not registered: the copies that stay are left as they are.
+		if (ownPath.find("/AppTranslocation/") != std::string::npos)
+			return;
+		const std::string bundleIdentifier = toString(identifier);
+		dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+			LSRegisterURL((__bridge CFURLRef)[NSURL fileURLWithPath:@(ownPath.c_str()) isDirectory:YES], true);
+			for (const std::string& copy : registeredCopies(bundleIdentifier))
+			{
+				char resolved[PATH_MAX];
+				if (copy == ownPath || (realpath(copy.c_str(), resolved) && ownPath == resolved))
+					continue;
+				// Launch Services has no public call that unregisters; its own tool does.
+				NSTask* task = [[NSTask alloc] init];
+				task.executableURL = [NSURL fileURLWithPath:@(lsregisterPath)];
+				task.arguments = @[@"-u", @(copy.c_str())];
+				task.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+				task.standardError = NSFileHandle.fileHandleWithNullDevice;
+				if ([task launchAndReturnError:nil])
+					[task waitUntilExit];
+			}
+		});
 	}
 
 	bool isDarkAppearance()

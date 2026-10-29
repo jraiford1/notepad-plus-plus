@@ -47,6 +47,12 @@ namespace nppmac::platform
 	// (NPPMAC_TEST_RUN=1) never does: it must not take the keyboard from whoever uses the Mac.
 	void activateApplication();
 
+	// Makes this copy of the program the one Launch Services knows: it is registered (its document
+	// types as they are now) and every other copy with its bundle identifier is unregistered, deleted
+	// ones too, so that Finder's Open With and a type's default always mean the copy last launched.
+	// In the background; a test run (NPPMAC_TEST_RUN=1) leaves the registrations alone.
+	void registerApplication();
+
 	// Whether the system appearance is dark.
 	bool isDarkAppearance();
 
