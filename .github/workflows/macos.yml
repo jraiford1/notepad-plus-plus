@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch upstream (to check upstream's sources are untouched)
+      - name: Fetch upstream (to check upstream's sources are upstream's, plus macos/upstream-changes.txt)
         run: |
           git remote add upstream https://github.com/notepad-plus-plus/notepad-plus-plus.git
           git fetch --no-tags upstream master

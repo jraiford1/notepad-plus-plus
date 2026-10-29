@@ -3,7 +3,11 @@
 A native macOS build of Notepad++ made from upstream's own source. **Nothing under `PowerEditor/`,
 `scintilla/`, `lexilla/` or `boostregex/` is edited for macOS**, so fixes and features from
 [notepad-plus-plus/notepad-plus-plus](https://github.com/notepad-plus-plus/notepad-plus-plus) merge
-without conflicts. Everything macOS-specific lives in this directory.
+as they are. Everything macOS-specific lives in this directory.
+
+The only changes to upstream's own code are features made for upstream itself: each is one commit
+that can be offered there as a pull request, carried here until upstream takes it.
+[`upstream-changes.txt`](upstream-changes.txt) lists them, and the build check allows no others.
 
 This is an unofficial port; it is not made, endorsed or supported by the Notepad++ project.
 

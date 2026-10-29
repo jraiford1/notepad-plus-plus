@@ -9,7 +9,10 @@
   alongside the unchanged Windows build.
 - **Where they live.** Everything macOS-specific is in `macos/` (see `macos/README.md`): the migration engine,
   the Win32 runtime and the build. Upstream's tree (`PowerEditor/`, `scintilla/`, `lexilla/`, `boostregex/`)
-  is never edited, so `upstream/master` keeps merging cleanly.
+  is not edited for macOS, so `upstream/master` keeps merging cleanly. The exception is job J3's changes,
+  made for upstream itself: each is one commit on its own branch from upstream, merged into `master` and
+  listed in `macos/upstream-changes.txt` until upstream takes it (that file says what to do when the
+  nightly merge meets one). The pull request upstream is the owner's.
 - **Who consumes a release.** Mac users of the fork, through a zipped `.app` attached to a GitHub release on the
   fork (the `X` step).
 
@@ -36,7 +39,7 @@ the app is opened the first time with right-click → Open.
 
 - `macos/ci/build-and-test.sh` is the check: it configures and builds `macos` (Release, universal arm64 + x86_64, macOS 13.3 and
   later), checks that this branch changed nothing in upstream's directories since the last upstream
-  merge, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
+  merge beyond the commits in `macos/upstream-changes.txt`, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
   (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, an input method, printing, dialogs and
   panels, a plugin, dark mode),
   on the arm64 slice and, through Rosetta, the x86_64 slice of the universal app. The smoke test also
