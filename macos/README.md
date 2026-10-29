@@ -96,8 +96,9 @@ Tracked as job J1 in the work tracker. Today:
   icon), into the running window; a folder opens as a dropped one does. Finder offers it for text
   and for the extensions of the languages it knows (`langs.model.xml`), also those macOS has no type
   for (`.st`), and makes it a type's default with Get Info, Change All. That is File Association's
-  job on Windows, so Preferences has no File Association page here (`migration-fixups.txt`); the
-  build registers the app with Launch Services, so Finder knows a change at once;
+  job on Windows, so Preferences has no File Association page here (`migration-fixups.txt`). Each
+  launch registers that copy of the app with Launch Services and unregisters every other copy with
+  its bundle identifier, deleted ones too: Open With and a type's default mean the copy last launched;
 * changes made outside Notepad++ show up: Folder as Workspace follows its folders, through
   `ReadDirectoryChangesW` on FSEvents, and coming back to Notepad++ asks to reload a file another
   program changed;

@@ -125,12 +125,6 @@ set_target_properties(NotepadPlusPlus PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER "${NPPMAC_BUNDLE_ID}"
 	MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
 )
-# Launch Services reads the document types when the app is registered, which a build does not do:
-# registered at each build, Finder's Open With knows a change to them without the app being launched.
-add_custom_command(TARGET NotepadPlusPlus POST_BUILD
-	COMMAND /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-		-f "$<TARGET_BUNDLE_DIR:NotepadPlusPlus>"
-	VERBATIM)
 target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 # The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions

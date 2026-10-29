@@ -143,6 +143,7 @@ namespace nppmac
 			g_commandLine += quoted;
 		}
 		nppmac::platform::activateApplication();
+		nppmac::platform::registerApplication();
 	}
 
 	char16_t* commandLineArguments()
