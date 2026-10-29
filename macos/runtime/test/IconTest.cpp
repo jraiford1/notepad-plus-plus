@@ -148,6 +148,14 @@ int main()
 	CHECK(LoadImageW(nullptr, nppmac::toUtf16(truncated).c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE) == nullptr);
 	unlink(truncated.c_str());
 	CHECK(CreateBitmap(1 << 20, 1 << 20, 1, 32, nullptr) == nullptr);
+
+	// Without a module, LoadIconWithScaleDown knows only Windows' own icons: for a file's path it fails, so
+	// that Notepad++ loads the file instead (custom toolbar icons), as on Windows.
+	HICON system = nullptr;
+	CHECK(LoadIconWithScaleDown(nullptr, IDI_APPLICATION, 32, 32, &system) == S_OK && system);
+	HICON none = nullptr;
+	CHECK(LoadIconWithScaleDown(nullptr, path.c_str(), 16, 16, &none) != S_OK && !none);
+	CHECK(LoadIconW(nullptr, MAKEINTRESOURCEW(1)) == nullptr);
 	std::cout << g_checks << " checks, " << g_failures << " failures\n";
 	return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
