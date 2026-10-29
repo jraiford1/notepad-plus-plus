@@ -120,9 +120,15 @@ namespace nppmac::user
 		return systemCursor(ui::CursorShape::arrow);
 	}
 
+	// Windows' own icons, IDI_APPLICATION (32512) to IDI_SHIELD (32518), by ordinal. Any other name is none
+	// of them, as on Windows: LoadIconWithScaleDown without a module fails for a file's path, and callers
+	// then load the file (Notepad++'s custom toolbar icons).
 	HICON loadSystemIcon(LPCWSTR id)
 	{
-		return systemIcon(static_cast<int>(reinterpret_cast<uintptr_t>(id)));
+		if (!IS_INTRESOURCE(id))
+			return nullptr;
+		const int ordinal = static_cast<int>(reinterpret_cast<uintptr_t>(id));
+		return ordinal >= 32512 && ordinal <= 32518 ? systemIcon(ordinal) : nullptr;
 	}
 }
 
