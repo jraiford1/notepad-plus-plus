@@ -89,6 +89,34 @@ add_custom_command(
 )
 set_source_files_properties("${appIcon}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
+# The extensions of the languages Notepad++ knows (langs.model.xml and the preinstalled user-defined
+# languages), for which Info.plist.in offers the app: Finder lists it in Open With for them and can
+# make it their default (Get Info, Change All), also where macOS has no type for the extension (.st).
+set(nppDocumentExtensions "")
+set(nppLanguageFiles "${NPP_ROOT}/PowerEditor/src/langs.model.xml" ${nppUserDefineLangs})
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${nppLanguageFiles})
+foreach(languageFile IN LISTS nppLanguageFiles)
+	file(READ "${languageFile}" languages)
+	string(REPLACE ";" "," languages "${languages}") # a comment character (commentLine=";") would split the list
+	string(REGEX MATCHALL "<(Language|UserLang) [^>]* ext=\"[^\"]*\"" languageTags "${languages}")
+	foreach(languageTag IN LISTS languageTags)
+		string(REGEX REPLACE ".* ext=\"([^\"]*)\"" "\\1" languageExtensions "${languageTag}")
+		string(TOLOWER "${languageExtensions}" languageExtensions)
+		string(REGEX REPLACE "[ \t]+" ";" languageExtensions "${languageExtensions}")
+		list(APPEND nppDocumentExtensions ${languageExtensions})
+	endforeach()
+endforeach()
+list(REMOVE_ITEM nppDocumentExtensions "")
+list(REMOVE_DUPLICATES nppDocumentExtensions)
+list(SORT nppDocumentExtensions)
+list(LENGTH nppDocumentExtensions nppDocumentExtensionCount)
+if(nppDocumentExtensionCount LESS 100)
+	message(FATAL_ERROR "Only ${nppDocumentExtensionCount} extensions found in Notepad++'s languages: has langs.model.xml changed form?")
+endif()
+list(TRANSFORM nppDocumentExtensions PREPEND "\t\t\t\t<string>")
+list(TRANSFORM nppDocumentExtensions APPEND "</string>")
+list(JOIN nppDocumentExtensions "\n" nppDocumentExtensions)
+
 add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources} "${appIcon}")
 set_target_properties(NotepadPlusPlus PROPERTIES
 	OUTPUT_NAME "${NPPMAC_APP_NAME}"
@@ -97,6 +125,12 @@ set_target_properties(NotepadPlusPlus PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER "${NPPMAC_BUNDLE_ID}"
 	MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
 )
+# Launch Services reads the document types when the app is registered, which a build does not do:
+# registered at each build, Finder's Open With knows a change to them without the app being launched.
+add_custom_command(TARGET NotepadPlusPlus POST_BUILD
+	COMMAND /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+		-f "$<TARGET_BUNDLE_DIR:NotepadPlusPlus>"
+	VERBATIM)
 target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 # The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions

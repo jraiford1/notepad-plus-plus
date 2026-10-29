@@ -14,7 +14,9 @@
 	<array>
 		<!-- What Finder offers to open with Notepad++ (Open With, a drop on the Dock icon). Like
 		     notepad++.exe it opens any file, text first; "Alternate": it never takes over a type
-		     unless the user makes it the default. A folder opens as upstream opens a dropped one. -->
+		     unless the user makes it the default. The extensions are those of the languages it
+		     knows (app/CMakeLists.txt), which macOS may have no type for. A folder opens as
+		     upstream opens a dropped one. -->
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Text document</string>
@@ -25,6 +27,18 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.text</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Source file</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+${nppDocumentExtensions}
 			</array>
 		</dict>
 		<dict>
