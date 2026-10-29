@@ -191,6 +191,26 @@ if runSettings="$work/toolbar-settings" run toolbar-large NPPMAC_TEST_COMMAND=48
 	fi
 fi
 
+# "Standard icons: large" (6139): the standard icons at the large size, from their own resources. Chosen
+# in Preferences, then File > Exit (only quitting saves config.xml): config.xml keeps "standardLarge",
+# and Notepad++ starts again with a large toolbar.
+mkdir -p "$work/toolbar-standard-settings"
+env NPPMAC_TEST_RUN=1 NPPMAC_QUIET_STUBS=1 NPPMAC_TEST_COMMAND=48011,click:6139,41011 NPPMAC_TEST_COMMAND_DELAY=3 \
+	perl -e 'alarm 60; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$work/toolbar-standard-settings" \
+	> "$work/toolbar-standard-choose.log" 2>&1
+if ! grep -q '"ToolBar".*>standardLarge</GUIConfig>' "$work/toolbar-standard-settings/config.xml" 2> /dev/null; then
+	echo "FAIL toolbar-standard-large: config.xml does not keep \"standardLarge\""
+	failures=$((failures + 1))
+elif runSettings="$work/toolbar-standard-settings" run toolbar-standard-large NPPMAC_DUMP_TREE=1; then
+	height="$(grep -m1 'ReBarWindow32 id=0' "$work/toolbar-standard-large.log" | sed -E 's/.* client=[0-9]+x([0-9]+) .*/\1/')"
+	if [ "${height:-0}" -ge 40 ] 2> /dev/null; then
+		echo "ok   toolbar-standard-large"
+	else
+		echo "FAIL toolbar-standard-large: after a restart the toolbar is ${height:-not} ${height:+points }high, not large"
+		failures=$((failures + 1))
+	fi
+fi
+
 # A plugin: HelloMac's first command (the first plugin command id, 22000) inserts its greeting, which
 # is then saved through the Save As panel.
 if [ -n "$plugin" ]; then
