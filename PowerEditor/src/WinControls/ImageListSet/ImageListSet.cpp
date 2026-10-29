@@ -338,6 +338,9 @@ void ToolBarIcons::reInit(int size)
 	ImageList_SetIconSize(getDefaultLstSetDM2(), size, size);
 	ImageList_SetIconSize(getDisableLstSetDM2(), size, size);
 
+	ImageList_SetIconSize(getDefaultLstStd(), size, size);
+	ImageList_SetIconSize(getDisableLstStd(), size, size);
+
 	for (size_t i = 0; i < _iconListVector.size(); ++i)
 	{
 		_iconListVector[i].removeAll();
@@ -356,6 +359,9 @@ void ToolBarIcons::reInit(int size)
 			_iconListVector[HLIST_DISABLE_DM].addIcon(_tbiis[i]._grayDarkModeIcon, size, size, _tbiis[i]._stdIcon);
 			_iconListVector[HLIST_DEFAULT_DM2].addIcon(_tbiis[i]._defaultDarkModeIcon2, size, size, _tbiis[i]._stdIcon, true);
 			_iconListVector[HLIST_DISABLE_DM2].addIcon(_tbiis[i]._grayDarkModeIcon2, size, size, _tbiis[i]._stdIcon);
+
+			_iconListVector[HLIST_DEFAULT_STD].addIcon(_tbiis[i]._stdLargeIcon, size, size, _tbiis[i]._stdIcon);
+			_iconListVector[HLIST_DISABLE_STD].addIcon(_tbiis[i]._grayStdLargeIcon, size, size, _tbiis[i]._stdIcon);
 		}
 	}
 
@@ -366,6 +372,10 @@ void ToolBarIcons::reInit(int size)
 		_iconListVector[HLIST_DISABLE].addIcon(i._hIcon);
 		_iconListVector[HLIST_DEFAULT2].addIcon(i._hIcon);
 		_iconListVector[HLIST_DISABLE2].addIcon(i._hIcon);
+
+		// The standard icons have no Dark Mode variant: in both modes, the plugin's own icon
+		_iconListVector[HLIST_DEFAULT_STD].addIcon(i._hIcon);
+		_iconListVector[HLIST_DISABLE_STD].addIcon(i._hIcon);
 
 		HICON hIcon = nullptr;
 
@@ -462,6 +472,9 @@ void ToolBarIcons::create(HINSTANCE hInst, int iconSize)
 	_iconListVector.push_back(IconList());
 	_iconListVector.push_back(IconList());
 	_iconListVector.push_back(IconList());
+
+	_iconListVector.push_back(IconList());
+	_iconListVector.push_back(IconList());
 	
 
 	_iconListVector[HLIST_DEFAULT].init(hInst, iconSize);
@@ -474,6 +487,9 @@ void ToolBarIcons::create(HINSTANCE hInst, int iconSize)
 	_iconListVector[HLIST_DEFAULT_DM2].init(hInst, iconSize);
 	_iconListVector[HLIST_DISABLE_DM2].init(hInst, iconSize);
 
+	_iconListVector[HLIST_DEFAULT_STD].init(hInst, iconSize);
+	_iconListVector[HLIST_DISABLE_STD].init(hInst, iconSize);
+
 	reInit(iconSize);
 }
 
@@ -483,6 +499,8 @@ void ToolBarIcons::destroy()
 	_iconListVector[HLIST_DEFAULT2].destroy();
 	_iconListVector[HLIST_DISABLE].destroy();
 	_iconListVector[HLIST_DISABLE2].destroy();
+	_iconListVector[HLIST_DEFAULT_STD].destroy();
+	_iconListVector[HLIST_DISABLE_STD].destroy();
 }
 
 HBITMAP ToolBarIcons::resizeHBitmap(HBITMAP srcBmp, int destW, int destH)

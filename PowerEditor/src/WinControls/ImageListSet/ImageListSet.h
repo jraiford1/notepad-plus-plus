@@ -73,6 +73,9 @@ struct ToolBarButtonUnit
 	int _grayDarkModeIcon2;
 
 	int _stdIcon;
+
+	int _stdLargeIcon;
+	int _grayStdLargeIcon;
 };
 
 struct DynamicCmdIcoBmp {
@@ -98,7 +101,12 @@ enum ToolbarIconList
 	HLIST_DEFAULT_DM,
 	HLIST_DISABLE_DM,
 	HLIST_DEFAULT_DM2,
-	HLIST_DISABLE_DM2
+	HLIST_DISABLE_DM2,
+
+	// Standard icons, large (Light and Dark Mode)
+
+	HLIST_DEFAULT_STD,
+	HLIST_DISABLE_STD
 };
 
 class ToolBarIcons
@@ -140,6 +148,14 @@ public:
 
 	HIMAGELIST getDisableLstSetDM2() const {
 		return _iconListVector[HLIST_DISABLE_DM2].getHandle();
+	}
+
+	HIMAGELIST getDefaultLstStd() const {
+		return _iconListVector[HLIST_DEFAULT_STD].getHandle();
+	}
+
+	HIMAGELIST getDisableLstStd() const {
+		return _iconListVector[HLIST_DISABLE_STD].getHandle();
 	}
 
 	void resizeIcon(int size) {

@@ -329,6 +329,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						case TB_STANDARD:
 							_toolBar.setToBmpIcons();
 							break;
+
+						case TB_STANDARD_LARGE:
+							_toolBar.setToLargeStdIcons();
+							break;
 					}
 					NppDarkMode::refreshDarkMode(hwnd, false);
 				}
@@ -4175,6 +4179,17 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			if (state != TB_STANDARD)
 			{
 				_toolBar.setToBmpIcons();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARSTANDARDLARGE:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_STANDARD_LARGE)
+			{
+				_toolBar.setToLargeStdIcons();
 			}
 		}
 		break;

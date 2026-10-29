@@ -6085,6 +6085,8 @@ void NppParameters::feedGUIParameters(const NppXml::Element& element)
 						tbIconSet = TB_SMALL2;
 					else if (std::strcmp(val, "large2") == 0)
 						tbIconSet = TB_LARGE2;
+					else if (std::strcmp(val, "standardLarge") == 0)
+						tbIconSet = TB_STANDARD_LARGE;
 					else //if (std::strcmp(val, "standard") == 0)
 						tbIconSet = TB_STANDARD;
 				}
@@ -7080,7 +7082,7 @@ void NppParameters::feedGUIParameters(const NppXml::Element& element)
 			darkThemeName = string2wstring(NppXml::attribute(childNode, "darkThemeName", "DarkModeDefault.xml"));
 			if (darkThemeName.empty())
 				darkThemeName = L"DarkModeDefault.xml";
-			darkTbInfo._tbIconSet = getRangeDefaultAttribute(childNode, "darkToolBarIconSet", TB_SMALL, TB_STANDARD, darkTbInfo._tbIconSet);
+			darkTbInfo._tbIconSet = getRangeDefaultAttribute(childNode, "darkToolBarIconSet", TB_SMALL, TB_STANDARD_LARGE, darkTbInfo._tbIconSet);
 			darkTbInfo._tbColor = getRangeDefaultAttribute(childNode, "darkTbFluentColor", defaultColor, custom, darkTbInfo._tbColor);
 			darkTbInfo._tbCustomColor = NppXml::intAttribute(childNode, "darkTbFluentCustomColor", darkTbInfo._tbCustomColor);
 			darkTbInfo._tbUseMono = getBoolAttribute(childNode, "darkTbFluentMono");
@@ -7091,7 +7093,7 @@ void NppParameters::feedGUIParameters(const NppXml::Element& element)
 			auto& lightThemeName = lightDefaults._xmlFileName;
 			auto& lightTbInfo = lightDefaults._tbIconInfo;
 			lightThemeName = string2wstring(NppXml::attribute(childNode, "lightThemeName", ""));
-			lightTbInfo._tbIconSet = getRangeDefaultAttribute(childNode, "lightToolBarIconSet", TB_SMALL, TB_STANDARD, lightTbInfo._tbIconSet);
+			lightTbInfo._tbIconSet = getRangeDefaultAttribute(childNode, "lightToolBarIconSet", TB_SMALL, TB_STANDARD_LARGE, lightTbInfo._tbIconSet);
 			lightTbInfo._tbColor = getRangeDefaultAttribute(childNode, "lightTbFluentColor", defaultColor, custom, lightTbInfo._tbColor);
 			lightTbInfo._tbCustomColor = NppXml::intAttribute(childNode, "lightTbFluentCustomColor", lightTbInfo._tbCustomColor);
 			lightTbInfo._tbUseMono = getBoolAttribute(childNode, "lightTbFluentMono");
@@ -7706,6 +7708,12 @@ void NppParameters::createXmlTreeFromGUIParams()
 			case TB_STANDARD:
 			{
 				pStr = "standard";
+				break;
+			}
+
+			case TB_STANDARD_LARGE:
+			{
+				pStr = "standardLarge";
 				break;
 			}
 		}

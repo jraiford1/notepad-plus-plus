@@ -264,7 +264,7 @@ bool ToolBar::init(HINSTANCE hInst, HWND hPere, toolBarStatusType type, const To
 
 	_dpiManager.setDpi(hPere);
 
-	int iconSize = _dpiManager.scale(_state == TB_LARGE || _state == TB_LARGE2 ? 32 : 16);
+	int iconSize = _dpiManager.scale(hasLargeIcons() ? 32 : 16);
 
 	_toolBarIcons.init(buttonUnitArray, arraySize, _vDynBtnReg);
 	_toolBarIcons.create(_hInst, iconSize);
@@ -442,6 +442,15 @@ void ToolBar::setToBmpIcons()
 	Window::redraw();
 }
 
+void ToolBar::setToLargeStdIcons()
+{
+	int iconDpiDynamicalSize = _dpiManager.scale(32);
+	_toolBarIcons.resizeIcon(iconDpiDynamicalSize);
+	setState(TB_STANDARD_LARGE);
+	reset(true);	//recreate toolbar if previous state was Std icons or Small icons
+	Window::redraw();
+}
+
 void ToolBar::reset(bool create)
 {
 	if (create && _hSelf)
@@ -497,6 +506,8 @@ void ToolBar::reset(bool create)
 	{
 		if (_state == TB_STANDARD)
 			_state = TB_SMALL;
+		else if (_state == TB_STANDARD_LARGE)
+			_state = TB_LARGE;
 	}
 
 	if (_state != TB_STANDARD) //If non standard icons, use custom imagelists
@@ -513,6 +524,11 @@ void ToolBar::reset(bool create)
 				setDefaultImageList();
 				setDisableImageList();
 			}
+		}
+		else if (_state == TB_STANDARD_LARGE)
+		{
+			setDefaultImageListStd();
+			setDisableImageListStd();
 		}
 		else
 		{
@@ -569,7 +585,7 @@ void ToolBar::reset(bool create)
 	if (create)
 	{	//if the toolbar has been recreated, readd the buttons
 		_nbCurrentButtons = _nbTotalButtons;
-		WORD btnSize = static_cast<WORD>(_dpiManager.scale((_state == TB_LARGE || _state == TB_LARGE2) ? 32 : 16));
+		WORD btnSize = static_cast<WORD>(_dpiManager.scale(hasLargeIcons() ? 32 : 16));
 		::SendMessage(_hSelf, TB_SETBUTTONSIZE , 0, MAKELONG(btnSize, btnSize));
 		::SendMessage(_hSelf, TB_ADDBUTTONS, _nbTotalButtons, reinterpret_cast<LPARAM>(_pTBB.get()));
 	}
@@ -693,7 +709,7 @@ void ToolBar::doPopup(POINT chevPoint)
 void ToolBar::resizeIconsDpi(UINT dpi)
 {
 	_dpiManager.setDpi(dpi);
-	const int iconDpiDynamicalSize = _dpiManager.scale((_state == TB_LARGE || _state == TB_LARGE2) ? 32 : 16);
+	const int iconDpiDynamicalSize = _dpiManager.scale(hasLargeIcons() ? 32 : 16);
 	_toolBarIcons.resizeIcon(iconDpiDynamicalSize);
 	reset(true);
 }

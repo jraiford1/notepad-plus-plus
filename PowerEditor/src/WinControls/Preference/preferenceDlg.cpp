@@ -438,7 +438,7 @@ intptr_t CALLBACK PreferenceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 				const bool isEnableAutoC = _autoCompletionSubDlg.isCheckedOrNot(IDD_AUTOC_ENABLECHECK);
 				::EnableWindow(::GetDlgItem(_autoCompletionSubDlg.getHSelf(), IDD_AUTOC_USEKEY_GRP_STATIC), isEnableAutoC);
 
-				const bool isFluentIcon = !_toolbarSubDlg.isCheckedOrNot(IDC_RADIO_STANDARD);
+				const bool isFluentIcon = !_toolbarSubDlg.isStandardIconSetChecked();
 				::EnableWindow(::GetDlgItem(_toolbarSubDlg.getHSelf(), IDC_TOOLBAR_GB_COLORCHOICE), isFluentIcon);
 				::EnableWindow(::GetDlgItem(_toolbarSubDlg.getHSelf(), IDC_TOOLBAR_GB_COLORIZATION), isFluentIcon);
 			}
@@ -465,6 +465,7 @@ intptr_t CALLBACK PreferenceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 			checkOrUncheckBtn(IDC_RADIO_SMALLICON2, nppGUITbInfo._tbIconSet == TB_SMALL2);
 			checkOrUncheckBtn(IDC_RADIO_BIGICON2, nppGUITbInfo._tbIconSet == TB_LARGE2);
 			checkOrUncheckBtn(IDC_RADIO_STANDARD, nppGUITbInfo._tbIconSet == TB_STANDARD);
+			checkOrUncheckBtn(IDC_RADIO_STANDARD_LARGE, nppGUITbInfo._tbIconSet == TB_STANDARD_LARGE);
 
 			checkOrUncheckBtn(IDC_RADIO_RED, nppGUITbInfo._tbColor == FluentColor::red);
 			checkOrUncheckBtn(IDC_RADIO_GREEN, nppGUITbInfo._tbColor == FluentColor::green);
@@ -689,6 +690,14 @@ UINT ToolbarSubDlg::getToolbarIconSetMsg(int* iconSetID)
 		if (iconSetID)
 			*iconSetID = IDC_RADIO_STANDARD;
 		return NPPM_INTERNAL_TOOLBARSTANDARD;
+	}
+
+	isChecked = isCheckedOrNot(IDC_RADIO_STANDARD_LARGE);
+	if (isChecked)
+	{
+		if (iconSetID)
+			*iconSetID = IDC_RADIO_STANDARD_LARGE;
+		return NPPM_INTERNAL_TOOLBARSTANDARDLARGE;
 	}
 
 	isChecked = isCheckedOrNot(IDC_RADIO_SMALLICON);
@@ -1016,6 +1025,9 @@ intptr_t CALLBACK ToolbarSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 				case TB_LARGE2:
 					ID2Check = IDC_RADIO_BIGICON2;
 					break;
+				case TB_STANDARD_LARGE:
+					ID2Check = IDC_RADIO_STANDARD_LARGE;
+					break;
 				case TB_STANDARD:
 				default:
 					ID2Check = IDC_RADIO_STANDARD;
@@ -1075,7 +1087,7 @@ intptr_t CALLBACK ToolbarSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 			_pIconColorPicker->display();
 			_pIconColorPicker->setColour(nppGUI._tbIconInfo._tbCustomColor);
 
-			if (nppGUITbInfo._tbIconSet == TB_STANDARD)
+			if (isStandardIconSet(nppGUITbInfo._tbIconSet))
 			{
 				::SendMessage(_hSelf, NPPM_INTERNAL_CHANGETOOLBARCOLORABLESTATE, 0, 0);
 			}
@@ -1092,7 +1104,7 @@ intptr_t CALLBACK ToolbarSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 
 		case NPPM_INTERNAL_CHANGETOOLBARCOLORABLESTATE:
 		{
-			bool enableColor = !isCheckedOrNot(IDC_RADIO_STANDARD);
+			bool enableColor = !isStandardIconSetChecked();
 			bool enableCustom = isCheckedOrNot(IDC_RADIO_CUSTOMCOLOR);
 
 			::EnableWindow(::GetDlgItem(_hSelf, IDC_RADIO_COMPLETE), enableColor);
@@ -1143,7 +1155,7 @@ intptr_t CALLBACK ToolbarSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 			const int dlgCtrlID = ::GetDlgCtrlID(reinterpret_cast<HWND>(lParam));
 			if (dlgCtrlID == IDD_ACCENT_TIP_STATIC)
 			{
-				return NppDarkMode::onCtlColorDlgLinkText(hdc, !isCheckedOrNot(IDC_RADIO_STANDARD));
+				return NppDarkMode::onCtlColorDlgLinkText(hdc, !isStandardIconSetChecked());
 			}
 
 			return NppDarkMode::onCtlColorDlg(hdc);
@@ -1214,6 +1226,14 @@ intptr_t CALLBACK ToolbarSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 				{
 					::SendMessage(::GetParent(_hParent), NPPM_INTERNAL_TOOLBARSTANDARD, 0, 0);
 					NppDarkMode::setToolbarIconSet(4, NppDarkMode::isEnabled());
+					::SendMessage(_hSelf, NPPM_INTERNAL_CHANGETOOLBARCOLORABLESTATE, 0, 0);
+					return TRUE;
+				}
+
+				case IDC_RADIO_STANDARD_LARGE:
+				{
+					::SendMessage(::GetParent(_hParent), NPPM_INTERNAL_TOOLBARSTANDARDLARGE, 0, 0);
+					NppDarkMode::setToolbarIconSet(5, NppDarkMode::isEnabled());
 					::SendMessage(_hSelf, NPPM_INTERNAL_CHANGETOOLBARCOLORABLESTATE, 0, 0);
 					return TRUE;
 				}
