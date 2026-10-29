@@ -1019,11 +1019,11 @@ enum Platform { PF_UNKNOWN, PF_X86, PF_X64, PF_IA64, PF_ARM64 };
 
 	#define NPPM_GETTOOLBARICONSETCHOICE (NPPMSG + 118)
 	// BOOL NPPM_GETTOOLBARICONSETCHOICE(0, 0)
-	// Get Notepad++ toolbar icon set choice (Fluent UI: small, Fluent UI: large, Filled Fluent UI: small, Filled Fluent UI: large and Standard icons: small.
+	// Get Notepad++ toolbar icon set choice (Fluent UI: small, Fluent UI: large, Filled Fluent UI: small, Filled Fluent UI: large, Standard icons: small and Standard icons: large.
 	// wParam: 0 (not used)
 	// lParam: 0 (not used)
-	// Return toolbar icon set choice as an integer value. Here are 5 possible values:
-	// 0 (Fluent UI: small), 1 (Fluent UI: large), 2 (Filled Fluent UI: small), 3 (Filled Fluent UI: large) and 4 (Standard icons: small).
+	// Return toolbar icon set choice as an integer value. Here are 6 possible values:
+	// 0 (Fluent UI: small), 1 (Fluent UI: large), 2 (Filled Fluent UI: small), 3 (Filled Fluent UI: large), 4 (Standard icons: small) and 5 (Standard icons: large).
 
 	#define NPPM_GETNPPSETTINGSDIRPATH (NPPMSG + 119)
 	// int NPPM_GETNPPSETTINGSDIRPATH(size_t strLen, wchar_t *settingsDirPath)
@@ -1284,5 +1284,5 @@ enum Platform { PF_UNKNOWN, PF_X86, PF_X64, PF_IA64, PF_ARM64 };
 	//scnNotification->nmhdr.code = NPPN_TOOLBARICONSETCHANGED;
 	//scnNotification->nmhdr.hwndFrom = hwndNpp;
 	//scnNotification->nmhdr.idFrom = iconSetChoice;
-	// where iconSetChoice could be 1 of 5 possible values:
-	// 0 (Fluent UI: small), 1 (Fluent UI: large), 2 (Filled Fluent UI: small), 3 (Filled Fluent UI: large) and 4 (Standard icons: small).
+	// where iconSetChoice could be 1 of 6 possible values:
+	// 0 (Fluent UI: small), 1 (Fluent UI: large), 2 (Filled Fluent UI: small), 3 (Filled Fluent UI: large), 4 (Standard icons: small) and 5 (Standard icons: large).

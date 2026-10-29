@@ -255,6 +255,57 @@
 #define IDI_VIEW_MONITORING_DIS_ICON_DM2  396
 #define IDI_VIEW_DOCLIST_ICON_DM2         397
 
+//
+// TOOLBAR ICO - standard icons, large
+//
+#define IDI_NEW_ICON_STD                  401
+#define IDI_OPEN_ICON_STD                 402
+#define IDI_CLOSE_ICON_STD                403
+#define IDI_CLOSEALL_ICON_STD             404
+#define IDI_SAVE_ICON_STD                 405
+#define IDI_SAVEALL_ICON_STD              406
+#define IDI_CUT_ICON_STD                  407
+#define IDI_COPY_ICON_STD                 408
+#define IDI_PASTE_ICON_STD                409
+#define IDI_UNDO_ICON_STD                 410
+#define IDI_REDO_ICON_STD                 411
+#define IDI_FIND_ICON_STD                 412
+#define IDI_REPLACE_ICON_STD              413
+#define IDI_ZOOMIN_ICON_STD               414
+#define IDI_ZOOMOUT_ICON_STD              415
+#define IDI_VIEW_UD_DLG_ICON_STD          416
+#define IDI_PRINT_ICON_STD                417
+#define IDI_STARTRECORD_ICON_STD          418
+#define IDI_STARTRECORD_DISABLE_ICON_STD  419
+#define IDI_STOPRECORD_ICON_STD           420
+#define IDI_STOPRECORD_DISABLE_ICON_STD   421
+#define IDI_PLAYRECORD_ICON_STD           422
+#define IDI_PLAYRECORD_DISABLE_ICON_STD   423
+#define IDI_SAVERECORD_ICON_STD           424
+#define IDI_SAVERECORD_DISABLE_ICON_STD   425
+#define IDI_MMPLAY_DIS_ICON_STD           426
+#define IDI_MMPLAY_ICON_STD               427
+#define IDI_VIEW_ALL_CHAR_ICON_STD        428
+#define IDI_VIEW_INDENT_ICON_STD          429
+#define IDI_VIEW_WRAP_ICON_STD            430
+#define IDI_SAVE_DISABLE_ICON_STD         431
+#define IDI_SAVEALL_DISABLE_ICON_STD      432
+#define IDI_CUT_DISABLE_ICON_STD          433
+#define IDI_COPY_DISABLE_ICON_STD         434
+#define IDI_PASTE_DISABLE_ICON_STD        435
+#define IDI_UNDO_DISABLE_ICON_STD         436
+#define IDI_REDO_DISABLE_ICON_STD         437
+#define IDI_SYNCV_ICON_STD                438
+#define IDI_SYNCV_DISABLE_ICON_STD        439
+#define IDI_SYNCH_ICON_STD                440
+#define IDI_SYNCH_DISABLE_ICON_STD        441
+#define IDI_VIEW_DOC_MAP_ICON_STD         442
+#define IDI_VIEW_FILEBROWSER_ICON_STD     443
+#define IDI_VIEW_FUNCLIST_ICON_STD        444
+#define IDI_VIEW_MONITORING_ICON_STD      445
+#define IDI_VIEW_MONITORING_DIS_ICON_STD  446
+#define IDI_VIEW_DOCLIST_ICON_STD         447
+
 
 
 #define IDI_SAVED_ICON           501
@@ -764,6 +815,7 @@
 	#define NPPM_INTERNAL_INVISIBLECHARSINFINDWHAT      (NOTEPADPLUS_USER_INTERNAL + 112)
 	#define NPPM_INTERNAL_DISABLESELECTEDTEXTDRAGDROP   (NOTEPADPLUS_USER_INTERNAL + 113)
 	#define NPPM_INTERNAL_INCSEARCHBARPOSITION          (NOTEPADPLUS_USER_INTERNAL + 114)
+	#define NPPM_INTERNAL_TOOLBARSTANDARDLARGE          (NOTEPADPLUS_USER_INTERNAL + 115)
 
 // See Notepad_plus_msgs.h
 //#define NPPMSG   (WM_USER + 1000)

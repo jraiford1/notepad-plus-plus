@@ -73,6 +73,9 @@ private:
 
 	intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 	UINT getToolbarIconSetMsg(int* iconSetID);
+	bool isStandardIconSetChecked() const {
+		return isCheckedOrNot(IDC_RADIO_STANDARD) || isCheckedOrNot(IDC_RADIO_STANDARD_LARGE);
+	}
 	void move2CtrlLeft(int ctrlID, HWND handle2Move, int handle2MoveWidth, int handle2MoveHeight);
 	void enableIconColorPicker(bool enable, bool useDark);
 };

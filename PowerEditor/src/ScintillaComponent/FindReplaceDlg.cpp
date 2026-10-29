@@ -3873,7 +3873,7 @@ void FindReplaceDlg::findAllIn(InWhat op)
 		data.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB | DWS_ADDINFO | DWS_USEOWNDARKMODE;
 
 		int icoID = _pFinder->getIconIDs().at(2);
-		if (nppParam.getNppGUI()._tbIconInfo._tbIconSet == TB_STANDARD)
+		if (isStandardIconSet(nppParam.getNppGUI()._tbIconInfo._tbIconSet))
 			icoID = _pFinder->getIconIDs().at(0);
 		else if (NppDarkMode::isEnabled())
 			icoID = _pFinder->getIconIDs().at(1);
@@ -4021,7 +4021,7 @@ Finder* FindReplaceDlg::createFinder()
 	data.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB | DWS_ADDINFO | DWS_USEOWNDARKMODE;
 
 	int icoID = pFinder->getIconIDs().at(2);
-	if (nppParam.getNppGUI()._tbIconInfo._tbIconSet == TB_STANDARD)
+	if (isStandardIconSet(nppParam.getNppGUI()._tbIconInfo._tbIconSet))
 		icoID = pFinder->getIconIDs().at(0);
 	else if (NppDarkMode::isEnabled())
 		icoID = pFinder->getIconIDs().at(1);

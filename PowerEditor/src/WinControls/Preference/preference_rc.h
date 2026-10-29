@@ -83,6 +83,7 @@
 #define IDC_TABCOMPACTLABELLEN_STATIC                  6136
 #define IDC_EDIT_TABCOMPACTLABELLEN                    6137
 #define IDC_TABCOMPACTLABELLEN_TIP_STATIC              6138
+#define IDC_RADIO_STANDARD_LARGE                       6139
 
 #define IDD_PREFERENCE_SUB_MULTIINSTANCE               6150
 #define IDC_MULTIINST_GB_STATIC                        6151

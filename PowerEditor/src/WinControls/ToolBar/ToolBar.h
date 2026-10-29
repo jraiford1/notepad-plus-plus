@@ -32,7 +32,11 @@
 #define REBAR_BAR_TOOLBAR		0
 #define REBAR_BAR_SEARCH		1
 
-enum toolBarStatusType {TB_SMALL, TB_LARGE, TB_SMALL2, TB_LARGE2, TB_STANDARD};
+enum toolBarStatusType {TB_SMALL, TB_LARGE, TB_SMALL2, TB_LARGE2, TB_STANDARD, TB_STANDARD_LARGE};
+
+inline bool isStandardIconSet(toolBarStatusType state) {
+	return state == TB_STANDARD || state == TB_STANDARD_LARGE;
+}
 
 
 struct iconLocator {
@@ -76,6 +80,7 @@ public :
 	void reduceToSet2();
 	void enlargeToSet2();
 	void setToBmpIcons();
+	void setToLargeStdIcons();
 
 	bool getCheckState(int ID2Check) const {
 		return bool(::SendMessage(_hSelf, TB_GETSTATE, ID2Check, 0) & TBSTATE_CHECKED);
@@ -163,6 +168,18 @@ private :
 
 	void setDisableImageListDM2() {
 		::SendMessage(_hSelf, TB_SETDISABLEDIMAGELIST, 0, reinterpret_cast<LPARAM>(_toolBarIcons.getDisableLstSetDM2()));
+	}
+
+	void setDefaultImageListStd() {
+		::SendMessage(_hSelf, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(_toolBarIcons.getDefaultLstStd()));
+	}
+
+	void setDisableImageListStd() {
+		::SendMessage(_hSelf, TB_SETDISABLEDIMAGELIST, 0, reinterpret_cast<LPARAM>(_toolBarIcons.getDisableLstStd()));
+	}
+
+	bool hasLargeIcons() const {
+		return _state == TB_LARGE || _state == TB_LARGE2 || _state == TB_STANDARD_LARGE;
 	}
 
 	void reset(bool create = false);
