@@ -514,25 +514,34 @@ namespace nppmac::controls
 		{
 			RECT client{};
 			GetClientRect(hwnd, &client);
-			const int middle = (client.top + client.bottom) / 2;
-			const RECT halves[2] = {{client.left, client.top, client.right, middle}, {client.left, middle, client.right, client.bottom}};
+			// Up above down; with UDS_HORZ (a tab control's), left (down) beside right (up).
+			const bool horizontal = (GetWindowLongW(hwnd, GWL_STYLE) & UDS_HORZ) != 0;
+			const int middle = horizontal ? (client.left + client.right) / 2 : (client.top + client.bottom) / 2;
+			const RECT first = horizontal
+				? RECT{client.left, client.top, middle, client.bottom} : RECT{client.left, client.top, client.right, middle};
+			const RECT second = horizontal
+				? RECT{middle, client.top, client.right, client.bottom} : RECT{client.left, middle, client.right, client.bottom};
 			for (int i = 0; i < 2; ++i)
 			{
-				const bool pressed = upDown._pressed == (i == 0 ? 1 : -1);
+				const RECT& half = i == 0 ? first : second;
+				const int direction = horizontal ? (i == 0 ? -1 : 1) : (i == 0 ? 1 : -1);
+				const bool pressed = upDown._pressed == direction;
 				HBRUSH fill = CreateSolidBrush(pressed ? controlPalette()._facePressed : controlPalette()._face);
 				HBRUSH frame = CreateSolidBrush(controlPalette()._frame);
-				FillRect(hdc, &halves[i], fill);
-				FrameRect(hdc, &halves[i], frame);
+				FillRect(hdc, &half, fill);
+				FrameRect(hdc, &half, frame);
 				DeleteObject(fill);
 				DeleteObject(frame);
-				const int x = (halves[i].left + halves[i].right) / 2;
-				const int y = (halves[i].top + halves[i].bottom) / 2;
+				const int x = (half.left + half.right) / 2;
+				const int y = (half.top + half.bottom) / 2;
 				const POINT up[] = {{x - 3, y + 1}, {x + 4, y + 1}, {x, y - 3}};
 				const POINT down[] = {{x - 3, y - 1}, {x + 4, y - 1}, {x, y + 3}};
+				const POINT left[] = {{x + 1, y - 3}, {x + 1, y + 4}, {x - 3, y}};
+				const POINT right[] = {{x - 1, y - 3}, {x - 1, y + 4}, {x + 3, y}};
 				HBRUSH arrowBrush = CreateSolidBrush(controlPalette()._text);
 				HGDIOBJ oldBrush = SelectObject(hdc, arrowBrush);
 				HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
-				Polygon(hdc, i == 0 ? up : down, 3);
+				Polygon(hdc, horizontal ? (i == 0 ? left : right) : (i == 0 ? up : down), 3);
 				SelectObject(hdc, oldPen);
 				SelectObject(hdc, oldBrush);
 				DeleteObject(arrowBrush);
@@ -571,7 +580,10 @@ namespace nppmac::controls
 				{
 					RECT client{};
 					GetClientRect(hwnd, &client);
-					upDown->_pressed = GET_Y_LPARAM(lParam) < (client.top + client.bottom) / 2 ? 1 : -1;
+					if (GetWindowLongW(hwnd, GWL_STYLE) & UDS_HORZ)
+						upDown->_pressed = GET_X_LPARAM(lParam) < (client.left + client.right) / 2 ? -1 : 1;
+					else
+						upDown->_pressed = GET_Y_LPARAM(lParam) < (client.top + client.bottom) / 2 ? 1 : -1;
 					SetCapture(hwnd);
 					InvalidateRect(hwnd, nullptr, FALSE);
 					step(hwnd, *upDown, upDown->_pressed);

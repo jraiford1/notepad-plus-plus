@@ -228,6 +228,32 @@ if runSettings="$work/wheel-settings" run wheel NPPMAC_TEST_WHEEL=-0.1,-0.96,-3.
 fi
 files=()
 
+# More tabs than fit in one row: as on Windows, the row scrolls by whole tabs, with arrows at its right
+# end, and the selected tab (the last file opened) shows whole, its close button included.
+files=()
+for i in 1 2 3 4 5 6; do
+	printf 'tab %s\n' "$i" > "$work/a-rather-long-file-name-to-fill-the-tab-row-$i.txt"
+	files+=("$work/a-rather-long-file-name-to-fill-the-tab-row-$i.txt")
+done
+mkdir -p "$work/tabs-settings"
+if runSettings="$work/tabs-settings" run tab-overflow NPPMAC_DUMP_TREE=1; then
+	tabsLine="$(grep -m1 'SysTabControl32 id=0 .* visible' "$work/tab-overflow.log")"
+	width="$(echo "$tabsLine" | sed -E 's/.* client=([0-9]+)x.*/\1/')"
+	last="$(echo "$tabsLine" | sed -E 's/.* tabs=//' | tr ',' '\n' | tail -1)"
+	left="$(echo "$last" | sed -E 's/^(-?[0-9]+)-.*/\1/')"
+	right="$(echo "$last" | sed -E 's/^-?[0-9]+-(-?[0-9]+)$/\1/')"
+	if ! grep -q 'msctls_updown32 .* visible' "$work/tab-overflow.log"; then
+		echo "FAIL tab-overflow: no arrows for a row of tabs wider than the window"
+		failures=$((failures + 1))
+	elif [ "${left:--1}" -lt 0 ] || [ "${right:-99999}" -gt $((width - 30)) ] 2> /dev/null; then
+		echo "FAIL tab-overflow: the selected tab is at ${left:-?}-${right:-?}, not whole beside the arrows (width $width)"
+		failures=$((failures + 1))
+	else
+		echo "ok   tab-overflow"
+	fi
+fi
+files=()
+
 # A plugin: HelloMac's first command (the first plugin command id, 22000) inserts its greeting, which
 # is then saved through the Save As panel.
 if [ -n "$plugin" ]; then
