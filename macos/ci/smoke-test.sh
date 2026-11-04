@@ -211,6 +211,23 @@ elif runSettings="$work/toolbar-standard-settings" run toolbar-standard-large NP
 	fi
 fi
 
+# The mouse wheel over the editor scrolls with the wheel, as other views do: AppKit used to ease each
+# wheel event in over a quarter of a second, so the editor trailed it. One click of a real wheel (30.1
+# lines, 301 points) has scrolled its 20 lines 50 ms after its last event (about 6 when trailing).
+seq -f "line %g" 1 3000 > "$work/wheel.txt"
+files=("$work/wheel.txt")
+mkdir -p "$work/wheel-settings"
+if runSettings="$work/wheel-settings" run wheel NPPMAC_TEST_WHEEL=-0.1,-0.96,-3.788,-5.495,-6.246,-6.783,-6.715 NPPMAC_SNAPSHOT_DELAY=2.11 NPPMAC_DUMP_TREE=1; then
+	first="$(grep -m1 'Scintilla .* visible native' "$work/wheel.log" | sed -E 's/.* firstLine=([0-9]+).*/\1/')"
+	if [ "${first:-0}" -ge 18 ] && [ "${first:-0}" -le 23 ] 2> /dev/null; then
+		echo "ok   wheel"
+	else
+		echo "FAIL wheel: 50 ms after one click of the wheel the editor had scrolled ${first:-no} lines, not about 20"
+		failures=$((failures + 1))
+	fi
+fi
+files=()
+
 # A plugin: HelloMac's first command (the first plugin command id, 22000) inserts its greeting, which
 # is then saved through the Save As panel.
 if [ -n "$plugin" ]; then

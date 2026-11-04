@@ -104,6 +104,39 @@ namespace nppmac::ui
 		return result;
 	}
 
+	// Debugging aid: NPPMAC_TRACE_WHEEL=<file> writes each scroll event to the file as it comes: its kind
+	// and deltas (lines and points), the view under the mouse (or the test's target), and how far that
+	// view's scroll view has scrolled by then; and, with its time, each move of that scroll view after.
+	void traceWheel(NSEvent* event, NSView* target = nil)
+	{
+		static FILE* file = [] {
+			const char* path = std::getenv("NPPMAC_TRACE_WHEEL");
+			return path && *path ? std::fopen(path, "w") : nullptr;
+		}();
+		if (!file)
+			return;
+		NSView* content = event.window.contentView;
+		NSView* hit = target ? target : (content ? [content hitTest:[content.superview convertPoint:event.locationInWindow fromView:nil]] : nil);
+		NSScrollView* scroll = hit.enclosingScrollView;
+		static NSMutableSet<NSClipView*>* watched = [NSMutableSet set];
+		if (scroll && ![watched containsObject:scroll.contentView])
+		{
+			NSClipView* clip = scroll.contentView;
+			[watched addObject:clip];
+			clip.postsBoundsChangedNotifications = YES;
+			[NSNotificationCenter.defaultCenter addObserverForName:NSViewBoundsDidChangeNotification object:clip queue:nil usingBlock:^(NSNotification*) {
+				std::fprintf(file, "%.3f   moved to %.1f\n", NSProcessInfo.processInfo.systemUptime, clip.bounds.origin.y);
+				std::fflush(file);
+			}];
+		}
+		CGEventRef cg = event.CGEvent;
+		std::fprintf(file, "%.3f %s precise=%d continuous=%lld lines=%.3f points=%.1f scrollingDeltaY=%.3f scrolledTo=%.1f\n",
+			event.timestamp, hit ? NSStringFromClass(hit.class).UTF8String : "-", event.hasPreciseScrollingDeltas ? 1 : 0,
+			CGEventGetIntegerValueField(cg, kCGScrollWheelEventIsContinuous), CGEventGetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1),
+			CGEventGetDoubleValueField(cg, kCGScrollWheelEventPointDeltaAxis1), event.scrollingDeltaY, scroll ? scroll.contentView.bounds.origin.y : -1.0);
+		std::fflush(file);
+	}
+
 	NativeView* g_captureView = nullptr;
 	bool g_cursorHidden = false;
 
@@ -817,6 +850,10 @@ namespace
 			[super sendEvent:event];
 			return;
 		}
+		case NSEventTypeScrollWheel:
+			traceWheel(event);
+			[super sendEvent:event];
+			return;
 		default:
 			[super sendEvent:event];
 	}
@@ -1119,6 +1156,47 @@ namespace nppmac::ui
 		}
 	}
 
+	// Debugging aid: NPPMAC_TEST_WHEEL=<lines>[,<lines>...] turns a mouse wheel over the middle of the front
+	// window after NPPMAC_TEST_WHEEL_DELAY seconds (default 2): one scroll event every 10 ms, each of the given
+	// lines (negative towards the end), made as macOS makes a wheel's: its lines, and 10 points a line. A
+	// leading "pt:" makes them a trackpad's instead (precise, continuous), each of the given points. They
+	// go to the view there, as AppKit sends them (the editor's is Scintilla's own).
+	void scheduleWheel()
+	{
+		const char* wheel = std::getenv("NPPMAC_TEST_WHEEL");
+		if (!wheel || !*wheel)
+			return;
+		const char* delayText = std::getenv("NPPMAC_TEST_WHEEL_DELAY");
+		double delay = delayText ? std::atof(delayText) : 2.0;
+		const bool points = std::strncmp(wheel, "pt:", 3) == 0;
+		for (const char* next = points ? wheel + 3 : wheel; *next;)
+		{
+			char* end = nullptr;
+			const double amount = std::strtod(next, &end);
+			if (end == next)
+				break;
+			NSTimer* timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer*) {
+				NSWindow* window = NSApp.keyWindow ? NSApp.keyWindow : NSApp.orderedWindows.firstObject;
+				NSView* content = window.contentView;
+				NSView* target = [content hitTest:[content convertPoint:NSMakePoint(NSMidX(content.bounds), NSMidY(content.bounds)) toView:content.superview]];
+				CGEventRef scroll = CGEventCreateScrollWheelEvent2(nullptr, points ? kCGScrollEventUnitPixel : kCGScrollEventUnitLine, 1, 0, 0, 0);
+				const double lines = points ? amount / 10 : amount;
+				const double whole = std::trunc(lines);
+				CGEventSetIntegerValueField(scroll, kCGScrollWheelEventDeltaAxis1, whole != 0 ? static_cast<int64_t>(whole) : (lines < 0 ? -1 : 1));
+				CGEventSetDoubleValueField(scroll, kCGScrollWheelEventFixedPtDeltaAxis1, lines);
+				CGEventSetDoubleValueField(scroll, kCGScrollWheelEventPointDeltaAxis1, points ? amount : std::round(lines * 10));
+				CGEventSetIntegerValueField(scroll, kCGScrollWheelEventIsContinuous, points ? 1 : 0);
+				NSEvent* event = [NSEvent eventWithCGEvent:scroll];
+				CFRelease(scroll);
+				traceWheel(event, target);
+				[target scrollWheel:event];
+			}];
+			[NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+			delay += 0.01;
+			next = *end == ',' ? end + 1 : end;
+		}
+	}
+
 	// Debugging aid: NPPMAC_TEST_SWITCH_BACK=<seconds> acts as if the user switched to another program
 	// and back then (the program cannot become active in a test run).
 	void scheduleSwitchBack()
@@ -1201,6 +1279,7 @@ namespace nppmac::ui
 		scheduleSnapshot();
 		scheduleTyping();
 		scheduleCommand();
+		scheduleWheel();
 		scheduleSwitchBack();
 		[NSDistributedNotificationCenter.defaultCenter addObserverForName:@"AppleInterfaceThemeChangedNotification" object:nil queue:NSOperationQueue.mainQueue
 			usingBlock:^(NSNotification*) {
