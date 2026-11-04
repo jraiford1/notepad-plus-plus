@@ -19,6 +19,8 @@
 
 #include "Window.h"
 
+#include <Scintilla.h>
+#include <commctrl.h>
 #include <shlobj.h>
 
 #include <algorithm>
@@ -512,10 +514,29 @@ void nppmac::ui::windowManagerDumpTree()
 		// The text as the window reports it (an edit control keeps its own).
 		char16_t text[201]{};
 		GetWindowTextW(window->_hwnd, text, 201);
-		std::fprintf(stderr, "%*s%p %s id=%lu rect=(%d,%d,%d,%d) client=%dx%d %s%s text=\"%s\"\n", depth * 2, "", static_cast<void*>(window->_hwnd),
+		// Then, where they apply: an editor's first line shown and its line height, and a tab control's
+		// tabs (left-right).
+		std::string more;
+		if (window->_class->_name == u"Scintilla")
+		{
+			more += " firstLine=" + std::to_string(SendMessageW(window->_hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0));
+			more += " lineHeight=" + std::to_string(SendMessageW(window->_hwnd, SCI_TEXTHEIGHT, 0, 0));
+		}
+		if (window->_class->_name == WC_TABCONTROLW)
+		{
+			more += " tabs=";
+			const auto count = static_cast<int>(SendMessageW(window->_hwnd, TCM_GETITEMCOUNT, 0, 0));
+			for (int i = 0; i < count; ++i)
+			{
+				RECT tab{};
+				SendMessageW(window->_hwnd, TCM_GETITEMRECT, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&tab));
+				more += (i ? "," : "") + std::to_string(tab.left) + "-" + std::to_string(tab.right);
+			}
+		}
+		std::fprintf(stderr, "%*s%p %s id=%lu rect=(%d,%d,%d,%d) client=%dx%d %s%s text=\"%s\"%s\n", depth * 2, "", static_cast<void*>(window->_hwnd),
 			nppmac::toUtf8(window->_class->_name).c_str(), static_cast<unsigned long>(window->_id), window->_rect.left, window->_rect.top,
 			window->_rect.right, window->_rect.bottom, window->_clientWidth, window->_clientHeight, window->_visible ? "visible" : "hidden",
-			window->_nativeControl ? " native" : "", nppmac::toUtf8(text).c_str());
+			window->_nativeControl ? " native" : "", nppmac::toUtf8(text).c_str(), more.c_str());
 		for (nppmac::user::Window* child : window->_children)
 			dump(child, depth + 1);
 	};

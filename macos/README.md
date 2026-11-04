@@ -193,8 +193,10 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |
 | `NPPMAC_TEST_APPDATA=<folder>` | stands for `~/Library/Application Support`, where Notepad++ keeps what it stores per user besides `-settingsDir` (plugins' settings) |
 | `NPPMAC_TEST_COMMAND=<id>[,<id>...]` | sends menu commands (`IDM_*` values), half a second apart, after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2); `click:<id>` clicks the button (check box, radio button) with that control id, in any window |
-| `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree, the native windows and the menu bar |
+| `NPPMAC_TEST_WHEEL=<lines>[,<lines>...]` | turns a mouse wheel over the middle of the front window, an event every 10 ms, after `NPPMAC_TEST_WHEEL_DELAY` seconds (default 2): each the given lines (negative: towards the end), as macOS makes a wheel's events; `pt:` before them makes them a trackpad's, in points |
+| `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree (with an editor's first line shown and line height, and a tab control's tabs), the native windows and the menu bar |
 | `NPPMAC_TRACE_PAINT=1`, `NPPMAC_TRACE_MESSAGEBOX=1`, `NPPMAC_TRACE_WINDOWS=1` | trace painting, message boxes, window creation |
+| `NPPMAC_TRACE_WHEEL=<file>` | writes each scroll event to the file (its lines and points, the view it goes to and how far that view has scrolled) and, with its time, each move of that view's scroll view |
 | `NPPMAC_QUIET_STUBS=1` | do not log calls to stubbed functions |
 
 Test runs should use Notepad++'s own `-settingsDir=<folder>` so they leave the real settings in

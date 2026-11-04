@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
 
 #include <vector>
 
@@ -64,12 +65,29 @@ namespace
 				return event;
 			}];
 	}
+
+	// AppKit scrolls a view at once with the wheel ("responsive scrolling") unless the view handles
+	// scrollWheel itself, as Scintilla's does (only to pass it on, or to zoom with Command): then it eases
+	// each wheel event in over a quarter of a second instead, so the editor trailed the wheel, and a short
+	// document's little scrolling crawled. Scintilla's view draws any part of itself it is asked to, which
+	// is what responsive scrolling needs, so it says it can.
+	void allowResponsiveScrolling()
+	{
+		static bool done = false;
+		if (done)
+			return;
+		done = true;
+		if (Class content = NSClassFromString(@"SCIContentView"))
+			class_addMethod(object_getClass(content), @selector(isCompatibleWithResponsiveScrolling),
+				imp_implementationWithBlock(^BOOL(id) { return YES; }), "c@:");
+	}
 }
 
 namespace nppmac::scintilla
 {
 	void* createView(intptr_t window, NotifyFunc notify, ContextMenuFunc contextMenu)
 	{
+		allowResponsiveScrolling();
 		ScintillaView* view = [[ScintillaView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
