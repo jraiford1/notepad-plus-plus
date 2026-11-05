@@ -107,6 +107,7 @@ namespace nppmigrate
 		const std::unordered_map<std::string_view, std::string_view> g_stdQualifiedReplacements = {
 			{"fstream", "nppmac::fstream"},
 			{"format", "nppmac::format"},       // also takes a UTF-16 format string
+			{"from_chars", "nppmac::from_chars"}, // floating point below macOS 26 too (nppmac/Charconv.h)
 		};
 
 		// C wide-string functions. The runtime declares char16_t overloads at global scope,
