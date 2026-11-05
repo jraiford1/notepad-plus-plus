@@ -117,6 +117,75 @@ list(TRANSFORM nppDocumentExtensions PREPEND "\t\t\t\t<string>")
 list(TRANSFORM nppDocumentExtensions APPEND "</string>")
 list(JOIN nppDocumentExtensions "\n" nppDocumentExtensions)
 
+# W37: what Finder calls the files (their Kind). It takes the name from the app that opens a type, else from the
+# type's own description; macOS gives plain text no name of its own and knows many of these extensions not at all
+# ("Document"). So each language of langs.model.xml is declared as a type of the app's own, named as upstream's
+# status bar names it (ScintillaEditView.cpp's long names), as text, and claimed under that name. The declarations
+# are imported ones: wherever macOS has a type of its own for an extension (.c, .py, .as), macOS's comes first and
+# keeps its name. Plain text is named as TextEdit names it, in Info.plist.in.
+set(nppEditView "${NPP_ROOT}/PowerEditor/src/ScintillaComponent/ScintillaEditView.cpp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${nppEditView}")
+file(READ "${nppEditView}" nppEditViewSource)
+string(REPLACE ";" "," nppEditViewSource "${nppEditViewSource}")
+# {L"batch", L"Batch", L"Batch file", L_BATCH, "batch"}: the language, its short name and its long name.
+string(REGEX MATCHALL "{L\"[^\"]*\", *L\"[^\"]*\", *L\"[^\"]*\"" nppLanguageNames "${nppEditViewSource}")
+foreach(languageName IN LISTS nppLanguageNames)
+	string(REGEX REPLACE "{L\"([^\"]*)\", *L\"[^\"]*\", *L\"([^\"]*)\"" "\\1" language "${languageName}")
+	string(REGEX REPLACE "{L\"([^\"]*)\", *L\"[^\"]*\", *L\"([^\"]*)\"" "\\2" longName "${languageName}")
+	set("nppLongName_${language}" "${longName}")
+endforeach()
+file(READ "${NPP_ROOT}/PowerEditor/src/langs.model.xml" languages)
+string(REPLACE ";" "," languages "${languages}")
+string(REGEX MATCHALL "<Language name=\"[^\"]*\" ext=\"[^\"]*\"" languageTags "${languages}")
+set(nppImportedTypes "")
+set(nppLanguageDocumentTypes "")
+set(nppDeclaredExtensions "")
+set(nppDeclaredLanguageCount 0)
+foreach(languageTag IN LISTS languageTags)
+	string(REGEX REPLACE "<Language name=\"([^\"]*)\" ext=\"([^\"]*)\"" "\\1" language "${languageTag}")
+	string(REGEX REPLACE "<Language name=\"([^\"]*)\" ext=\"([^\"]*)\"" "\\2" languageExtensions "${languageTag}")
+	string(TOLOWER "${languageExtensions}" languageExtensions)
+	string(REGEX REPLACE "[ \t]+" ";" languageExtensions "${languageExtensions}")
+	list(REMOVE_ITEM languageExtensions "")
+	# Plain text is macOS's own type; an extension is declared once, for the first language that has it.
+	if(nppDeclaredExtensions)
+		list(REMOVE_ITEM languageExtensions ${nppDeclaredExtensions})
+	endif()
+	if(language STREQUAL "normal" OR NOT languageExtensions OR NOT DEFINED "nppLongName_${language}")
+		continue()
+	endif()
+	list(APPEND nppDeclaredExtensions ${languageExtensions})
+	math(EXPR nppDeclaredLanguageCount "${nppDeclaredLanguageCount} + 1")
+	string(REGEX REPLACE "[^A-Za-z0-9.-]" "-" typeName "${language}")
+	set(typeIdentifier "${NPPMAC_BUNDLE_ID}.language.${typeName}")
+	set(longName "${nppLongName_${language}}")
+	string(REPLACE "&" "&amp;" longName "${longName}")
+	string(REPLACE "<" "&lt;" longName "${longName}")
+	string(REPLACE ">" "&gt;" longName "${longName}")
+	list(TRANSFORM languageExtensions PREPEND "\t\t\t\t\t<string>")
+	list(TRANSFORM languageExtensions APPEND "</string>")
+	list(JOIN languageExtensions "\n" languageExtensions)
+	string(APPEND nppImportedTypes
+		"\t\t<dict>\n"
+		"\t\t\t<key>UTTypeIdentifier</key>\n\t\t\t<string>${typeIdentifier}</string>\n"
+		"\t\t\t<key>UTTypeDescription</key>\n\t\t\t<string>${longName}</string>\n"
+		"\t\t\t<key>UTTypeConformsTo</key>\n\t\t\t<array>\n\t\t\t\t<string>public.plain-text</string>\n\t\t\t</array>\n"
+		"\t\t\t<key>UTTypeTagSpecification</key>\n\t\t\t<dict>\n"
+		"\t\t\t\t<key>public.filename-extension</key>\n\t\t\t\t<array>\n${languageExtensions}\n\t\t\t\t</array>\n"
+		"\t\t\t</dict>\n"
+		"\t\t</dict>\n")
+	string(APPEND nppLanguageDocumentTypes
+		"\t\t<dict>\n"
+		"\t\t\t<key>CFBundleTypeName</key>\n\t\t\t<string>${longName}</string>\n"
+		"\t\t\t<key>CFBundleTypeRole</key>\n\t\t\t<string>Editor</string>\n"
+		"\t\t\t<key>LSHandlerRank</key>\n\t\t\t<string>Alternate</string>\n"
+		"\t\t\t<key>LSItemContentTypes</key>\n\t\t\t<array>\n\t\t\t\t<string>${typeIdentifier}</string>\n\t\t\t</array>\n"
+		"\t\t</dict>\n")
+endforeach()
+if(nppDeclaredLanguageCount LESS 50)
+	message(FATAL_ERROR "Only ${nppDeclaredLanguageCount} languages named from ScintillaEditView.cpp and langs.model.xml: has either changed form?")
+endif()
+
 add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources} "${appIcon}")
 set_target_properties(NotepadPlusPlus PROPERTIES
 	OUTPUT_NAME "${NPPMAC_APP_NAME}"
@@ -194,6 +263,12 @@ add_custom_command(TARGET NotepadPlusPlus POST_BUILD
 )
 
 # --- Tests -------------------------------------------------------------------------------------------
+# The names Finder gives the files the app opens (W37): its Info.plist, and what macOS makes of it once
+# the app is registered.
+add_test(NAME nppFileKinds COMMAND xcrun swift "${CMAKE_CURRENT_SOURCE_DIR}/../ci/file-kinds.swift"
+	"$<TARGET_BUNDLE_DIR:NotepadPlusPlus>")
+set_tests_properties(nppFileKinds PROPERTIES TIMEOUT 120)
+
 # The end-to-end smoke test needs a window server (a logged-in macOS session); its label lets it be
 # left out with ctest -LE gui.
 add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>"

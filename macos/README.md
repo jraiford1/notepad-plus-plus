@@ -99,7 +99,12 @@ Tracked as job J1 in the work tracker. Today:
 * Finder opens files with it (Open With, a double-click once it is the default, a drop on the Dock
   icon), into the running window; a folder opens as a dropped one does. Finder offers it for text
   and for the extensions of the languages it knows (`langs.model.xml`), also those macOS has no type
-  for (`.st`), and makes it a type's default with Get Info, Change All. That is File Association's
+  for (`.st`), and makes it a type's default with Get Info, Change All. Each language is declared as
+  a type of its own, as text, named as upstream's status bar names it (`ScintillaEditView.cpp`), so
+  Finder shows "Batch file" or "CMake file" as the Kind, and Quick Look and Spotlight take them as
+  text; wherever macOS has a type of its own (`.c`, `.py`, `.as`), macOS's stays. Plain text is named
+  as TextEdit names it, "Plain Text Document", though macOS has been seen to keep calling it "text"
+  where Notepad++ is its default (W37). That is File Association's
   job on Windows, so Preferences has no File Association page here (`migration-fixups.txt`). Each
   launch registers that copy of the app with Launch Services and unregisters every other copy with
   its bundle identifier, deleted ones too: Open With and a type's default mean the copy last launched;

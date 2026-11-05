@@ -17,7 +17,22 @@
 		     unless the user makes it the default. The extensions are those of the languages it
 		     knows (app/CMakeLists.txt), which macOS may have no type for. A folder opens as
 		     upstream opens a dropped one. -->
+		<!-- W37: the names are what Finder shows as a file's Kind once Notepad++ opens it. Plain text
+		     as TextEdit names it, since macOS gives it no name of its own ("text"); each language
+		     as upstream's status bar names it, as declared below. -->
 		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Plain Text Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+${nppLanguageDocumentTypes}		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Text document</string>
 			<key>CFBundleTypeRole</key>
@@ -66,6 +81,12 @@ ${nppDocumentExtensions}
 			</array>
 		</dict>
 	</array>
+	<!-- W37: each language as a type of its own, as text, with upstream's long name for it
+	     (app/CMakeLists.txt). Imported: wherever macOS has a type of its own for an extension,
+	     macOS's comes first. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+${nppImportedTypes}	</array>
 	<key>CFBundleIconFile</key>
 	<string>${MACOSX_BUNDLE_ICON_FILE}</string>
 	<key>CFBundleName</key>
