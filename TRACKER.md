@@ -49,6 +49,10 @@ the app is opened the first time with right-click → Open.
   CI runs the same script on every push (`.github/workflows/macos.yml`).
 - On the owner's Mac, only the native build (configured with `-DCMAKE_OSX_ARCHITECTURES=arm64`): no
   universal build and no x86_64 pass under Rosetta. The universal build and the Intel tests run on CI.
+- On the fork, only the two macOS workflows run (`macos.yml`, `macos-upstream-sync.yml`). Upstream's
+  inherited ones (CI_build, Plugin Files Release Notifier) stay disabled there as a workflow setting
+  (`gh workflow disable`), with their files untouched: they ran Windows jobs on every push that the
+  fork does not need, and GitHub disabled Actions on the fork to cut wasted compute (W38).
 - `NPPMAC_SKIP_GUI_TESTS=1` leaves out the smoke test where there is no window server.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.
 - Upstream is merged nightly by `.github/workflows/macos-upstream-sync.yml`, which builds and tests the
