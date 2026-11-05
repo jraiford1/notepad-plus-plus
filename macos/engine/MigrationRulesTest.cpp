@@ -77,6 +77,8 @@ namespace
 		{"include with Windows separators", "#include \"Docking\\Dlg.h\"\n#include \"a\\\\b.h\"", "#include \"Docking/Dlg.h\"\n#include \"a/b.h\""},
 		{"include directive untouched", "#include <fstream>\n#include <format>\n#include \"wstring.h\"\nstd::wstring s;", "#include <fstream>\n#include <format>\n#include \"wstring.h\"\nstd::u16string s;"},
 		{"unqualified format untouched", "EolType format; format = f(format);", "EolType format; format = f(format);"},
+		{"std::from_chars", "auto r = std::from_chars(b, e, d); using std::from_chars; std::from_chars_result s = from_chars(b, e, n);",
+			"auto r = nppmac::from_chars(b, e, d); using nppmac::from_chars; std::from_chars_result s = from_chars(b, e, n);"},
 		{"unqualified fstream untouched", "fstream f;", "fstream f;"},
 		{"sprintf family", "sprintf(buf, \"%lu\", n); ::snprintf(b, 4, f); std::sprintf(c, f);", "nppmac::sprintf(buf, \"%lu\", n); ::nppmac::snprintf(b, 4, f); nppmac::sprintf(c, f);"},
 		{"fopen", "FILE* f = fopen(path, \"rb\"); f = ::fopen(p, m);", "FILE* f = nppmac::fopen(path, \"rb\"); f = ::nppmac::fopen(p, m);"},

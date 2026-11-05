@@ -19,11 +19,14 @@
 
 #include <windows.h>
 #include <strsafe.h>
+#include <cmath>
 #include <codecvt>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <regex>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 
 namespace
@@ -344,6 +347,81 @@ namespace
 		CHECK(reinterpret_cast<uintptr_t>(CharUpperA(reinterpret_cast<LPSTR>(static_cast<uintptr_t>('q')))) == 'Q');
 		CHECK(IsCharUpperA('Q') && !IsCharUpperA('q') && IsCharAlphaNumericA('5') && !IsCharLowerA('\xc3'));
 	}
+
+	// nppmac::from_chars reads what std::from_chars reads, and where it stops.
+	template <typename T>
+	bool readsAs(std::string_view text, T expected, size_t length, std::chars_format format = std::chars_format::general)
+	{
+		T value{};
+		const auto [ptr, ec] = nppmac::from_chars(text.data(), text.data() + text.size(), value, format);
+		return ec == std::errc{} && ptr == text.data() + length && (value == expected || (value != value && expected != expected));
+	}
+
+	std::errc fromCharsError(std::string_view text, std::chars_format format = std::chars_format::general)
+	{
+		double value = 42;
+		const auto [ptr, ec] = nppmac::from_chars(text.data(), text.data() + text.size(), value, format);
+		// Invalid input leaves the value as it was, and ends where it started.
+		if (ec == std::errc::invalid_argument && (value != 42 || ptr != text.data()))
+			return std::errc::io_error;
+		return ec;
+	}
+
+	// Out of range, Visual C++'s library stores infinity or zero.
+	bool outOfRangeAs(std::string_view text, double expected)
+	{
+		double value = 42;
+		const auto [ptr, ec] = nppmac::from_chars(text.data(), text.data() + text.size(), value);
+		return ec == std::errc::result_out_of_range && ptr == text.data() + text.size() && value == expected
+			&& std::signbit(value) == std::signbit(expected);
+	}
+
+	void testFromChars()
+	{
+		CHECK(readsAs("1.5", 1.5, 3));
+		CHECK(readsAs("-0.25e2xyz", -25.0, 7));
+		CHECK(readsAs(".5", 0.5, 2));
+		CHECK(readsAs("7.", 7.0, 2));
+		CHECK(readsAs("1e", 1.0, 1));
+		CHECK(readsAs("1e+", 1.0, 1));
+		CHECK(readsAs("2E-1", 0.2, 4));
+		CHECK(readsAs("0x1A", 0.0, 1)); // no "0x" prefix: the 0, then the x stops it
+		CHECK(readsAs("1.5", 1.5f, 3));
+		CHECK(readsAs("1.5", 1.5L, 3));
+		CHECK(readsAs("1e-310", 1e-310, 6)); // a subnormal value is in range
+		CHECK(readsAs("0.0e-999", 0.0, 8)); // zero is zero
+		CHECK(readsAs("InFinity!", std::numeric_limits<double>::infinity(), 8));
+		CHECK(readsAs("-inf", -std::numeric_limits<double>::infinity(), 4));
+		CHECK(readsAs("nan(ind)", std::numeric_limits<double>::quiet_NaN(), 8));
+		CHECK(readsAs("NaN(", std::numeric_limits<double>::quiet_NaN(), 3));
+		// The C locale: a comma is not a decimal point.
+		CHECK(readsAs("1,5", 1.0, 1));
+
+		CHECK(fromCharsError("") == std::errc::invalid_argument);
+		CHECK(fromCharsError("+1") == std::errc::invalid_argument);
+		CHECK(fromCharsError(" 1") == std::errc::invalid_argument);
+		CHECK(fromCharsError(".") == std::errc::invalid_argument);
+		CHECK(fromCharsError("-") == std::errc::invalid_argument);
+		CHECK(fromCharsError("abc") == std::errc::invalid_argument);
+		CHECK(outOfRangeAs("1e999", std::numeric_limits<double>::infinity()));
+		CHECK(outOfRangeAs("-1e999", -std::numeric_limits<double>::infinity()));
+		CHECK(outOfRangeAs("1e-999", 0.0));
+		CHECK(outOfRangeAs("-1e-999", -0.0));
+
+		// The formats: fixed takes no exponent, scientific needs one, hex is hexadecimal without "0x".
+		CHECK(readsAs("1.5e3", 1.5, 3, std::chars_format::fixed));
+		CHECK(readsAs("1.5e3", 1500.0, 5, std::chars_format::scientific));
+		CHECK(fromCharsError("1.5", std::chars_format::scientific) == std::errc::invalid_argument);
+		CHECK(readsAs("1.8p1", 3.0, 5, std::chars_format::hex));
+		CHECK(readsAs("ff", 255.0, 2, std::chars_format::hex));
+		CHECK(readsAs("1e", 30.0, 2, std::chars_format::hex));
+
+		// Integers are std::from_chars's own.
+		int number = 0;
+		const char digits[] = "-123z";
+		CHECK(nppmac::from_chars(digits, digits + 5, number).ptr == digits + 4 && number == -123);
+		CHECK(nppmac::from_chars(digits + 1, digits + 3, number, 16).ec == std::errc{} && number == 0x12);
+	}
 }
 
 int main()
@@ -355,6 +433,7 @@ int main()
 	testConversionsAndStd();
 	testAnsiFunctions();
 	testVirtualQuery();
+	testFromChars();
 
 	std::cout << (g_checks - g_failures) << "/" << g_checks << " CRT checks passed\n";
 	return g_failures == 0 ? 0 : 1;

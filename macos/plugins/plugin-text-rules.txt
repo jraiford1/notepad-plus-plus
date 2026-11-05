@@ -230,6 +230,13 @@ files: NppTextFX/SRC/Poppad/Popfind.cpp
 line: #if defined(__WATCOMC__) || defined(__DMC__) || defined(_MSC_VER)
 replace: defined(_MSC_VER) => defined(_MSC_VER) || defined(NPPMAC)
 
+# NppTextFX's printf functions copy their va_list by assignment, for each pass over it: that works where
+# va_list is a pointer (Windows, and Apple silicon), and not on Intel Macs, where it is an array.
+# va_copy is the copy on both.
+files: NppTextFX/SRC/NPPTextFX.cpp
+line: ap=ap2;
+replace: ap=ap2; => va_copy(ap,ap2);
+
 # Papyrus's Topic and PrimitiveTypeValueMonitor have a member template whose parameter is named T like
 # the class template's, which Visual C++ lets hide it. The member is only used with the class's own T:
 # its parameter takes another name.

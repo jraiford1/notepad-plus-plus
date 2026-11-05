@@ -26,7 +26,7 @@ Two differences between Windows and macOS cannot be hidden by a library, and two
 | `wchar_t` is 2 bytes on Windows and 4 on macOS; upstream's text is UTF-16 | **engine**: `wchar_t` → `char16_t`, `L"…"` → `u"…"`, `std::wstring` → `std::u16string`, and std facilities libc++ lacks for `char16_t` → `nppmac::` |
 | `std::filesystem::path` is UTF-16 on Windows, UTF-8 on macOS | **engine** sends `std::filesystem` to `nppmac::filesystem`, whose `path` keeps the Windows interface |
 | The Win32 API (windows, messages, dialogs, GDI, files, registry, COM…) | **runtime** |
-| The Microsoft C runtime (`_wcsicmp`, `swprintf_s`, `%I64d`, LLP64 `%lu`…) | **runtime** |
+| The Microsoft C runtime (`_wcsicmp`, `swprintf_s`, `%I64d`, LLP64 `%lu`…), and what Visual C++'s library has that Apple's has only on later macOS (floating-point `std::from_chars`) | **runtime** |
 
 * **`engine/`** — `npp-migrate`, a tool built on clang's lexer. It rewrites tokens only, so comments,
   strings and line numbers are preserved: compiler messages point at upstream's own lines. Output is
@@ -68,7 +68,9 @@ The first configure downloads the Wine source release once (about 45 MB) into th
 
 The app is universal (Apple silicon and Intel, macOS 13.3 and later). For a quicker local build of one
 slice, configure with `-DCMAKE_OSX_ARCHITECTURES=arm64`. On Apple silicon with Rosetta, `ctest` runs the
-smoke test on both slices.
+smoke test on both slices. A build directory keeps the architectures and deployment target it was first
+configured with: one configured before these defaults builds natively for the current macOS, and accepts
+code the universal build refuses, so check what CI builds in a fresh directory.
 
 To see how much of upstream compiles, build every upstream source file:
 

@@ -49,6 +49,7 @@
 #include "nppmac/MsvcCrt.h"
 #include "nppmac/WideString.h"
 #include "nppmac/Filesystem.h"
+#include "nppmac/Charconv.h"
 #else
 // C code (in plugins) gets char16_t, which wchar_t becomes: C11's type, as <uchar.h> (which the macOS
 // SDK does not have) defines it.
