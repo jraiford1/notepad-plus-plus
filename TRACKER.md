@@ -47,6 +47,8 @@ the app is opened the first time with right-click → Open.
   session.
 - On the owner's Mac, only `ctest -LE gui`: GUI tests run on CI, on a pushed branch, merged when green.
   CI runs the same script on every push (`.github/workflows/macos.yml`).
+- On the owner's Mac, only the native build (configured with `-DCMAKE_OSX_ARCHITECTURES=arm64`): no
+  universal build and no x86_64 pass under Rosetta. The universal build and the Intel tests run on CI.
 - `NPPMAC_SKIP_GUI_TESTS=1` leaves out the smoke test where there is no window server.
 - The engine is deterministic: two runs over the same upstream tree give byte-identical output.
 - Upstream is merged nightly by `.github/workflows/macos-upstream-sync.yml`, which builds and tests the
