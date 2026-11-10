@@ -13,8 +13,8 @@
   made for upstream itself: each is one commit on its own branch from upstream, merged into `master` and
   listed in `macos/upstream-changes.txt` until upstream takes it (that file says what to do when the
   nightly merge meets one). The pull request upstream is the owner's.
-- **Who consumes a release.** Mac users of the fork, through a zipped `.app` attached to a GitHub release on the
-  fork (the `X` step).
+- **Who consumes a release.** The owner, on their own Mac. The fork publishes no builds: no GitHub release and
+  no CI artifact. CI builds and tests, and keeps nothing.
 
 ## What the process words mean here
 
@@ -23,17 +23,15 @@
 | **Change** (a `CHANGE` item) | A code change to the macOS build (or to shared files it uses), committed to `master` as `W<n>: ...` |
 | **Working copy / increment** | A branch per `W` item, merged to `master` |
 | **APPLIED** | Merged to `master`; the macOS build (`cmake -S macos`) succeeds and its tests (`ctest`) pass |
-| **Cut** (`C` item) | A `macos-v<upstream version>[-<n>]` tag on `master`; its product is the zipped `Notepad++.app` CI builds for that tag (see Q1) |
-| **Distribution** (`X` item) | That CI artifact, for the owner's own use; nothing is published publicly (see Q1) |
+| **Cut** (`C` item) | A `macos-v<upstream version>[-<n>]` tag on `master`; its product is the `Notepad++.app` built from that tag on the owner's Mac (see Q1) |
+| **Distribution** (`X` item) | That app, on the owner's Mac only; no build is published (see Q1) |
 | **Change ID** | None |
 
 ## How release artifacts are produced
 
-No `cut_script`: CI does it. Every push builds `macos` in Release, runs `ctest` and uploads
-`Notepad++-macOS.zip` (the app, ad-hoc signed) as the run's artifact; for a cut, that is the run of the tag's
-commit. Locally the same is `macos/ci/build-and-test.sh` then `ditto -c -k --keepParent Notepad++.app
-Notepad++-macOS.zip`. Signing with an Apple Developer identity is the owner's step if ever wanted; until then
-the app is opened the first time with right-click → Open.
+No `cut_script`. A cut's app is built on the owner's Mac from the tag: the native build (see below), in
+Release. CI builds the universal app and runs the tests on every push but uploads nothing, neither an
+artifact nor a release (W41).
 
 ## Verification checks and tooling
 
@@ -64,9 +62,9 @@ the app is opened the first time with right-click → Open.
 **What does a cut produce for this project, and what does distribution mean?**
 
 Answered (deduced from the owner's direction, "we are just a private branch"; easily changed): a cut tags
-`master` as `macos-v<upstream Notepad++ version>[-<n>]`, and its product is the zipped `Notepad++.app` CI
-builds for that commit. Distribution is that artifact, for the owner's own use; nothing is published publicly.
-Pushing a tag is the owner's step.
+`master` as `macos-v<upstream Notepad++ version>[-<n>]`, and its product is the `Notepad++.app` built
+from that commit on the owner's Mac. Distribution is that app, for the owner's own use. No build is published:
+no GitHub release and no CI artifact (the owner, 2026-11-10; W41). Pushing a tag is the owner's step.
 
 ## Q2
 
