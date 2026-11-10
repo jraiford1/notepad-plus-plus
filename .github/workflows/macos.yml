@@ -1,5 +1,6 @@
 # The macOS build (macos/): builds the app and runs its tests on every push and pull request.
-# It keeps no build: the fork publishes none, so nothing is uploaded as an artifact or a release.
+# The fork publishes no build: no artifact, no release. A push to master or a macos-v* tag puts the app in a
+# private repository instead, named by the variable BUILDS_REPO and written with the secret BUILDS_TOKEN.
 name: macOS
 
 on:
@@ -36,3 +37,22 @@ jobs:
 
       - name: Build and test
         run: macos/ci/build-and-test.sh macos/build
+
+      # Never for a pull request, and only where BUILDS_REPO is set (a fork of this fork has no such variable).
+      - name: Keep the app in the private builds repository
+        if: github.event_name == 'push' && vars.BUILDS_REPO != '' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/macos-v'))
+        env:
+          GH_TOKEN: ${{ secrets.BUILDS_TOKEN }}
+          BUILDS_REPO: ${{ vars.BUILDS_REPO }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::error::The secret BUILDS_TOKEN is not set"; exit 1; fi
+          ditto -c -k --keepParent macos/build/app/*.app Notepad++-macOS.zip
+          notes="Built from $GITHUB_REPOSITORY@$GITHUB_SHA by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            gh release create "$GITHUB_REF_NAME" Notepad++-macOS.zip -R "$BUILDS_REPO" --title "$GITHUB_REF_NAME" --notes "$notes"
+          else
+            gh release view latest-master -R "$BUILDS_REPO" > /dev/null 2>&1 ||
+              gh release create latest-master -R "$BUILDS_REPO" --title "Latest master build" --latest=false --notes "$notes"
+            gh release upload latest-master Notepad++-macOS.zip -R "$BUILDS_REPO" --clobber
+            gh release edit latest-master -R "$BUILDS_REPO" --notes "$notes"
+          fi
