@@ -70,7 +70,7 @@ The app is universal (Apple silicon and Intel, macOS 13.3 and later). For a quic
 slice, configure with `-DCMAKE_OSX_ARCHITECTURES=arm64`. On Apple silicon with Rosetta, `ctest` runs the
 smoke test on both slices. A build directory keeps the architectures and deployment target it was first
 configured with: one configured before these defaults builds natively for the current macOS, and accepts
-code the universal build refuses, so check what CI builds in a fresh directory.
+code the universal build refuses, so check a fresh directory configured with `-DCMAKE_OSX_ARCHITECTURES=arm64`.
 
 To see how much of upstream compiles, build every upstream source file:
 
@@ -209,8 +209,8 @@ Environment variables read by the runtime:
 Test runs should use Notepad++'s own `-settingsDir=<folder>` so they leave the real settings in
 `~/Library/Application Support/Notepad++` alone.
 
-The smoke test runs on CI on every push; it can also run on a Mac in use (test runs stay off the
-screen and the keyboard), but `ctest -LE gui` leaves it out.
+The smoke test runs with `ctest`, also on a Mac in use (test runs stay off the screen and the
+keyboard); `ctest -LE gui` leaves it out.
 
 For example, open a file, type into it, save it and capture the window:
 
