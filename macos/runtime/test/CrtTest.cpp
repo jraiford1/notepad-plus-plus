@@ -128,6 +128,11 @@ namespace
 		CHECK(wcsncpy_s(buffer, 8, u"abcdefghij", _TRUNCATE) == STRUNCATE);
 		CHECK_EQUAL(std::u16string{buffer}, u"abcdefg");
 
+		const char16_t unterminated[3]{u'a', u'b', u'c'};
+		CHECK(wcsnlen_s(unterminated, 3) == 3);
+		CHECK(wcsnlen_s(u"ab", 8) == 2);
+		CHECK(wcsnlen_s(nullptr, 8) == 0);
+
 		wcscpy_s(buffer, u"ab");
 		CHECK(wcscat_s(buffer, u"cd") == 0);
 		CHECK_EQUAL(std::u16string{buffer}, u"abcd");
