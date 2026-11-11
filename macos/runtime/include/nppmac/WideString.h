@@ -46,6 +46,11 @@
 
 size_t wcslen(const char16_t* str);
 size_t wcsnlen(const char16_t* str, size_t maxCount);
+// The CRT's checked wcsnlen: 0 for a null string.
+inline size_t wcsnlen_s(const char16_t* str, size_t maxCount)
+{
+	return str ? wcsnlen(str, maxCount) : 0;
+}
 int wcscmp(const char16_t* lhs, const char16_t* rhs);
 int wcsncmp(const char16_t* lhs, const char16_t* rhs, size_t count);
 int wcscoll(const char16_t* lhs, const char16_t* rhs);
