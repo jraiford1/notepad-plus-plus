@@ -45,6 +45,11 @@
 // --- C wide-string functions, char16_t overloads (global scope, next to the wchar_t ones) ----------
 
 size_t wcslen(const char16_t* str);
+// BSD's (and so the Microsoft CRT's) iswascii, which glibc does not have.
+inline int iswascii(char16_t ch)
+{
+	return ch < 0x80;
+}
 size_t wcsnlen(const char16_t* str, size_t maxCount);
 // The CRT's checked wcsnlen: 0 for a null string.
 inline size_t wcsnlen_s(const char16_t* str, size_t maxCount)

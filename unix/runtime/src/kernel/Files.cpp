@@ -37,10 +37,9 @@
 #include <optional>
 #include <memory>
 #include <poll.h>
-#include <sys/attr.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/mount.h>
+#include <sys/statvfs.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <unordered_map>
@@ -1571,39 +1570,39 @@ UINT WINAPI GetTempFileNameW(LPCWSTR pathName, LPCWSTR prefix, UINT unique, LPWS
 
 BOOL WINAPI GetDiskFreeSpaceExW(LPCWSTR directory, PULARGE_INTEGER freeToCaller, PULARGE_INTEGER total, PULARGE_INTEGER totalFree)
 {
-	struct statfs info{};
-	if (::statfs(directory ? toPosixPath(directory).c_str() : ".", &info) != 0)
+	struct statvfs info{};
+	if (::statvfs(directory ? toPosixPath(directory).c_str() : ".", &info) != 0)
 	{
 		setErrorFromErrno();
 		return FALSE;
 	}
 	if (freeToCaller)
-		freeToCaller->QuadPart = static_cast<ULONGLONG>(info.f_bavail) * info.f_bsize;
+		freeToCaller->QuadPart = static_cast<ULONGLONG>(info.f_bavail) * info.f_frsize;
 	if (total)
-		total->QuadPart = static_cast<ULONGLONG>(info.f_blocks) * info.f_bsize;
+		total->QuadPart = static_cast<ULONGLONG>(info.f_blocks) * info.f_frsize;
 	if (totalFree)
-		totalFree->QuadPart = static_cast<ULONGLONG>(info.f_bfree) * info.f_bsize;
+		totalFree->QuadPart = static_cast<ULONGLONG>(info.f_bfree) * info.f_frsize;
 	return TRUE;
 }
 
 UINT WINAPI GetDriveTypeW(LPCWSTR rootPath)
 {
-	struct statfs info{};
-	if (::statfs(rootPath ? toPosixPath(rootPath).c_str() : "/", &info) != 0)
+	nppmac::platform::VolumeInfo volume;
+	if (!nppmac::platform::volumeInfo(rootPath ? toPosixPath(rootPath) : std::string{"/"}, volume))
 		return DRIVE_NO_ROOT_DIR;
-	return (info.f_flags & MNT_LOCAL) ? DRIVE_FIXED : DRIVE_REMOTE;
+	return volume._local ? DRIVE_FIXED : DRIVE_REMOTE;
 }
 
 BOOL WINAPI GetVolumePathNameW(LPCWSTR fileName, LPWSTR volumePath, DWORD size)
 {
 	// The folder the file's volume is mounted on, ending in '/'.
-	struct statfs info{};
-	if (::statfs(toPosixPath(fileName).c_str(), &info) != 0)
+	nppmac::platform::VolumeInfo volume;
+	if (!nppmac::platform::volumeInfo(toPosixPath(fileName), volume))
 	{
 		setErrorFromErrno();
 		return FALSE;
 	}
-	std::u16string mountPoint = fromPosixPath(info.f_mntonname);
+	std::u16string mountPoint = fromPosixPath(volume._mountPoint);
 	if (mountPoint.empty() || mountPoint.back() != u'/')
 		mountPoint += u'/';
 	if (mountPoint.size() >= size)
@@ -1627,22 +1626,15 @@ BOOL WINAPI GetVolumeNameForVolumeMountPointW(LPCWSTR, LPWSTR volumeName, DWORD 
 
 DWORD WINAPI GetLogicalDriveStringsW(DWORD size, LPWSTR buffer)
 {
-	// The startup disk, then the other volumes (mounted under /Volumes): each a folder path ending in '/'.
+	// The startup disk, then the other volumes (external disks, shares): each a folder path ending in '/'.
 	std::u16string drives{u"/"};
 	drives.push_back(u'\0');
-	struct statfs* mounts = nullptr;
-	const int count = ::getmntinfo_r_np(&mounts, MNT_NOWAIT);
-	for (int i = 0; i < count; ++i)
+	for (const std::string& mountPoint : nppmac::platform::otherVolumes())
 	{
-		const std::string_view mountPoint{mounts[i].f_mntonname};
-		if (mountPoint.starts_with("/Volumes/"))
-		{
-			drives += fromPosixPath(mountPoint);
-			drives += u'/';
-			drives.push_back(u'\0');
-		}
+		drives += fromPosixPath(mountPoint);
+		drives += u'/';
+		drives.push_back(u'\0');
 	}
-	std::free(mounts);
 	if (drives.size() + 1 > size)
 		return static_cast<DWORD>(drives.size() + 1);
 	std::copy(drives.begin(), drives.end(), buffer);
@@ -1653,45 +1645,29 @@ DWORD WINAPI GetLogicalDriveStringsW(DWORD size, LPWSTR buffer)
 BOOL WINAPI GetVolumeInformationW(LPCWSTR rootPath, LPWSTR volumeName, DWORD volumeNameSize, LPDWORD serialNumber,
 	LPDWORD maxComponentLength, LPDWORD fileSystemFlags, LPWSTR fileSystemName, DWORD fileSystemNameSize)
 {
-	struct statfs info{};
-	if (::statfs(rootPath ? toPosixPath(rootPath).c_str() : "/", &info) != 0)
+	nppmac::platform::VolumeInfo volume;
+	if (!nppmac::platform::volumeInfo(rootPath ? toPosixPath(rootPath) : std::string{"/"}, volume))
 	{
 		setErrorFromErrno();
 		return FALSE;
 	}
 	if (volumeName && volumeNameSize > 0)
-	{
-		// The volume's own name ("Macintosh HD" for the startup disk), which is not always its mount
-		// point's folder name.
-		struct VolumeName
-		{
-			u_int32_t length;
-			attrreference_t name;
-			char text[MAXPATHLEN];
-		} __attribute__((aligned(4), packed)) attributes{};
-		attrlist request{};
-		request.bitmapcount = ATTR_BIT_MAP_COUNT;
-		request.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
-		std::u16string name;
-		if (::getattrlist(info.f_mntonname, &request, &attributes, sizeof(attributes), 0) == 0)
-			name = fromPosixPath(reinterpret_cast<const char*>(&attributes.name) + attributes.name.attr_dataoffset);
-		wcsncpy_s(volumeName, volumeNameSize, name.c_str(), _TRUNCATE);
-	}
+		wcsncpy_s(volumeName, volumeNameSize, fromPosixPath(volume._name).c_str(), _TRUNCATE);
 	if (serialNumber)
-		*serialNumber = static_cast<DWORD>(info.f_fsid.val[0]);
+		*serialNumber = volume._serial;
 	if (maxComponentLength)
 		*maxComponentLength = NAME_MAX;
 	if (fileSystemFlags)
 	{
 		DWORD flags = FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK;
-		if (::pathconf(info.f_mntonname, _PC_CASE_SENSITIVE) == 1)
+		if (volume._caseSensitive)
 			flags |= FILE_CASE_SENSITIVE_SEARCH;
-		if (info.f_flags & MNT_RDONLY)
+		if (volume._readOnly)
 			flags |= FILE_READ_ONLY_VOLUME;
 		*fileSystemFlags = flags;
 	}
 	if (fileSystemName && fileSystemNameSize > 0)
-		wcsncpy_s(fileSystemName, fileSystemNameSize, fromPosixPath(info.f_fstypename).c_str(), _TRUNCATE);
+		wcsncpy_s(fileSystemName, fileSystemNameSize, fromPosixPath(volume._fileSystem).c_str(), _TRUNCATE);
 	return TRUE;
 }
 

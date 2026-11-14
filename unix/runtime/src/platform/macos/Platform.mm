@@ -23,6 +23,9 @@
 #include <climits>
 #include <copyfile.h>
 #include <malloc/malloc.h>
+#include <sys/attr.h>
+#include <sys/mount.h>
+#include <sys/param.h>
 #include <uuid/uuid.h>
 #include <crt_externs.h>
 #include <libkern/OSByteOrder.h>
@@ -192,6 +195,49 @@ namespace nppmac::platform
 			hostId[0], hostId[1], hostId[2], hostId[3], hostId[4], hostId[5], hostId[6], hostId[7],
 			hostId[8], hostId[9], hostId[10], hostId[11], hostId[12], hostId[13], hostId[14], hostId[15]);
 		return guid;
+	}
+
+	bool volumeInfo(const std::string& path, VolumeInfo& volume)
+	{
+		struct statfs info{};
+		if (::statfs(path.c_str(), &info) != 0)
+			return false;
+		volume._mountPoint = info.f_mntonname;
+		volume._fileSystem = info.f_fstypename;
+		volume._serial = static_cast<uint32_t>(info.f_fsid.val[0]);
+		volume._local = (info.f_flags & MNT_LOCAL) != 0;
+		volume._readOnly = (info.f_flags & MNT_RDONLY) != 0;
+		volume._caseSensitive = ::pathconf(info.f_mntonname, _PC_CASE_SENSITIVE) == 1;
+		// The volume's own name ("Macintosh HD" for the startup disk), which is not always its mount
+		// point's folder name.
+		struct VolumeName
+		{
+			u_int32_t length;
+			attrreference_t name;
+			char text[MAXPATHLEN];
+		} __attribute__((aligned(4), packed)) attributes{};
+		attrlist request{};
+		request.bitmapcount = ATTR_BIT_MAP_COUNT;
+		request.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
+		volume._name.clear();
+		if (::getattrlist(info.f_mntonname, &request, &attributes, sizeof(attributes), 0) == 0)
+			volume._name = reinterpret_cast<const char*>(&attributes.name) + attributes.name.attr_dataoffset;
+		return true;
+	}
+
+	std::vector<std::string> otherVolumes()
+	{
+		std::vector<std::string> volumes;
+		struct statfs* mounts = nullptr;
+		const int count = ::getmntinfo_r_np(&mounts, MNT_NOWAIT);
+		for (int i = 0; i < count; ++i)
+		{
+			const std::string_view mountPoint{mounts[i].f_mntonname};
+			if (mountPoint.starts_with("/Volumes/"))
+				volumes.emplace_back(mountPoint);
+		}
+		std::free(mounts);
+		return volumes;
 	}
 
 	size_t digestLength(DigestAlgorithm algorithm)

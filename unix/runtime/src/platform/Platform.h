@@ -46,6 +46,22 @@ namespace nppmac::platform
 	// A stable identifier of this computer, as a lowercase GUID ("" when there is none).
 	std::string machineGuid();
 
+	// The volume a path is on. False with errno set when the path cannot be looked at.
+	struct VolumeInfo
+	{
+		std::string _mountPoint; // the folder it is mounted on
+		std::string _name;       // its own name ("Macintosh HD", a disk's label), "" when it has none
+		std::string _fileSystem; // "apfs", "ext4"...
+		uint32_t _serial = 0;
+		bool _local = true;
+		bool _readOnly = false;
+		bool _caseSensitive = true;
+	};
+	bool volumeInfo(const std::string& path, VolumeInfo& volume);
+	// The mount points of the volumes besides the startup disk that a user would open (external disks,
+	// shares): /Volumes/... on macOS, /media/<user>/..., /run/media/<user>/... and /mnt/... on Linux.
+	std::vector<std::string> otherVolumes();
+
 	enum class DigestAlgorithm
 	{
 		md5,

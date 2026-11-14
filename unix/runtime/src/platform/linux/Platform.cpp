@@ -51,7 +51,10 @@
 #include <pwd.h>
 #include <sstream>
 #include <string_view>
+#include <climits>
 #include <sys/stat.h>
+#include <sys/statfs.h>
+#include <sys/sysmacros.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #include <utility>
@@ -324,6 +327,147 @@ namespace nppmac::platform
 		if (id.size() != 32)
 			return {};
 		return id.substr(0, 8) + "-" + id.substr(8, 4) + "-" + id.substr(12, 4) + "-" + id.substr(16, 4) + "-" + id.substr(20);
+	}
+
+	namespace
+	{
+		// A line of /proc/self/mountinfo: "id parent major:minor root mountpoint options [tags] - type source super".
+		struct Mount
+		{
+			unsigned _major = 0;
+			unsigned _minor = 0;
+			std::string _mountPoint;
+			std::string _options;
+			std::string _type;
+			std::string _source;
+		};
+
+		// mountinfo writes spaces, tabs, newlines and backslashes in paths as octal escapes (\040).
+		std::string unescapeOctal(const std::string& text)
+		{
+			std::string result;
+			for (size_t i = 0; i < text.size(); ++i)
+			{
+				if (text[i] == '\\' && i + 3 < text.size() && std::isdigit(static_cast<unsigned char>(text[i + 1])))
+				{
+					result.push_back(static_cast<char>(std::strtol(text.substr(i + 1, 3).c_str(), nullptr, 8)));
+					i += 3;
+				}
+				else
+					result.push_back(text[i]);
+			}
+			return result;
+		}
+
+		std::vector<Mount> mounts()
+		{
+			std::vector<Mount> result;
+			std::ifstream file("/proc/self/mountinfo");
+			for (std::string line; std::getline(file, line);)
+			{
+				std::istringstream fields(line);
+				std::string id, parent, device, root, mountPoint, options, field;
+				if (!(fields >> id >> parent >> device >> root >> mountPoint >> options))
+					continue;
+				while (fields >> field && field != "-")
+					; // optional tags
+				Mount mount;
+				fields >> mount._type >> mount._source;
+				std::sscanf(device.c_str(), "%u:%u", &mount._major, &mount._minor);
+				mount._mountPoint = unescapeOctal(mountPoint);
+				mount._options = options;
+				mount._source = unescapeOctal(mount._source);
+				result.push_back(std::move(mount));
+			}
+			return result;
+		}
+
+		bool hasOption(const std::string& options, std::string_view option)
+		{
+			std::istringstream list(options);
+			for (std::string item; std::getline(list, item, ',');)
+			{
+				if (item == option)
+					return true;
+			}
+			return false;
+		}
+
+		// A device's label, from udev's /dev/disk/by-label links (names with \x20 escapes).
+		std::string deviceLabel(const std::string& device)
+		{
+			char target[PATH_MAX]{};
+			if (device.empty() || device[0] != '/' || !::realpath(device.c_str(), target))
+				return {};
+			QDir labels("/dev/disk/by-label");
+			for (const QString& entry : labels.entryList(QDir::System | QDir::Files | QDir::NoDotAndDotDot))
+			{
+				char linked[PATH_MAX]{};
+				const std::string link = "/dev/disk/by-label/" + toString(entry);
+				if (!::realpath(link.c_str(), linked) || std::strcmp(linked, target) != 0)
+					continue;
+				std::string name;
+				const std::string escaped = toString(entry);
+				for (size_t i = 0; i < escaped.size(); ++i)
+				{
+					if (escaped.compare(i, 2, "\\x") == 0 && i + 3 < escaped.size())
+					{
+						name.push_back(static_cast<char>(std::strtol(escaped.substr(i + 2, 2).c_str(), nullptr, 16)));
+						i += 3;
+					}
+					else
+						name.push_back(escaped[i]);
+				}
+				return name;
+			}
+			return {};
+		}
+	}
+
+	bool volumeInfo(const std::string& path, VolumeInfo& volume)
+	{
+		struct stat info{};
+		if (::stat(path.c_str(), &info) != 0)
+			return false;
+		char resolved[PATH_MAX]{};
+		const std::string real = ::realpath(path.c_str(), resolved) ? std::string{resolved} : path;
+		// The mount of the path's device whose folder holds the path, the deepest one (a device can be
+		// mounted more than once).
+		const Mount* found = nullptr;
+		const std::vector<Mount> all = mounts();
+		for (const Mount& mount : all)
+		{
+			const bool holds = real == mount._mountPoint || mount._mountPoint == "/"
+				|| (real.compare(0, mount._mountPoint.size(), mount._mountPoint) == 0 && real[mount._mountPoint.size()] == '/');
+			if (holds && mount._major == major(info.st_dev) && mount._minor == minor(info.st_dev)
+				&& (!found || mount._mountPoint.size() > found->_mountPoint.size()))
+				found = &mount;
+		}
+		struct statfs fileSystem{};
+		::statfs(path.c_str(), &fileSystem);
+		volume._serial = static_cast<uint32_t>(fileSystem.f_fsid.__val[0]);
+		volume._mountPoint = found ? found->_mountPoint : std::string{"/"};
+		volume._fileSystem = found ? found->_type : std::string{};
+		volume._readOnly = found && hasOption(found->_options, "ro");
+		static const std::vector<std::string_view> remote = {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "afs", "ceph",
+			"fuse.sshfs", "fuse.rclone", "davfs", "fuse.davfs2"};
+		volume._local = std::find(remote.begin(), remote.end(), volume._fileSystem) == remote.end();
+		static const std::vector<std::string_view> caseInsensitive = {"vfat", "msdos", "exfat", "ntfs", "ntfs3", "fuseblk", "hfsplus"};
+		volume._caseSensitive = std::find(caseInsensitive.begin(), caseInsensitive.end(), volume._fileSystem) == caseInsensitive.end();
+		volume._name = found ? deviceLabel(found->_source) : std::string{};
+		return true;
+	}
+
+	std::vector<std::string> otherVolumes()
+	{
+		std::vector<std::string> volumes;
+		for (const Mount& mount : mounts())
+		{
+			const std::string_view point = mount._mountPoint;
+			if (point.starts_with("/media/") || point.starts_with("/run/media/") || point.starts_with("/mnt/"))
+				volumes.push_back(mount._mountPoint);
+		}
+		return volumes;
 	}
 
 	namespace

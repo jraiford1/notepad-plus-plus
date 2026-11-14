@@ -28,6 +28,9 @@ if(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(NPPMAC_PLATFORM linux)
 	find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus)
+	# The compilers predefine unix and linux as 1 in their GNU modes, and upstream names things unix
+	# (EolType::unix): a compiler-level difference, undone for every file.
+	add_compile_options(-Uunix -Ulinux)
 else()
 	message(FATAL_ERROR "The build is for macOS or Linux, not ${CMAKE_SYSTEM_NAME}.")
 endif()
