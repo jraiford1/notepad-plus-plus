@@ -157,16 +157,8 @@ namespace
 		currentVersion->_values[u"UBR"] = dwordValue(0);
 
 		// A stable per-machine identifier, as Windows keeps under Cryptography\MachineGuid.
-		uuid_t hostId{};
-		timespec wait{};
-		char guid[40]{};
-		if (gethostuuid(hostId, &wait) == 0)
-		{
-			std::snprintf(guid, sizeof(guid), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-				hostId[0], hostId[1], hostId[2], hostId[3], hostId[4], hostId[5], hostId[6], hostId[7],
-				hostId[8], hostId[9], hostId[10], hostId[11], hostId[12], hostId[13], hostId[14], hostId[15]);
-		}
-		walk(hklm, u"SOFTWARE\\Microsoft\\Cryptography", true)->_values[u"MachineGuid"] = stringValue(nppmac::toUtf16(guid));
+		walk(hklm, u"SOFTWARE\\Microsoft\\Cryptography", true)->_values[u"MachineGuid"] =
+			stringValue(nppmac::toUtf16(nppmac::platform::machineGuid()));
 
 		walk(root(HKEY_CURRENT_USER), u"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", true);
 	}

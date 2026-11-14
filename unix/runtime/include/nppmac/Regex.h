@@ -123,6 +123,9 @@ namespace nppmac
 }
 
 // libc++ declares what '.' matches for every character type but defines it for char and wchar_t
-// only: the runtime defines it for char16_t (Regex.cpp).
+// only: the runtime defines it for char16_t (Regex.cpp). (Linux's libstdc++ needs a ctype<char16_t>
+// facet instead, which comes with J4's plugins step: only plugins use these.)
+#ifdef _LIBCPP_VERSION
 template <>
 void std::__match_any_but_newline<char16_t>::__exec(std::__state<char16_t>& state) const;
+#endif

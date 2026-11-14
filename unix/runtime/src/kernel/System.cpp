@@ -344,7 +344,14 @@ DWORD WINAPI GetTickCount()
 
 BOOL WINAPI QueryPerformanceCounter(LARGE_INTEGER* counter)
 {
+	// A clock that does not count while asleep: CLOCK_UPTIME_RAW on macOS, CLOCK_MONOTONIC on Linux.
+#ifdef CLOCK_UPTIME_RAW
 	counter->QuadPart = static_cast<LONGLONG>(clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
+#else
+	timespec now{};
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	counter->QuadPart = static_cast<LONGLONG>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+#endif
 	return TRUE;
 }
 

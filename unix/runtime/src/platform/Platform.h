@@ -38,6 +38,24 @@ namespace nppmac::platform
 	// The identifiers of the running processes, and a process's executable path ("" when unreadable).
 	std::vector<int> processIds();
 	std::string processPath(int pid);
+	// The usable size of a block from malloc.
+	size_t allocationSize(const void* memory);
+	// Copies a file with its permissions and dates (and extended attributes where the system copies
+	// them), replacing the target; with move, then deletes the source. False with errno set on failure.
+	bool copyFile(const std::string& source, const std::string& target, bool move);
+	// A stable identifier of this computer, as a lowercase GUID ("" when there is none).
+	std::string machineGuid();
+
+	enum class DigestAlgorithm
+	{
+		md5,
+		sha1,
+		sha256,
+		sha384,
+		sha512,
+	};
+	size_t digestLength(DigestAlgorithm algorithm);
+	std::vector<unsigned char> digest(DigestAlgorithm algorithm, const void* data, size_t size);
 
 	// A region of the process's memory: the one holding the address, or else the next one up.
 	struct MemoryRegion

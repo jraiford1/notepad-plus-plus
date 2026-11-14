@@ -22,6 +22,7 @@
 
 #include "../Platform.h"
 
+#include <QtCore/QCryptographicHash>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
@@ -44,10 +45,13 @@
 #include <cstring>
 #include <dirent.h>
 #include <elf.h>
+#include <fcntl.h>
 #include <fstream>
+#include <malloc.h>
 #include <pwd.h>
 #include <sstream>
 #include <string_view>
+#include <sys/stat.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #include <utility>
@@ -242,6 +246,117 @@ namespace nppmac::platform
 		char path[4096];
 		const ssize_t length = readlink(("/proc/" + std::to_string(pid) + "/exe").c_str(), path, sizeof(path) - 1);
 		return length > 0 ? std::string{path, static_cast<size_t>(length)} : std::string{};
+	}
+
+	size_t allocationSize(const void* memory)
+	{
+		return malloc_usable_size(const_cast<void*>(memory));
+	}
+
+	bool copyFile(const std::string& source, const std::string& target, bool move)
+	{
+		const int from = ::open(source.c_str(), O_RDONLY | O_CLOEXEC);
+		if (from < 0)
+			return false;
+		struct stat info{};
+		if (::fstat(from, &info) != 0)
+		{
+			const int error = errno;
+			::close(from);
+			errno = error;
+			return false;
+		}
+		const int to = ::open(target.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, info.st_mode & 07777);
+		if (to < 0)
+		{
+			const int error = errno;
+			::close(from);
+			errno = error;
+			return false;
+		}
+		bool copied = true;
+		for (;;)
+		{
+			// The kernel copies (and may share blocks) without the data passing through here.
+			const ssize_t count = ::copy_file_range(from, nullptr, to, nullptr, 1 << 30, 0);
+			if (count == 0)
+				break;
+			if (count > 0)
+				continue;
+			if (errno != EXDEV && errno != ENOSYS && errno != EINVAL && errno != EOPNOTSUPP)
+			{
+				copied = false;
+				break;
+			}
+			char buffer[64 * 1024];
+			for (ssize_t read; (read = ::read(from, buffer, sizeof(buffer))) != 0;)
+			{
+				if (read < 0 || ::write(to, buffer, static_cast<size_t>(read)) != read)
+				{
+					copied = false;
+					break;
+				}
+			}
+			break;
+		}
+		const int error = errno;
+		if (copied)
+		{
+			::fchmod(to, info.st_mode & 07777);
+			const timespec times[2] = {info.st_atim, info.st_mtim};
+			::futimens(to, times);
+		}
+		::close(from);
+		if (::close(to) != 0 && copied)
+			return false;
+		if (!copied)
+		{
+			errno = error;
+			return false;
+		}
+		return !move || ::unlink(source.c_str()) == 0;
+	}
+
+	std::string machineGuid()
+	{
+		// systemd's machine ID: 32 hexadecimal digits, a GUID's 128 bits.
+		const std::string id = trim(readFile("/etc/machine-id"));
+		if (id.size() != 32)
+			return {};
+		return id.substr(0, 8) + "-" + id.substr(8, 4) + "-" + id.substr(12, 4) + "-" + id.substr(16, 4) + "-" + id.substr(20);
+	}
+
+	namespace
+	{
+		QCryptographicHash::Algorithm qtAlgorithm(DigestAlgorithm algorithm)
+		{
+			switch (algorithm)
+			{
+				case DigestAlgorithm::md5:
+					return QCryptographicHash::Md5;
+				case DigestAlgorithm::sha1:
+					return QCryptographicHash::Sha1;
+				case DigestAlgorithm::sha256:
+					return QCryptographicHash::Sha256;
+				case DigestAlgorithm::sha384:
+					return QCryptographicHash::Sha384;
+				case DigestAlgorithm::sha512:
+					return QCryptographicHash::Sha512;
+			}
+			return QCryptographicHash::Sha256;
+		}
+	}
+
+	size_t digestLength(DigestAlgorithm algorithm)
+	{
+		return static_cast<size_t>(QCryptographicHash::hashLength(qtAlgorithm(algorithm)));
+	}
+
+	std::vector<unsigned char> digest(DigestAlgorithm algorithm, const void* data, size_t size)
+	{
+		const QByteArray result = QCryptographicHash::hash(
+			QByteArrayView(static_cast<const char*>(data), static_cast<qsizetype>(size)), qtAlgorithm(algorithm));
+		return {result.begin(), result.end()};
 	}
 
 	bool memoryRegion(uintptr_t address, MemoryRegion& region)

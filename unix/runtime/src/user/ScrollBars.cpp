@@ -21,6 +21,8 @@
 
 #include "Window.h"
 
+#include <cmath>
+
 namespace nppmac::user
 {
 	namespace

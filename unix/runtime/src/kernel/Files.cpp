@@ -27,7 +27,6 @@
 #include <condition_variable>
 #include <cerrno>
 #include <cstdlib>
-#include <copyfile.h>
 #include <cstddef>
 #include <cstring>
 #include <deque>
@@ -1263,7 +1262,7 @@ BOOL WINAPI CopyFileExW(LPCWSTR existing, LPCWSTR newFile, LPPROGRESS_ROUTINE, L
 		SetLastError(ERROR_FILE_EXISTS);
 		return FALSE;
 	}
-	if (::copyfile(source.c_str(), target.c_str(), nullptr, COPYFILE_ALL) != 0)
+	if (!nppmac::platform::copyFile(source, target, false))
 	{
 		setErrorFromErrno();
 		return FALSE;
@@ -1291,7 +1290,7 @@ BOOL WINAPI MoveFileExW(LPCWSTR existing, LPCWSTR newFile, DWORD flags)
 	{
 		if (errno == EXDEV && (flags & MOVEFILE_COPY_ALLOWED))
 		{
-			if (::copyfile(source.c_str(), target.c_str(), nullptr, COPYFILE_ALL | COPYFILE_MOVE) == 0)
+			if (nppmac::platform::copyFile(source, target, true))
 				return TRUE;
 		}
 		setErrorFromErrno();

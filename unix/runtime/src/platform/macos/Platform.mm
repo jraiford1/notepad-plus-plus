@@ -18,8 +18,12 @@
 #import <Metal/Metal.h>
 #import <PDFKit/PDFKit.h>
 
+#include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <climits>
+#include <copyfile.h>
+#include <malloc/malloc.h>
+#include <uuid/uuid.h>
 #include <crt_externs.h>
 #include <libkern/OSByteOrder.h>
 #include <libproc.h>
@@ -165,6 +169,75 @@ namespace nppmac::platform
 	{
 		char path[PROC_PIDPATHINFO_MAXSIZE]{};
 		return proc_pidpath(pid, path, sizeof(path)) > 0 ? std::string{path} : std::string{};
+	}
+
+	size_t allocationSize(const void* memory)
+	{
+		return malloc_size(memory);
+	}
+
+	bool copyFile(const std::string& source, const std::string& target, bool move)
+	{
+		return ::copyfile(source.c_str(), target.c_str(), nullptr, COPYFILE_ALL | (move ? COPYFILE_MOVE : 0)) == 0;
+	}
+
+	std::string machineGuid()
+	{
+		uuid_t hostId{};
+		timespec wait{};
+		char guid[40]{};
+		if (gethostuuid(hostId, &wait) != 0)
+			return {};
+		std::snprintf(guid, sizeof(guid), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+			hostId[0], hostId[1], hostId[2], hostId[3], hostId[4], hostId[5], hostId[6], hostId[7],
+			hostId[8], hostId[9], hostId[10], hostId[11], hostId[12], hostId[13], hostId[14], hostId[15]);
+		return guid;
+	}
+
+	size_t digestLength(DigestAlgorithm algorithm)
+	{
+		switch (algorithm)
+		{
+			case DigestAlgorithm::md5:
+				return CC_MD5_DIGEST_LENGTH;
+			case DigestAlgorithm::sha1:
+				return CC_SHA1_DIGEST_LENGTH;
+			case DigestAlgorithm::sha256:
+				return CC_SHA256_DIGEST_LENGTH;
+			case DigestAlgorithm::sha384:
+				return CC_SHA384_DIGEST_LENGTH;
+			case DigestAlgorithm::sha512:
+				return CC_SHA512_DIGEST_LENGTH;
+		}
+		return 0;
+	}
+
+	std::vector<unsigned char> digest(DigestAlgorithm algorithm, const void* data, size_t size)
+	{
+		std::vector<unsigned char> result(digestLength(algorithm));
+		const auto length = static_cast<CC_LONG>(size);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		switch (algorithm)
+		{
+			case DigestAlgorithm::md5:
+				CC_MD5(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha1:
+				CC_SHA1(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha256:
+				CC_SHA256(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha384:
+				CC_SHA384(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha512:
+				CC_SHA512(data, length, result.data());
+				break;
+		}
+#pragma clang diagnostic pop
+		return result;
 	}
 
 	std::string preferredLanguage()

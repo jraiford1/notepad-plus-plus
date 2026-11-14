@@ -24,7 +24,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+// locale_t and the _l functions: <xlocale.h> on macOS, <locale.h> with glibc.
+#if __has_include(<xlocale.h>)
 #include <xlocale.h>
+#else
+#include <locale.h>
+#endif
 
 #ifdef __cplusplus
 #include <iterator>

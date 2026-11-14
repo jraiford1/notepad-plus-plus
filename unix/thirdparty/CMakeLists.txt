@@ -53,3 +53,11 @@ target_include_directories(nppLexilla
 	PUBLIC "${NPP_ROOT}/lexilla/include"
 	PRIVATE "${NPP_ROOT}/lexilla/lexlib" "${NPP_ROOT}/scintilla/include"
 )
+
+# Scintilla's and Lexilla's headers use intptr_t without <cstdint>, which libc++ brings in through other
+# headers and newer libstdc++ does not: a compiler-level fix, as upstream's gcc-fixes.h is.
+if(NPPMAC_PLATFORM STREQUAL "linux")
+	foreach(target IN ITEMS nppScintilla nppLexUser nppLexilla)
+		target_compile_options(${target} PRIVATE -include cstdint)
+	endforeach()
+endif()

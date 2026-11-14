@@ -19,6 +19,8 @@
 
 #include "nppmac/Regex.h"
 
+#ifdef _LIBCPP_VERSION // libc++'s own node; libstdc++ has none to define
+
 template <>
 void std::__match_any_but_newline<char16_t>::__exec(std::__state<char16_t>& state) const
 {
@@ -44,3 +46,4 @@ void std::__match_any_but_newline<char16_t>::__exec(std::__state<char16_t>& stat
 			break;
 	}
 }
+#endif

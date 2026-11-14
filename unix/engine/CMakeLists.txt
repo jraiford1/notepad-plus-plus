@@ -10,7 +10,10 @@ target_link_libraries(nppMigrationRules PUBLIC clang-cpp LLVM)
 target_compile_features(nppMigrationRules PUBLIC cxx_std_20)
 
 add_executable(npp-migrate NppMigrate.cpp)
-target_link_libraries(npp-migrate PRIVATE nppMigrationRules iconv)
+target_link_libraries(npp-migrate PRIVATE nppMigrationRules)
+if(APPLE)
+	target_link_libraries(npp-migrate PRIVATE iconv) # part of the C library on Linux
+endif()
 
 add_executable(nppMigrationRulesTest MigrationRulesTest.cpp)
 target_link_libraries(nppMigrationRulesTest PRIVATE nppMigrationRules)

@@ -44,7 +44,10 @@ if(NPPMAC_PLATFORM STREQUAL "linux")
 	# Not on Linux yet: AppKit's side (.mm), and the files that draw with Core Graphics and Core Text or
 	# decode images with ImageIO, until J4's drawing and window steps give them a Linux side.
 	list(FILTER nppRuntimeSources EXCLUDE REGEX "\\.mm$")
-	list(FILTER nppRuntimeSources EXCLUDE REGEX "/gdi/(DC|Draw|Objects|Printing|Text)\\.cpp$|/controls/ImageList\\.cpp$|/user/Resources\\.cpp$|/scintilla/ScintillaClass\\.cpp$")
+	list(FILTER nppRuntimeSources EXCLUDE REGEX "/gdi/(DC|Draw|Objects|Printing|Text)\\.cpp$|/user/Resources\\.cpp$|/scintilla/ScintillaClass\\.cpp$")
+	# And what draws through GDI's internal header (Core Graphics types): the controls, dialogs, menus
+	# and metrics.
+	list(FILTER nppRuntimeSources EXCLUDE REGEX "/controls/|/shell/CommonDialogs\\.cpp$|/user/(Dialogs|Menus|Metrics)\\.cpp$")
 endif()
 add_library(nppRuntime STATIC ${nppRuntimeSources})
 if(NPPMAC_PLATFORM STREQUAL "linux")
