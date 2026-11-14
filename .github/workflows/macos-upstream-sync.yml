@@ -1,7 +1,7 @@
 # Nightly upstream merge for the macOS build: merges upstream Notepad++ into the
 # macos-upstream-sync branch, builds and tests the result, and opens (or updates) a pull request
 # to master. Upstream's sources are edited here only by the changes made for upstream itself
-# (macos/upstream-changes.txt), so the merge conflicts only where upstream changes the same lines as
+# (unix/upstream-changes.txt), so the merge conflicts only where upstream changes the same lines as
 # one of them (that file says what to do). Otherwise what can fail is the build (an engine rule gap,
 # a migration fixup whose upstream text changed, a Win32 function the runtime lacks) or a test, and
 # the failing step says which.
@@ -55,12 +55,12 @@ jobs:
         if: steps.merge.outputs.changed == 'true'
         uses: actions/cache@v4
         with:
-          path: macos/build/wine/*.tar.xz
-          key: wine-${{ hashFiles('macos/runtime/wine/WineHeaders.cmake') }}
+          path: unix/build/wine/*.tar.xz
+          key: wine-${{ hashFiles('unix/runtime/wine/WineHeaders.cmake') }}
 
       - name: Build and test
         if: steps.merge.outputs.changed == 'true'
-        run: macos/ci/build-and-test.sh macos/build
+        run: unix/ci/build-and-test.sh unix/build
 
       - name: Push and open the pull request
         if: steps.merge.outputs.changed == 'true'

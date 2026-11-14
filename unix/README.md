@@ -59,9 +59,9 @@ and `bison` (Wine's IDL compiler needs bison 3).
 
 ```bash
 brew install llvm bison
-cmake -S macos -B macos/build
-cmake --build macos/build
-ctest --test-dir macos/build
+cmake -S unix -B unix/build
+cmake --build unix/build
+ctest --test-dir unix/build
 ```
 
 The first configure downloads the Wine source release once (about 45 MB) into the build directory.
@@ -75,7 +75,7 @@ code the universal build refuses, so check a fresh directory configured with `-D
 To see how much of upstream compiles, build every upstream source file:
 
 ```bash
-cmake --build macos/build --target nppUpstream -- -k
+cmake --build unix/build --target nppUpstream -- -k
 ```
 
 ## Status
@@ -128,7 +128,7 @@ The app's name (bundle, executable, application menu), bundle identifier and ico
 settings:
 
 ```bash
-cmake -S macos -B macos/build -DNPPMAC_APP_NAME="..." -DNPPMAC_BUNDLE_ID="..." -DNPPMAC_APP_ICON=path/to/icon.png
+cmake -S unix -B unix/build -DNPPMAC_APP_NAME="..." -DNPPMAC_BUNDLE_ID="..." -DNPPMAC_APP_ICON=path/to/icon.png
 ```
 
 This is Notepad++, so they default to "Notepad++" and upstream's icon, and nothing needs setting.
@@ -216,7 +216,7 @@ For example, open a file, type into it, save it and capture the window:
 
 ```bash
 NPPMAC_TEST_RUN=1 NPPMAC_TEST_TYPE='hello ^s' NPPMAC_SNAPSHOT=/tmp/npp.png NPPMAC_SNAPSHOT_EXIT=1 \
-	"macos/build/app/Notepad++.app/Contents/MacOS/Notepad++" -settingsDir=/tmp/npp-settings /path/to/file.txt
+	"unix/build/app/Notepad++.app/Contents/MacOS/Notepad++" -settingsDir=/tmp/npp-settings /path/to/file.txt
 ```
 
 ## Coding style

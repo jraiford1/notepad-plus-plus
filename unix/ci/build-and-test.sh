@@ -17,14 +17,14 @@
 
 # Builds the macOS app and runs its tests: what CI does, and what anyone can run locally.
 #
-#     macos/ci/build-and-test.sh [build directory]     (default: macos/build)
+#     unix/ci/build-and-test.sh [build directory]     (default: unix/build)
 #
 # NPPMAC_SKIP_GUI_TESTS=1 leaves out the tests that need a window server.
 
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-build="${1:-$root/macos/build}"
+build="${1:-$root/unix/build}"
 
 for formula in llvm bison; do
 	if ! brew list --versions "$formula" > /dev/null 2>&1; then
@@ -33,24 +33,24 @@ for formula in llvm bison; do
 	fi
 done
 
-cmake -S "$root/macos" -B "$build" -DCMAKE_BUILD_TYPE=Release
+cmake -S "$root/unix" -B "$build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build" --parallel "$(sysctl -n hw.ncpu)"
 
-# Upstream's sources must be as upstream has them: the port lives in macos/ only. The one exception is
-# the changes made for upstream itself, listed in macos/upstream-changes.txt. So this branch's copy must
+# Upstream's sources must be as upstream has them: the port lives in unix/ only. The one exception is
+# the changes made for upstream itself, listed in unix/upstream-changes.txt. So this branch's copy must
 # be its last merge of upstream with exactly those commits merged in (upstream itself may have moved on).
 if git -C "$root" rev-parse --verify --quiet upstream/master > /dev/null; then
 	expected="$(git -C "$root" merge-base HEAD upstream/master)"
 	while read -r commit _; do
 		case "$commit" in '' | '#'*) continue ;; esac
 		if ! tree="$(git -C "$root" merge-tree --write-tree --no-messages "$expected" "$commit")"; then
-			echo "The upstream change $commit (macos/upstream-changes.txt) no longer merges cleanly with upstream."
+			echo "The upstream change $commit (unix/upstream-changes.txt) no longer merges cleanly with upstream."
 			exit 1
 		fi
 		expected="$(git -C "$root" commit-tree "$tree" -p "$expected" -p "$commit" -m "upstream with its changes")"
-	done < "$root/macos/upstream-changes.txt"
+	done < "$root/unix/upstream-changes.txt"
 	if ! git -C "$root" diff --quiet "$expected" HEAD -- PowerEditor scintilla lexilla boostregex; then
-		echo "This branch changed upstream's sources beyond macos/upstream-changes.txt:"
+		echo "This branch changed upstream's sources beyond unix/upstream-changes.txt:"
 		git -C "$root" diff --stat "$expected" HEAD -- PowerEditor scintilla lexilla boostregex
 		exit 1
 	fi

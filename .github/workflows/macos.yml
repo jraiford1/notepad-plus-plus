@@ -1,4 +1,4 @@
-# The macOS build (macos/): builds the app and runs its tests on every push and pull request.
+# The macOS build (unix/): builds the app and runs its tests on every push and pull request.
 # The fork publishes no build: no artifact, no release. A push to master or a macos-v* tag puts the app in a
 # private repository instead, named by the variable BUILDS_REPO and written with the secret BUILDS_TOKEN.
 name: macOS
@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch upstream (to check upstream's sources are upstream's, plus macos/upstream-changes.txt)
+      - name: Fetch upstream (to check upstream's sources are upstream's, plus unix/upstream-changes.txt)
         run: |
           git remote add upstream https://github.com/notepad-plus-plus/notepad-plus-plus.git
           git fetch --no-tags upstream master
@@ -32,11 +32,11 @@ jobs:
       - name: Cache the Wine headers download
         uses: actions/cache@v4
         with:
-          path: macos/build/wine/*.tar.xz
-          key: wine-${{ hashFiles('macos/runtime/wine/WineHeaders.cmake') }}
+          path: unix/build/wine/*.tar.xz
+          key: wine-${{ hashFiles('unix/runtime/wine/WineHeaders.cmake') }}
 
       - name: Build and test
-        run: macos/ci/build-and-test.sh macos/build
+        run: unix/ci/build-and-test.sh unix/build
 
       # Never for a pull request, and only where BUILDS_REPO is set (a fork of this fork has no such variable).
       - name: Keep the app in the private builds repository
@@ -46,7 +46,7 @@ jobs:
           BUILDS_REPO: ${{ vars.BUILDS_REPO }}
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "::error::The secret BUILDS_TOKEN is not set"; exit 1; fi
-          ditto -c -k --keepParent macos/build/app/*.app Notepad++-macOS.zip
+          ditto -c -k --keepParent unix/build/app/*.app Notepad++-macOS.zip
           notes="Built from $GITHUB_REPOSITORY@$GITHUB_SHA by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             gh release create "$GITHUB_REF_NAME" Notepad++-macOS.zip -R "$BUILDS_REPO" --title "$GITHUB_REF_NAME" --notes "$notes"

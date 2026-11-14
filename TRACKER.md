@@ -7,11 +7,11 @@
 
 - **What we deliver.** A fork of Notepad++ (`jraiford1/notepad-plus-plus`) that adds a native macOS build
   alongside the unchanged Windows build.
-- **Where they live.** Everything macOS-specific is in `macos/` (see `macos/README.md`): the migration engine,
+- **Where they live.** The port is in `unix/` (see `unix/README.md`), for macOS and, under way, Linux (J4): the migration engine,
   the Win32 runtime and the build. Upstream's tree (`PowerEditor/`, `scintilla/`, `lexilla/`, `boostregex/`)
   is not edited for macOS, so `upstream/master` keeps merging cleanly. The exception is job J3's changes,
   made for upstream itself: each is one commit on its own branch from upstream, merged into `master` and
-  listed in `macos/upstream-changes.txt` until upstream takes it (that file says what to do when an
+  listed in `unix/upstream-changes.txt` until upstream takes it (that file says what to do when an
   upstream merge meets one). The pull request upstream is the owner's.
 - **Who consumes a release.** The owner only, on their own Mac. The fork publishes no builds, and GitHub
   Actions are switched off on it (W43): the app is built and tested on the owner's Mac.
@@ -22,7 +22,7 @@
 |---|---|
 | **Change** (a `CHANGE` item) | A code change to the macOS build (or to shared files it uses), committed to `master` as `W<n>: ...` |
 | **Working copy / increment** | A branch per `W` item, merged to `master` |
-| **APPLIED** | Merged to `master`; the macOS build (`cmake -S macos`) succeeds and its tests (`ctest`) pass |
+| **APPLIED** | Merged to `master`; the macOS build (`cmake -S unix`) succeeds and its tests (`ctest`) pass |
 | **Cut** (`C` item) | A `macos-v<upstream version>[-<n>]` tag on `master`; its product is the `Notepad++.app` built from that tag on the owner's Mac (see Q1) |
 | **Distribution** (`X` item) | That app, on the owner's Mac only; no build is published (see Q1) |
 | **Change ID** | None |
@@ -36,10 +36,10 @@ files stay as they are, including W42's step that keeps master and tag builds in
 
 ## Verification checks and tooling
 
-- `macos/ci/build-and-test.sh macos/build` is the check: it configures and builds `macos` in Release (the
+- `unix/ci/build-and-test.sh unix/build` is the check: it configures and builds `unix` in Release (the
   project's default is universal arm64 + x86_64, macOS 13.3 and later; on the owner's Mac, native, see below), checks that this branch changed nothing in upstream's directories since the last upstream
-  merge beyond the commits in `macos/upstream-changes.txt`, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
-  (`macos/ci/smoke-test.sh`: open, edit, save, Save As, Find, an input method, printing, dialogs and
+  merge beyond the commits in `unix/upstream-changes.txt`, and runs `ctest`: the engine's rule tests, the runtime's CRT tests and the end-to-end smoke test
+  (`unix/ci/smoke-test.sh`: open, edit, save, Save As, Find, an input method, printing, dialogs and
   panels, a plugin, dark mode),
   on the arm64 slice and, in a universal build, the x86_64 slice through Rosetta. The smoke test also
   covers files from Finder, undo and copy/paste keys, outside changes, quitting, restarting and the
