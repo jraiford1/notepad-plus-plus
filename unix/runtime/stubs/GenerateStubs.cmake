@@ -20,6 +20,7 @@
 #
 # Run by cmake -P with:
 #   NM, CC           tools
+#   PLATFORM         macos (Mach-O: C names have a leading underscore) or linux (ELF: they have none)
 #   LINK_LIBRARIES   |-separated system libraries and frameworks the app links (e.g. -framework|Cocoa)
 #   INPUTS_FILE      file listing (one per line) object files and static libraries whose undefined
 #                    symbols need definitions
@@ -50,9 +51,15 @@ foreach(provider IN LISTS PROVIDERS)
 endforeach()
 
 list(REMOVE_DUPLICATES undefined)
-list(FILTER undefined INCLUDE REGEX "^__?[A-Za-z]") # C names, including Win32's own _Underscored ones
-list(FILTER undefined EXCLUDE REGEX "^__Z") # C++ symbols are implemented by hand, never stubbed
-list(FILTER undefined EXCLUDE REGEX "^_OBJC_|^_objc_|^___|^_\\.")
+if(PLATFORM STREQUAL "linux")
+	list(FILTER undefined INCLUDE REGEX "^_?[A-Za-z]") # C names, including Win32's own _Underscored ones
+	list(FILTER undefined EXCLUDE REGEX "^_Z") # C++ symbols are implemented by hand, never stubbed
+	list(FILTER undefined EXCLUDE REGEX "^_GLOBAL_OFFSET_TABLE_$")
+else()
+	list(FILTER undefined INCLUDE REGEX "^__?[A-Za-z]") # C names, including Win32's own _Underscored ones
+	list(FILTER undefined EXCLUDE REGEX "^__Z") # C++ symbols are implemented by hand, never stubbed
+	list(FILTER undefined EXCLUDE REGEX "^_OBJC_|^_objc_|^___|^_\\.")
+endif()
 if(defined)
 	list(REMOVE_ITEM undefined ${defined})
 endif()
@@ -78,7 +85,11 @@ execute_process(
 set(missing "")
 string(REPLACE "\n" ";" linkErrorLines "${linkErrors}")
 foreach(line IN LISTS linkErrorLines)
-	if(line MATCHES "^  \"_([A-Za-z0-9_]+)\", referenced from:")
+	if(line MATCHES "^  \"_([A-Za-z0-9_]+)\", referenced from:") # Apple's ld
+		list(APPEND missing "${CMAKE_MATCH_1}")
+	elseif(line MATCHES "undefined reference to `([A-Za-z0-9_]+)'") # GNU ld
+		list(APPEND missing "${CMAKE_MATCH_1}")
+	elseif(line MATCHES "undefined symbol: ([A-Za-z0-9_]+)$") # lld
 		list(APPEND missing "${CMAKE_MATCH_1}")
 	endif()
 endforeach()

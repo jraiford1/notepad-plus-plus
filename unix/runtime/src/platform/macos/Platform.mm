@@ -18,8 +18,22 @@
 #import <Metal/Metal.h>
 #import <PDFKit/PDFKit.h>
 
+#include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <climits>
+#include <copyfile.h>
+#include <malloc/malloc.h>
+#include <fcntl.h>
+#include <sys/attr.h>
+#include <sys/stat.h>
+#include <sys/mount.h>
+#include <sys/param.h>
+#include <uuid/uuid.h>
+#include <crt_externs.h>
+#include <libkern/OSByteOrder.h>
+#include <libproc.h>
+#include <mach-o/fat.h>
+#include <mach-o/loader.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -31,7 +45,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "Platform.h"
+#include "../Platform.h"
 
 namespace nppmac::platform
 {
@@ -107,6 +121,197 @@ namespace nppmac::platform
 			pclose(dump);
 			return copies;
 		}
+	}
+
+	bool isLoadableModule(const void* image)
+	{
+#if defined(__arm64__)
+		constexpr cpu_type_t hostCpu = CPU_TYPE_ARM64;
+#else
+		constexpr cpu_type_t hostCpu = CPU_TYPE_X86_64;
+#endif
+		const auto* bytes = static_cast<const uint8_t*>(image);
+		uint32_t magic = 0;
+		std::memcpy(&magic, bytes, sizeof(magic));
+		if (magic == MH_MAGIC_64)
+		{
+			mach_header_64 header{};
+			std::memcpy(&header, bytes, sizeof(header));
+			return header.cputype == hostCpu;
+		}
+		if (OSSwapBigToHostInt32(magic) == FAT_MAGIC)
+		{
+			fat_header fat{};
+			std::memcpy(&fat, bytes, sizeof(fat));
+			const uint32_t count = OSSwapBigToHostInt32(fat.nfat_arch);
+			for (uint32_t i = 0; i < count && i < 16; ++i)
+			{
+				fat_arch slice{};
+				std::memcpy(&slice, bytes + sizeof(fat) + i * sizeof(slice), sizeof(slice));
+				if (static_cast<cpu_type_t>(OSSwapBigToHostInt32(static_cast<uint32_t>(slice.cputype))) == hostCpu)
+					return true;
+			}
+		}
+		return false;
+	}
+
+	char** environment()
+	{
+		// environ itself is not available to code that may end up in a bundle.
+		return *_NSGetEnviron();
+	}
+
+	std::vector<int> processIds()
+	{
+		const int count = proc_listallpids(nullptr, 0);
+		std::vector<pid_t> pids(static_cast<size_t>(count > 0 ? count : 0) + 16);
+		const int filled = proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
+		pids.resize(static_cast<size_t>(filled > 0 ? filled : 0));
+		return {pids.begin(), pids.end()};
+	}
+
+	std::string processPath(int pid)
+	{
+		char path[PROC_PIDPATHINFO_MAXSIZE]{};
+		return proc_pidpath(pid, path, sizeof(path)) > 0 ? std::string{path} : std::string{};
+	}
+
+	size_t allocationSize(const void* memory)
+	{
+		return malloc_size(memory);
+	}
+
+	bool copyFile(const std::string& source, const std::string& target, bool move)
+	{
+		return ::copyfile(source.c_str(), target.c_str(), nullptr, COPYFILE_ALL | (move ? COPYFILE_MOVE : 0)) == 0;
+	}
+
+	std::string machineGuid()
+	{
+		uuid_t hostId{};
+		timespec wait{};
+		char guid[40]{};
+		if (gethostuuid(hostId, &wait) != 0)
+			return {};
+		std::snprintf(guid, sizeof(guid), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+			hostId[0], hostId[1], hostId[2], hostId[3], hostId[4], hostId[5], hostId[6], hostId[7],
+			hostId[8], hostId[9], hostId[10], hostId[11], hostId[12], hostId[13], hostId[14], hostId[15]);
+		return guid;
+	}
+
+	timespec accessTime(const struct stat& info)
+	{
+		return info.st_atimespec;
+	}
+
+	timespec modificationTime(const struct stat& info)
+	{
+		return info.st_mtimespec;
+	}
+
+	timespec creationTime(const struct stat& info, const std::string&, int)
+	{
+		return info.st_birthtimespec;
+	}
+
+	bool hasHiddenFlag(const struct stat& info)
+	{
+		return (info.st_flags & UF_HIDDEN) != 0;
+	}
+
+	std::string descriptorPath(int descriptor)
+	{
+		char path[PATH_MAX]{};
+		return ::fcntl(descriptor, F_GETPATH, path) == 0 ? std::string{path} : std::string{};
+	}
+
+	bool volumeInfo(const std::string& path, VolumeInfo& volume)
+	{
+		struct statfs info{};
+		if (::statfs(path.c_str(), &info) != 0)
+			return false;
+		volume._mountPoint = info.f_mntonname;
+		volume._fileSystem = info.f_fstypename;
+		volume._serial = static_cast<uint32_t>(info.f_fsid.val[0]);
+		volume._local = (info.f_flags & MNT_LOCAL) != 0;
+		volume._readOnly = (info.f_flags & MNT_RDONLY) != 0;
+		volume._caseSensitive = ::pathconf(info.f_mntonname, _PC_CASE_SENSITIVE) == 1;
+		// The volume's own name ("Macintosh HD" for the startup disk), which is not always its mount
+		// point's folder name.
+		struct VolumeName
+		{
+			u_int32_t length;
+			attrreference_t name;
+			char text[MAXPATHLEN];
+		} __attribute__((aligned(4), packed)) attributes{};
+		attrlist request{};
+		request.bitmapcount = ATTR_BIT_MAP_COUNT;
+		request.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
+		volume._name.clear();
+		if (::getattrlist(info.f_mntonname, &request, &attributes, sizeof(attributes), 0) == 0)
+			volume._name = reinterpret_cast<const char*>(&attributes.name) + attributes.name.attr_dataoffset;
+		return true;
+	}
+
+	std::vector<std::string> otherVolumes()
+	{
+		std::vector<std::string> volumes;
+		struct statfs* mounts = nullptr;
+		const int count = ::getmntinfo_r_np(&mounts, MNT_NOWAIT);
+		for (int i = 0; i < count; ++i)
+		{
+			const std::string_view mountPoint{mounts[i].f_mntonname};
+			if (mountPoint.starts_with("/Volumes/"))
+				volumes.emplace_back(mountPoint);
+		}
+		std::free(mounts);
+		return volumes;
+	}
+
+	size_t digestLength(DigestAlgorithm algorithm)
+	{
+		switch (algorithm)
+		{
+			case DigestAlgorithm::md5:
+				return CC_MD5_DIGEST_LENGTH;
+			case DigestAlgorithm::sha1:
+				return CC_SHA1_DIGEST_LENGTH;
+			case DigestAlgorithm::sha256:
+				return CC_SHA256_DIGEST_LENGTH;
+			case DigestAlgorithm::sha384:
+				return CC_SHA384_DIGEST_LENGTH;
+			case DigestAlgorithm::sha512:
+				return CC_SHA512_DIGEST_LENGTH;
+		}
+		return 0;
+	}
+
+	std::vector<unsigned char> digest(DigestAlgorithm algorithm, const void* data, size_t size)
+	{
+		std::vector<unsigned char> result(digestLength(algorithm));
+		const auto length = static_cast<CC_LONG>(size);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		switch (algorithm)
+		{
+			case DigestAlgorithm::md5:
+				CC_MD5(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha1:
+				CC_SHA1(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha256:
+				CC_SHA256(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha384:
+				CC_SHA384(data, length, result.data());
+				break;
+			case DigestAlgorithm::sha512:
+				CC_SHA512(data, length, result.data());
+				break;
+		}
+#pragma clang diagnostic pop
+		return result;
 	}
 
 	std::string preferredLanguage()
@@ -205,6 +410,11 @@ namespace nppmac::platform
 		for (id<MTLDevice> device in MTLCopyAllDevices())
 			names.push_back(device.name.UTF8String);
 		return names;
+	}
+
+	std::string systemName()
+	{
+		return "macOS";
 	}
 
 	std::string systemVersion()

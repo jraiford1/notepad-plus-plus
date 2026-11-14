@@ -94,14 +94,14 @@ namespace
 				return false;
 			if (--_count == 0)
 			{
-				_owner = nullptr;
+				_owner = {};
 				nppmac::kernel::notifyWaiters();
 			}
 			return true;
 		}
 
 	private:
-		pthread_t _owner = nullptr;
+		pthread_t _owner{}; // a pointer on macOS, a number on Linux
 		unsigned _count = 0;
 	};
 
@@ -154,7 +154,7 @@ namespace
 			return _finished ? _exitCode : STILL_ACTIVE;
 		}
 
-		pthread_t _thread = nullptr;
+		pthread_t _thread{};
 		DWORD _id = 0;
 		LPTHREAD_START_ROUTINE _start = nullptr;
 		void* _parameter = nullptr;

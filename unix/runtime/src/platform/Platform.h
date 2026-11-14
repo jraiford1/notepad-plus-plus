@@ -21,13 +21,71 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 #include <vector>
+
+struct stat;
 
 namespace nppmac::platform
 {
 	// The first preferred language, as a BCP 47 tag ("en-US", "ja-JP", "zh-Hans-CN").
 	std::string preferredLanguage();
+
+	// Whether a loadable module's image (its first bytes, as mapped) is one this processor can load: a
+	// Mach-O image for it, or a universal one with a slice for it, on macOS; an ELF shared object for
+	// it on Linux.
+	bool isLoadableModule(const void* image);
+	// The process's environment, as environ ("NAME=value" strings, then a null pointer).
+	char** environment();
+	// The identifiers of the running processes, and a process's executable path ("" when unreadable).
+	std::vector<int> processIds();
+	std::string processPath(int pid);
+	// The usable size of a block from malloc.
+	size_t allocationSize(const void* memory);
+	// Copies a file with its permissions and dates (and extended attributes where the system copies
+	// them), replacing the target; with move, then deletes the source. False with errno set on failure.
+	bool copyFile(const std::string& source, const std::string& target, bool move);
+	// A stable identifier of this computer, as a lowercase GUID ("" when there is none).
+	std::string machineGuid();
+
+	// What stat leaves to each system: the access and modification dates; the creation date (macOS
+	// keeps it in stat; on Linux statx gives it, for the path or descriptor stat was given, where the
+	// file system keeps one, and it is the modification date otherwise); and the hidden flag (macOS's
+	// UF_HIDDEN; Linux has none, only names starting with a dot).
+	timespec accessTime(const struct stat& info);
+	timespec modificationTime(const struct stat& info);
+	timespec creationTime(const struct stat& info, const std::string& path, int descriptor = -1);
+	bool hasHiddenFlag(const struct stat& info);
+	// The path of an open file's descriptor ("" when unknown).
+	std::string descriptorPath(int descriptor);
+
+	// The volume a path is on. False with errno set when the path cannot be looked at.
+	struct VolumeInfo
+	{
+		std::string _mountPoint; // the folder it is mounted on
+		std::string _name;       // its own name ("Macintosh HD", a disk's label), "" when it has none
+		std::string _fileSystem; // "apfs", "ext4"...
+		uint32_t _serial = 0;
+		bool _local = true;
+		bool _readOnly = false;
+		bool _caseSensitive = true;
+	};
+	bool volumeInfo(const std::string& path, VolumeInfo& volume);
+	// The mount points of the volumes besides the startup disk that a user would open (external disks,
+	// shares): /Volumes/... on macOS, /media/<user>/..., /run/media/<user>/... and /mnt/... on Linux.
+	std::vector<std::string> otherVolumes();
+
+	enum class DigestAlgorithm
+	{
+		md5,
+		sha1,
+		sha256,
+		sha384,
+		sha512,
+	};
+	size_t digestLength(DigestAlgorithm algorithm);
+	std::vector<unsigned char> digest(DigestAlgorithm algorithm, const void* data, size_t size);
 
 	// A region of the process's memory: the one holding the address, or else the next one up.
 	struct MemoryRegion
@@ -59,10 +117,12 @@ namespace nppmac::platform
 	// The accent color chosen in System Settings > Appearance, as 0xRRGGBB.
 	unsigned accentColor();
 
-	// The names of the Mac's graphics processors ("Apple M3 Max").
+	// The names of the computer's graphics processors ("Apple M3 Max").
 	std::vector<std::string> graphicsAdapters();
 
-	// The macOS version ("26.0.1") and build ("25A362").
+	// The operating system's name ("macOS", "Ubuntu"), version ("26.0.1", "26.04.1 LTS (Resolute
+	// Raccoon)") and build ("25A362"; on Linux, the kernel's release).
+	std::string systemName();
 	std::string systemVersion();
 	std::string systemBuild();
 

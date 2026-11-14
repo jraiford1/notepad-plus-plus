@@ -14,15 +14,27 @@ set(boostRegexSources
 )
 set_source_files_properties(${scintillaCocoaSources} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
-add_library(nppScintilla STATIC ${scintillaSources} ${scintillaCocoaSources} ${boostRegexSources})
+# Scintilla's platform layer: Cocoa on macOS. On Linux its Qt layer comes with J4's editor step; until
+# then the library has Scintilla's portable core only.
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	set(scintillaPlatformSources ${scintillaCocoaSources})
+	set(scintillaPlatformInclude "${NPP_ROOT}/scintilla/cocoa")
+else()
+	set(scintillaPlatformSources "")
+	set(scintillaPlatformInclude "")
+endif()
+
+add_library(nppScintilla STATIC ${scintillaSources} ${scintillaPlatformSources} ${boostRegexSources})
 target_include_directories(nppScintilla
-	PUBLIC "${NPP_ROOT}/scintilla/include" "${NPP_ROOT}/scintilla/cocoa" "${NPP_ROOT}/lexilla/include"
+	PUBLIC "${NPP_ROOT}/scintilla/include" ${scintillaPlatformInclude} "${NPP_ROOT}/lexilla/include"
 	PRIVATE "${NPP_ROOT}/scintilla/src" "${NPP_ROOT}/boostregex"
 )
 target_compile_definitions(nppScintilla PRIVATE SCI_OWNREGEX BOOST_REGEX_STANDALONE NDEBUG)
 # Upstream code: its deprecation warnings are upstream's to fix.
 target_compile_options(nppScintilla PRIVATE -Wno-deprecated-declarations -Wno-deprecated-this-capture)
-target_link_libraries(nppScintilla PUBLIC "-framework Cocoa" "-framework QuartzCore")
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	target_link_libraries(nppScintilla PUBLIC "-framework Cocoa" "-framework QuartzCore")
+endif()
 
 file(GLOB lexillaSources CONFIGURE_DEPENDS
 	"${NPP_ROOT}/lexilla/src/Lexilla.cxx"
@@ -41,3 +53,11 @@ target_include_directories(nppLexilla
 	PUBLIC "${NPP_ROOT}/lexilla/include"
 	PRIVATE "${NPP_ROOT}/lexilla/lexlib" "${NPP_ROOT}/scintilla/include"
 )
+
+# Scintilla's and Lexilla's headers use intptr_t without <cstdint>, which libc++ brings in through other
+# headers and newer libstdc++ does not: a compiler-level fix, as upstream's gcc-fixes.h is.
+if(NPPMAC_PLATFORM STREQUAL "linux")
+	foreach(target IN ITEMS nppScintilla nppLexUser nppLexilla)
+		target_compile_options(${target} PRIVATE -include cstdint)
+	endforeach()
+endif()

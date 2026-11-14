@@ -23,7 +23,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <malloc/malloc.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <windows.h>
@@ -32,6 +31,7 @@
 #include <comdef.h>
 
 #include "MsvcFormat.h"
+#include "platform/Platform.h"
 
 int __argc = 0;
 char** __argv = nullptr;
@@ -303,7 +303,7 @@ errno_t _dupenv_s(char** buffer, size_t* size, const char* name)
 
 size_t _msize(void* memory)
 {
-	return memory ? malloc_size(memory) : 0;
+	return memory ? nppmac::platform::allocationSize(memory) : 0;
 }
 
 errno_t localtime_s(struct tm* result, const time_t* time)

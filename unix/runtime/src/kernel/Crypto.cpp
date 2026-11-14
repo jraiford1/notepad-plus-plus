@@ -14,12 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// bcrypt and CryptoAPI hashing over CommonCrypto; Authenticode verification (wintrust, crypt32),
+// bcrypt and CryptoAPI hashing over the platform's digests; Authenticode verification (wintrust, crypt32),
 // which has nothing to verify on macOS, reports that a file is not signed.
 
 #include "Handles.h"
+#include "platform/Platform.h"
 
-#include <CommonCrypto/CommonDigest.h>
 #include <bcrypt.h>
 #include <softpub.h>
 #include <wincrypt.h>
@@ -30,32 +30,7 @@
 
 namespace
 {
-	enum class HashKind
-	{
-		md5,
-		sha1,
-		sha256,
-		sha384,
-		sha512,
-	};
-
-	size_t digestLength(HashKind kind)
-	{
-		switch (kind)
-		{
-			case HashKind::md5:
-				return CC_MD5_DIGEST_LENGTH;
-			case HashKind::sha1:
-				return CC_SHA1_DIGEST_LENGTH;
-			case HashKind::sha256:
-				return CC_SHA256_DIGEST_LENGTH;
-			case HashKind::sha384:
-				return CC_SHA384_DIGEST_LENGTH;
-			case HashKind::sha512:
-				return CC_SHA512_DIGEST_LENGTH;
-		}
-		return 0;
-	}
+	using HashKind = nppmac::platform::DigestAlgorithm;
 
 	// Collects the data and digests it at the end: Notepad++ hashes files and short strings.
 	struct Hash
@@ -65,30 +40,7 @@ namespace
 
 		std::vector<unsigned char> finish() const
 		{
-			std::vector<unsigned char> digest(digestLength(_kind));
-			const auto length = static_cast<CC_LONG>(_data.size());
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-			switch (_kind)
-			{
-				case HashKind::md5:
-					CC_MD5(_data.data(), length, digest.data());
-					break;
-				case HashKind::sha1:
-					CC_SHA1(_data.data(), length, digest.data());
-					break;
-				case HashKind::sha256:
-					CC_SHA256(_data.data(), length, digest.data());
-					break;
-				case HashKind::sha384:
-					CC_SHA384(_data.data(), length, digest.data());
-					break;
-				case HashKind::sha512:
-					CC_SHA512(_data.data(), length, digest.data());
-					break;
-			}
-#pragma clang diagnostic pop
-			return digest;
+			return nppmac::platform::digest(_kind, _data.data(), _data.size());
 		}
 	};
 

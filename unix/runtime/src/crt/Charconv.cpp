@@ -24,7 +24,11 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#if __has_include(<xlocale.h>) // locale_t and the _l functions: <locale.h> with glibc
 #include <xlocale.h>
+#else
+#include <locale.h>
+#endif
 
 namespace
 {

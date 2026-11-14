@@ -24,11 +24,18 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+// locale_t and the _l functions: <xlocale.h> on macOS, <locale.h> with glibc.
+#if __has_include(<xlocale.h>)
 #include <xlocale.h>
+#else
+#include <locale.h>
+#endif
 
 #ifdef __cplusplus
 #include <iterator>
 #define _countof(array) std::size(array)
+// C11 Annex K's size type, which the Microsoft CRT and the macOS SDK have and glibc does not.
+typedef size_t rsize_t;
 #endif
 
 inline unsigned short _byteswap_ushort(unsigned short value)

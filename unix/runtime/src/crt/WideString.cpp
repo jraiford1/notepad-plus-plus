@@ -27,7 +27,11 @@
 #include <map>
 #include <mutex>
 #include <sys/stat.h>
+#if __has_include(<xlocale.h>) // locale_t and the _l functions: <locale.h> with glibc
 #include <xlocale.h>
+#else
+#include <locale.h>
+#endif
 
 #include "nppmac/WideString.h"
 #include <mbstring.h>

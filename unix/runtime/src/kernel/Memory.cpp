@@ -21,7 +21,6 @@
 #include <windows.h>
 
 #include <cstdlib>
-#include <malloc/malloc.h>
 #include <cstring>
 #include <mutex>
 #include <sys/mman.h>
@@ -237,7 +236,7 @@ BOOL WINAPI HeapFree(HANDLE, DWORD, LPVOID memory)
 
 SIZE_T WINAPI HeapSize(HANDLE, DWORD, LPCVOID memory)
 {
-	return malloc_size(memory);
+	return nppmac::platform::allocationSize(memory);
 }
 
 // Plugins use VirtualAlloc for plain buffers: committed, zeroed, read-write pages from the system.
