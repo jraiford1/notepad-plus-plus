@@ -197,7 +197,7 @@ set_target_properties(NotepadPlusPlus PROPERTIES
 target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 # The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions
-# they use in the app (see macos/plugins).
+# they use in the app (see unix/plugins).
 target_link_libraries(NotepadPlusPlus PRIVATE
 	"$<LINK_LIBRARY:WHOLE_ARCHIVE,nppRuntime>" nppRuntimeHeaders nppRuntimeStubs nppUuid nppScintilla nppLexilla
 	${nppSystemLibraries}

@@ -39,7 +39,7 @@ string(REGEX MATCH "\"[^\"]*\"" boostVersion "${boostVersionLine}")
 set(nppConfiguredIncludeDir "${CMAKE_BINARY_DIR}/configured-include")
 file(CONFIGURE OUTPUT "${nppConfiguredIncludeDir}/NppLibsVersion.h" CONTENT
 "// NppLibsVersion.h
-// - maintained by macos/core/CMakeLists.txt (NppLibsVersionH-generator.bat on Windows)
+// - maintained by unix/core/CMakeLists.txt (NppLibsVersionH-generator.bat on Windows)
 #define NPP_SCINTILLA_VERSION ${sciVersion}
 #define NPP_LEXILLA_VERSION ${lexVersion}
 #define NPP_BOOST_REGEX_VERSION ${boostVersion}

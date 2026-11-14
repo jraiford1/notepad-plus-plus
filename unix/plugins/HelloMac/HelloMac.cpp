@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // A plugin written as for Windows, to show and test that plugins work on macOS: its sources are
-// migrated and built by nppmac_add_plugin (macos/plugins/CMakeLists.txt).
+// migrated and built by nppmac_add_plugin (unix/plugins/CMakeLists.txt).
 
 #include <windows.h>
 
