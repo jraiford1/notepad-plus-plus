@@ -154,7 +154,7 @@ namespace nppmac::kernel
 		const std::string_view name = slash == std::string::npos ? std::string_view{posixPath} : std::string_view{posixPath}.substr(slash + 1);
 		if (name.size() > 1 && name[0] == '.' && name != "..")
 			attributes |= FILE_ATTRIBUTE_HIDDEN;
-		if (info.st_flags & UF_HIDDEN)
+		if (nppmac::platform::hasHiddenFlag(info))
 			attributes |= FILE_ATTRIBUTE_HIDDEN;
 		return attributes == 0 ? FILE_ATTRIBUTE_NORMAL : attributes;
 	}
@@ -493,9 +493,9 @@ namespace
 
 		std::memset(data, 0, sizeof(*data));
 		data->dwFileAttributes = fileAttributes(fullPath, info);
-		data->ftCreationTime = toFileTime(info.st_birthtimespec);
-		data->ftLastAccessTime = toFileTime(info.st_atimespec);
-		data->ftLastWriteTime = toFileTime(info.st_mtimespec);
+		data->ftCreationTime = toFileTime(nppmac::platform::creationTime(info, fullPath));
+		data->ftLastAccessTime = toFileTime(nppmac::platform::accessTime(info));
+		data->ftLastWriteTime = toFileTime(nppmac::platform::modificationTime(info));
 		data->nFileSizeHigh = static_cast<DWORD>(static_cast<unsigned long long>(info.st_size) >> 32);
 		data->nFileSizeLow = static_cast<DWORD>(info.st_size & 0xFFFFFFFF);
 		const std::u16string wideName = nppmac::toUtf16(name);
@@ -751,11 +751,11 @@ BOOL WINAPI GetFileTime(HANDLE handle, LPFILETIME creation, LPFILETIME lastAcces
 		return FALSE;
 	}
 	if (creation)
-		*creation = toFileTime(info.st_birthtimespec);
+		*creation = toFileTime(nppmac::platform::creationTime(info, {}, file->fd()));
 	if (lastAccess)
-		*lastAccess = toFileTime(info.st_atimespec);
+		*lastAccess = toFileTime(nppmac::platform::accessTime(info));
 	if (lastWrite)
-		*lastWrite = toFileTime(info.st_mtimespec);
+		*lastWrite = toFileTime(nppmac::platform::modificationTime(info));
 	return TRUE;
 }
 
@@ -766,7 +766,7 @@ BOOL WINAPI SetFileTime(HANDLE handle, const FILETIME*, const FILETIME* lastAcce
 		return FALSE;
 	struct stat info{};
 	::fstat(file->fd(), &info);
-	timespec times[2] = {info.st_atimespec, info.st_mtimespec};
+	timespec times[2] = {nppmac::platform::accessTime(info), nppmac::platform::modificationTime(info)};
 	if (lastAccess)
 		times[0] = toTimespec(*lastAccess);
 	if (lastWrite)
@@ -792,9 +792,9 @@ BOOL WINAPI GetFileInformationByHandle(HANDLE handle, LPBY_HANDLE_FILE_INFORMATI
 	}
 	std::memset(information, 0, sizeof(*information));
 	information->dwFileAttributes = fileAttributes(file->path(), info);
-	information->ftCreationTime = toFileTime(info.st_birthtimespec);
-	information->ftLastAccessTime = toFileTime(info.st_atimespec);
-	information->ftLastWriteTime = toFileTime(info.st_mtimespec);
+	information->ftCreationTime = toFileTime(nppmac::platform::creationTime(info, {}, file->fd()));
+	information->ftLastAccessTime = toFileTime(nppmac::platform::accessTime(info));
+	information->ftLastWriteTime = toFileTime(nppmac::platform::modificationTime(info));
 	information->dwVolumeSerialNumber = static_cast<DWORD>(info.st_dev);
 	information->nFileSizeHigh = static_cast<DWORD>(static_cast<unsigned long long>(info.st_size) >> 32);
 	information->nFileSizeLow = static_cast<DWORD>(info.st_size & 0xFFFFFFFF);
@@ -809,8 +809,8 @@ DWORD WINAPI GetFinalPathNameByHandleW(HANDLE handle, LPWSTR buffer, DWORD size,
 	auto file = lookup<File>(handle);
 	if (!file)
 		return 0;
-	char resolved[PATH_MAX]{};
-	if (::fcntl(file->fd(), F_GETPATH, resolved) != 0)
+	const std::string resolved = nppmac::platform::descriptorPath(file->fd());
+	if (resolved.empty())
 	{
 		setErrorFromErrno();
 		return 0;
@@ -1104,9 +1104,9 @@ BOOL WINAPI GetFileAttributesExW(LPCWSTR fileName, GET_FILEEX_INFO_LEVELS, LPVOI
 	}
 	auto* data = static_cast<WIN32_FILE_ATTRIBUTE_DATA*>(information);
 	data->dwFileAttributes = fileAttributes(path, info);
-	data->ftCreationTime = toFileTime(info.st_birthtimespec);
-	data->ftLastAccessTime = toFileTime(info.st_atimespec);
-	data->ftLastWriteTime = toFileTime(info.st_mtimespec);
+	data->ftCreationTime = toFileTime(nppmac::platform::creationTime(info, path));
+	data->ftLastAccessTime = toFileTime(nppmac::platform::accessTime(info));
+	data->ftLastWriteTime = toFileTime(nppmac::platform::modificationTime(info));
 	data->nFileSizeHigh = static_cast<DWORD>(static_cast<unsigned long long>(info.st_size) >> 32);
 	data->nFileSizeLow = static_cast<DWORD>(info.st_size & 0xFFFFFFFF);
 	return TRUE;

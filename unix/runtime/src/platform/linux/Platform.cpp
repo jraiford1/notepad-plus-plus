@@ -244,11 +244,19 @@ namespace nppmac::platform
 		return pids;
 	}
 
+	namespace
+	{
+		std::string processPathLink(const std::string& link)
+		{
+			char path[PATH_MAX];
+			const ssize_t length = readlink(link.c_str(), path, sizeof(path) - 1);
+			return length > 0 ? std::string{path, static_cast<size_t>(length)} : std::string{};
+		}
+	}
+
 	std::string processPath(int pid)
 	{
-		char path[4096];
-		const ssize_t length = readlink(("/proc/" + std::to_string(pid) + "/exe").c_str(), path, sizeof(path) - 1);
-		return length > 0 ? std::string{path, static_cast<size_t>(length)} : std::string{};
+		return processPathLink("/proc/" + std::to_string(pid) + "/exe");
 	}
 
 	size_t allocationSize(const void* memory)
@@ -422,6 +430,36 @@ namespace nppmac::platform
 			}
 			return {};
 		}
+	}
+
+	timespec accessTime(const struct stat& info)
+	{
+		return info.st_atim;
+	}
+
+	timespec modificationTime(const struct stat& info)
+	{
+		return info.st_mtim;
+	}
+
+	timespec creationTime(const struct stat& info, const std::string& path, int descriptor)
+	{
+		struct statx extended{};
+		const int result = descriptor >= 0 ? ::statx(descriptor, "", AT_EMPTY_PATH, STATX_BTIME, &extended)
+		                                   : ::statx(AT_FDCWD, path.c_str(), 0, STATX_BTIME, &extended);
+		if (result == 0 && (extended.stx_mask & STATX_BTIME))
+			return {static_cast<time_t>(extended.stx_btime.tv_sec), static_cast<long>(extended.stx_btime.tv_nsec)};
+		return info.st_mtim;
+	}
+
+	bool hasHiddenFlag(const struct stat&)
+	{
+		return false;
+	}
+
+	std::string descriptorPath(int descriptor)
+	{
+		return processPathLink("/proc/self/fd/" + std::to_string(descriptor));
 	}
 
 	bool volumeInfo(const std::string& path, VolumeInfo& volume)

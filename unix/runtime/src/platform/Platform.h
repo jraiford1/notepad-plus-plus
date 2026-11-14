@@ -21,8 +21,11 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 #include <vector>
+
+struct stat;
 
 namespace nppmac::platform
 {
@@ -45,6 +48,17 @@ namespace nppmac::platform
 	bool copyFile(const std::string& source, const std::string& target, bool move);
 	// A stable identifier of this computer, as a lowercase GUID ("" when there is none).
 	std::string machineGuid();
+
+	// What stat leaves to each system: the access and modification dates; the creation date (macOS
+	// keeps it in stat; on Linux statx gives it, for the path or descriptor stat was given, where the
+	// file system keeps one, and it is the modification date otherwise); and the hidden flag (macOS's
+	// UF_HIDDEN; Linux has none, only names starting with a dot).
+	timespec accessTime(const struct stat& info);
+	timespec modificationTime(const struct stat& info);
+	timespec creationTime(const struct stat& info, const std::string& path, int descriptor = -1);
+	bool hasHiddenFlag(const struct stat& info);
+	// The path of an open file's descriptor ("" when unknown).
+	std::string descriptorPath(int descriptor);
 
 	// The volume a path is on. False with errno set when the path cannot be looked at.
 	struct VolumeInfo

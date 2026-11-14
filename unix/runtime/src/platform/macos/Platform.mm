@@ -23,7 +23,9 @@
 #include <climits>
 #include <copyfile.h>
 #include <malloc/malloc.h>
+#include <fcntl.h>
 #include <sys/attr.h>
+#include <sys/stat.h>
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <uuid/uuid.h>
@@ -195,6 +197,32 @@ namespace nppmac::platform
 			hostId[0], hostId[1], hostId[2], hostId[3], hostId[4], hostId[5], hostId[6], hostId[7],
 			hostId[8], hostId[9], hostId[10], hostId[11], hostId[12], hostId[13], hostId[14], hostId[15]);
 		return guid;
+	}
+
+	timespec accessTime(const struct stat& info)
+	{
+		return info.st_atimespec;
+	}
+
+	timespec modificationTime(const struct stat& info)
+	{
+		return info.st_mtimespec;
+	}
+
+	timespec creationTime(const struct stat& info, const std::string&, int)
+	{
+		return info.st_birthtimespec;
+	}
+
+	bool hasHiddenFlag(const struct stat& info)
+	{
+		return (info.st_flags & UF_HIDDEN) != 0;
+	}
+
+	std::string descriptorPath(int descriptor)
+	{
+		char path[PATH_MAX]{};
+		return ::fcntl(descriptor, F_GETPATH, path) == 0 ? std::string{path} : std::string{};
 	}
 
 	bool volumeInfo(const std::string& path, VolumeInfo& volume)
