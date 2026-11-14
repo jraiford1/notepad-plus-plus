@@ -1,7 +1,8 @@
-# npp-migrate: the source migration engine. A host tool, built with Homebrew's LLVM
-# (brew install llvm), linked against libclang-cpp for clang's lexer.
+# npp-migrate: the source migration engine. A host tool, built with Homebrew's LLVM on macOS (brew install
+# llvm) or Ubuntu's on Linux (libclang-cpp22-dev, llvm-22-dev), linked against libclang-cpp for clang's lexer.
 
-find_package(Clang REQUIRED CONFIG HINTS /opt/homebrew/opt/llvm/lib/cmake/clang /usr/local/opt/llvm/lib/cmake/clang)
+find_package(Clang REQUIRED CONFIG HINTS /opt/homebrew/opt/llvm/lib/cmake/clang /usr/local/opt/llvm/lib/cmake/clang
+	/usr/lib/llvm-22/lib/cmake/clang)
 
 add_library(nppMigrationRules STATIC MigrationRules.cpp MigrationRules.h)
 target_include_directories(nppMigrationRules PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CLANG_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})

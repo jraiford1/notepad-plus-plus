@@ -1,4 +1,4 @@
-# Notepad++ macOS build.
+# Notepad++ macOS and Linux build.
 #
 # Upstream source (PowerEditor/src, scintilla, lexilla, boostregex) is never edited. The build:
 #   1. builds the migration engine (engine/),
@@ -8,13 +8,29 @@
 #     cmake -S unix -B unix/build && cmake --build unix/build && ctest --test-dir unix/build
 
 cmake_minimum_required(VERSION 3.24)
-# The oldest macOS the app runs on (also the bundle's LSMinimumSystemVersion). Without it the SDK's own
-# version is the target, and the app would need the newest macOS.
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
-# The app is universal: Apple silicon and Intel Macs. -DCMAKE_OSX_ARCHITECTURES=arm64 (or x86_64) builds
-# one slice only, for quicker local builds.
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Architectures the app is built for")
-project(NotepadPlusPlusMac LANGUAGES C CXX OBJC OBJCXX)
+if(CMAKE_HOST_APPLE)
+	# The oldest macOS the app runs on (also the bundle's LSMinimumSystemVersion). Without it the SDK's own
+	# version is the target, and the app would need the newest macOS.
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
+	# The app is universal: Apple silicon and Intel Macs. -DCMAKE_OSX_ARCHITECTURES=arm64 (or x86_64) builds
+	# one slice only, for quicker local builds.
+	set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Architectures the app is built for")
+	set(nppLanguages C CXX OBJC OBJCXX)
+else()
+	set(nppLanguages C CXX)
+endif()
+project(NotepadPlusPlusMac LANGUAGES ${nppLanguages})
+
+# The platform the build is for: macOS (AppKit) or Linux (Qt 6). Code for one platform only lives in
+# folders named after it (runtime/src/platform/macos, runtime/src/platform/linux...).
+if(APPLE)
+	set(NPPMAC_PLATFORM macos)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(NPPMAC_PLATFORM linux)
+	find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus)
+else()
+	message(FATAL_ERROR "The build is for macOS or Linux, not ${CMAKE_SYSTEM_NAME}.")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -75,12 +91,15 @@ include(runtime/wine/WineHeaders.cmake) # sets NPPMAC_WINE_INCLUDE_DIRS and NPPM
 add_subdirectory(runtime)
 add_subdirectory(core)
 add_subdirectory(thirdparty)
+add_subdirectory(runtime/stubs)
 # The app's identity: its name (bundle, menu bar, executable), bundle identifier and icon. This is
 # Notepad++, so they default to its name and icon; they are settings only so a build can differ.
 set(NPPMAC_APP_NAME "Notepad++" CACHE STRING "The app's name")
 set(NPPMAC_BUNDLE_ID "io.github.jraiford1.notepad-plus-plus-macos" CACHE STRING "The app's bundle identifier")
 set(NPPMAC_APP_ICON "${NPP_ROOT}/PowerEditor/src/icons/npp.ico" CACHE FILEPATH "The app's icon (.ico, .png or anything sips reads)")
 
-add_subdirectory(gup)
-add_subdirectory(app)
-add_subdirectory(plugins)
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	add_subdirectory(gup)
+	add_subdirectory(app)
+	add_subdirectory(plugins)
+endif() # Linux: the app, its updater and the plugins come with J4's later steps.

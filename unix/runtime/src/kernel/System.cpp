@@ -39,14 +39,7 @@
 #include <dlfcn.h>
 #include <mutex>
 #include <unordered_map>
-#include <libkern/OSByteOrder.h>
-#include <crt_externs.h>
-#include <libproc.h>
-#include <mach-o/fat.h>
-#include <mach-o/loader.h>
-#include <mach/mach_time.h>
 #include <signal.h>
-#include <sys/sysctl.h>
 #include <unistd.h>
 #include <vector>
 
@@ -174,39 +167,6 @@ namespace
 		}
 		// The runtime's own implementation of a function the module exports, if there is one.
 		return byOrdinal ? nullptr : reinterpret_cast<FARPROC>(::dlsym(RTLD_DEFAULT, procName));
-	}
-
-	// A Mach-O image for this processor, or a universal one with a slice for it.
-	bool isLoadableMachO(const void* base)
-	{
-#if defined(__arm64__)
-		constexpr cpu_type_t hostCpu = CPU_TYPE_ARM64;
-#else
-		constexpr cpu_type_t hostCpu = CPU_TYPE_X86_64;
-#endif
-		const auto* bytes = static_cast<const uint8_t*>(base);
-		uint32_t magic = 0;
-		std::memcpy(&magic, bytes, sizeof(magic));
-		if (magic == MH_MAGIC_64)
-		{
-			mach_header_64 header{};
-			std::memcpy(&header, bytes, sizeof(header));
-			return header.cputype == hostCpu;
-		}
-		if (OSSwapBigToHostInt32(magic) == FAT_MAGIC)
-		{
-			fat_header fat{};
-			std::memcpy(&fat, bytes, sizeof(fat));
-			const uint32_t count = OSSwapBigToHostInt32(fat.nfat_arch);
-			for (uint32_t i = 0; i < count && i < 16; ++i)
-			{
-				fat_arch slice{};
-				std::memcpy(&slice, bytes + sizeof(fat) + i * sizeof(slice), sizeof(slice));
-				if (static_cast<cpu_type_t>(OSSwapBigToHostInt32(static_cast<uint32_t>(slice.cputype))) == hostCpu)
-					return true;
-			}
-		}
-		return false;
 	}
 
 	HMODULE mainModule()
@@ -759,7 +719,7 @@ LPWCH WINAPI GetEnvironmentStringsW()
 {
 	// The environment block: each NAME=value, ended by an empty string.
 	std::u16string block;
-	for (char** variable = *_NSGetEnviron(); *variable; ++variable)
+	for (char** variable = nppmac::platform::environment(); *variable; ++variable)
 	{
 		block += nppmac::toUtf16(*variable);
 		block.push_back(u'\0');
@@ -1161,10 +1121,10 @@ FARPROC WINAPI GetProcAddress(HMODULE module, LPCSTR procName)
 
 PIMAGE_NT_HEADERS WINAPI ImageNtHeader(PVOID base)
 {
-	// A Mach-O image this Mac can load (a plugin is one) reads as a PE image for the machine Notepad++
+	// A Mach-O or ELF image this computer can load (a plugin is one) reads as a PE image for the machine Notepad++
 	// was built for, with no data directories, so upstream's plugin architecture check passes. Nothing
 	// else is a PE image: upstream's dark-mode import-table patching finds none and does nothing.
-	if (!base || !isLoadableMachO(base))
+	if (!base || !nppmac::platform::isLoadableModule(base))
 		return nullptr;
 	static IMAGE_NT_HEADERS header = []
 	{
@@ -1310,13 +1270,12 @@ namespace
 
 	bool fillProcessEntry(pid_t pid, LPPROCESSENTRY32W entry)
 	{
-		char path[PROC_PIDPATHINFO_MAXSIZE]{};
-		if (proc_pidpath(pid, path, sizeof(path)) <= 0)
+		std::string name = nppmac::platform::processPath(pid);
+		if (name.empty())
 			return false;
-		std::string name = path;
 		name = name.substr(name.find_last_of('/') + 1);
 		// Notepad++ looks for other running instances by their executable name.
-		if (name == "Notepad++")
+		if (name == "Notepad++" || name == "notepad++")
 			name = "notepad++.exe";
 		entry->th32ProcessID = static_cast<DWORD>(pid);
 		entry->cntThreads = 1;
@@ -1358,8 +1317,8 @@ BOOL WINAPI QueryFullProcessImageNameW(HANDLE handle, DWORD, LPWSTR buffer, PDWO
 			return FALSE;
 		pid = process->_pid;
 	}
-	char path[PROC_PIDPATHINFO_MAXSIZE]{};
-	if (proc_pidpath(pid, path, sizeof(path)) <= 0)
+	const std::string path = nppmac::platform::processPath(pid);
+	if (path.empty())
 	{
 		SetLastError(ERROR_ACCESS_DENIED);
 		return FALSE;
@@ -1377,11 +1336,8 @@ BOOL WINAPI QueryFullProcessImageNameW(HANDLE handle, DWORD, LPWSTR buffer, PDWO
 HANDLE WINAPI CreateToolhelp32Snapshot(DWORD, DWORD)
 {
 	auto snapshot = std::make_shared<ProcessSnapshot>();
-	const int count = proc_listallpids(nullptr, 0);
-	std::vector<pid_t> pids(static_cast<size_t>(count > 0 ? count : 0) + 16);
-	const int filled = proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
-	pids.resize(static_cast<size_t>(filled > 0 ? filled : 0));
-	snapshot->_pids = std::move(pids);
+	for (const int pid : nppmac::platform::processIds())
+		snapshot->_pids.push_back(static_cast<pid_t>(pid));
 	return createHandle(snapshot);
 }
 

@@ -29,6 +29,16 @@ namespace nppmac::platform
 	// The first preferred language, as a BCP 47 tag ("en-US", "ja-JP", "zh-Hans-CN").
 	std::string preferredLanguage();
 
+	// Whether a loadable module's image (its first bytes, as mapped) is one this processor can load: a
+	// Mach-O image for it, or a universal one with a slice for it, on macOS; an ELF shared object for
+	// it on Linux.
+	bool isLoadableModule(const void* image);
+	// The process's environment, as environ ("NAME=value" strings, then a null pointer).
+	char** environment();
+	// The identifiers of the running processes, and a process's executable path ("" when unreadable).
+	std::vector<int> processIds();
+	std::string processPath(int pid);
+
 	// A region of the process's memory: the one holding the address, or else the next one up.
 	struct MemoryRegion
 	{
@@ -59,10 +69,12 @@ namespace nppmac::platform
 	// The accent color chosen in System Settings > Appearance, as 0xRRGGBB.
 	unsigned accentColor();
 
-	// The names of the Mac's graphics processors ("Apple M3 Max").
+	// The names of the computer's graphics processors ("Apple M3 Max").
 	std::vector<std::string> graphicsAdapters();
 
-	// The macOS version ("26.0.1") and build ("25A362").
+	// The operating system's name ("macOS", "Ubuntu"), version ("26.0.1", "26.04.1 LTS (Resolute
+	// Raccoon)") and build ("25A362"; on Linux, the kernel's release).
+	std::string systemName();
 	std::string systemVersion();
 	std::string systemBuild();
 

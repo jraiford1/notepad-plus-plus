@@ -20,6 +20,11 @@
 
 #include <algorithm>
 #include <climits>
+#include <crt_externs.h>
+#include <libkern/OSByteOrder.h>
+#include <libproc.h>
+#include <mach-o/fat.h>
+#include <mach-o/loader.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -31,7 +36,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "Platform.h"
+#include "../Platform.h"
 
 namespace nppmac::platform
 {
@@ -107,6 +112,59 @@ namespace nppmac::platform
 			pclose(dump);
 			return copies;
 		}
+	}
+
+	bool isLoadableModule(const void* image)
+	{
+#if defined(__arm64__)
+		constexpr cpu_type_t hostCpu = CPU_TYPE_ARM64;
+#else
+		constexpr cpu_type_t hostCpu = CPU_TYPE_X86_64;
+#endif
+		const auto* bytes = static_cast<const uint8_t*>(image);
+		uint32_t magic = 0;
+		std::memcpy(&magic, bytes, sizeof(magic));
+		if (magic == MH_MAGIC_64)
+		{
+			mach_header_64 header{};
+			std::memcpy(&header, bytes, sizeof(header));
+			return header.cputype == hostCpu;
+		}
+		if (OSSwapBigToHostInt32(magic) == FAT_MAGIC)
+		{
+			fat_header fat{};
+			std::memcpy(&fat, bytes, sizeof(fat));
+			const uint32_t count = OSSwapBigToHostInt32(fat.nfat_arch);
+			for (uint32_t i = 0; i < count && i < 16; ++i)
+			{
+				fat_arch slice{};
+				std::memcpy(&slice, bytes + sizeof(fat) + i * sizeof(slice), sizeof(slice));
+				if (static_cast<cpu_type_t>(OSSwapBigToHostInt32(static_cast<uint32_t>(slice.cputype))) == hostCpu)
+					return true;
+			}
+		}
+		return false;
+	}
+
+	char** environment()
+	{
+		// environ itself is not available to code that may end up in a bundle.
+		return *_NSGetEnviron();
+	}
+
+	std::vector<int> processIds()
+	{
+		const int count = proc_listallpids(nullptr, 0);
+		std::vector<pid_t> pids(static_cast<size_t>(count > 0 ? count : 0) + 16);
+		const int filled = proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
+		pids.resize(static_cast<size_t>(filled > 0 ? filled : 0));
+		return {pids.begin(), pids.end()};
+	}
+
+	std::string processPath(int pid)
+	{
+		char path[PROC_PIDPATHINFO_MAXSIZE]{};
+		return proc_pidpath(pid, path, sizeof(path)) > 0 ? std::string{path} : std::string{};
 	}
 
 	std::string preferredLanguage()
@@ -205,6 +263,11 @@ namespace nppmac::platform
 		for (id<MTLDevice> device in MTLCopyAllDevices())
 			names.push_back(device.name.UTF8String);
 		return names;
+	}
+
+	std::string systemName()
+	{
+		return "macOS";
 	}
 
 	std::string systemVersion()
