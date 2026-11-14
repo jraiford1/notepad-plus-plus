@@ -66,6 +66,25 @@ ctest --test-dir unix/build
 
 The first configure downloads the Wine source release once (about 45 MB) into the build directory.
 
+### Linux (under way)
+
+A Linux build on Qt 6 is being added from the same tree. So far the engine, all of upstream's sources,
+Scintilla's and Lexilla's portable parts and the runtime's non-window parts build, and their tests pass;
+the converted upstream sources are byte for byte the Mac's. Drawing, windows, the editor and the app
+follow. On Ubuntu 26.04:
+
+```bash
+sudo apt install cmake ninja-build clang-22 clang-tools-22 libclang-22-dev libclang-cpp22-dev llvm-22-dev \
+	qt6-base-dev qt6-wayland bison flex
+cmake -S unix -B unix/build-linux -G Ninja -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22
+cmake --build unix/build-linux
+ctest --test-dir unix/build-linux
+```
+
+Code for one platform lives in folders named after it (`runtime/src/platform/macos`,
+`runtime/src/platform/linux`); Linux's native side is compiled without the Win32 headers, as the
+Mac's Objective-C++ side is.
+
 The app is universal (Apple silicon and Intel, macOS 13.3 and later). For a quicker local build of one
 slice, configure with `-DCMAKE_OSX_ARCHITECTURES=arm64`. On Apple silicon with Rosetta, `ctest` runs the
 smoke test on both slices. A build directory keeps the architectures and deployment target it was first

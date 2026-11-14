@@ -76,10 +76,12 @@ add_executable(nppRuntimeDirectoryChangesTest test/DirectoryChangesTest.cpp)
 target_link_libraries(nppRuntimeDirectoryChangesTest PRIVATE nppRuntime nppRuntimeStubs)
 add_test(NAME runtimeDirectoryChanges COMMAND nppRuntimeDirectoryChangesTest)
 
+if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's window step: these reach the window manager
 add_executable(nppRuntimeSystemInfoTest test/SystemInfoTest.cpp)
 # The user layer (DwmGetColorizationColor) brings in the Scintilla window class.
 target_link_libraries(nppRuntimeSystemInfoTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
 add_test(NAME runtimeSystemInfo COMMAND nppRuntimeSystemInfoTest)
+endif()
 
 if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's drawing step
 add_executable(nppRuntimeIconTest test/IconTest.cpp)
@@ -93,7 +95,9 @@ add_executable(nppRuntimeProfileTest test/ProfileTest.cpp)
 target_link_libraries(nppRuntimeProfileTest PRIVATE nppRuntime nppRuntimeStubs)
 add_test(NAME runtimeProfile COMMAND nppRuntimeProfileTest)
 
+if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's window step
 add_executable(nppRuntimeProcessTest test/ProcessTest.cpp)
 # ShellExecute's other paths are in the user layer, which brings in the Scintilla window class.
 target_link_libraries(nppRuntimeProcessTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
 add_test(NAME runtimeProcess COMMAND nppRuntimeProcessTest)
+endif()

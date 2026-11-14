@@ -8,8 +8,10 @@ if(NPPMAC_PLATFORM STREQUAL "macos")
 	# The probe also gets what the runtime links itself (iconv).
 	set(nppSystemLibraries -lc++ -liconv ${nppSystemLibraries})
 else()
-	# The C and C++ libraries (Qt's names are all C++, which are never stubbed).
-	set(nppSystemLibraries -lstdc++ -lm)
+	# The C and C++ libraries, and Qt's (whose C names, such as qt_version_tag, the runtime's native side
+	# refers to).
+	set(nppSystemLibraries -lstdc++ -lm $<TARGET_FILE:Qt6::Core> $<TARGET_FILE:Qt6::Gui> $<TARGET_FILE:Qt6::Widgets>
+		$<TARGET_FILE:Qt6::DBus>)
 endif()
 string(REPLACE ";" "|" nppSystemLibrariesArgument "${nppSystemLibraries}") # a list cannot pass through -D
 string(REPLACE " " "|" nppSystemLibrariesArgument "${nppSystemLibrariesArgument}")
@@ -32,4 +34,9 @@ add_custom_command(
 	VERBATIM
 )
 add_library(nppRuntimeStubs STATIC "${stubSource}")
+# The stubs report through the runtime (StubReport.cpp): on Linux it comes after them on the link line,
+# which a one-pass linker (GNU ld) needs. (The Mac's app links the whole runtime in already.)
+if(NPPMAC_PLATFORM STREQUAL "linux")
+	target_link_libraries(nppRuntimeStubs INTERFACE nppRuntime)
+endif()
 target_compile_options(nppRuntimeStubs PRIVATE -w)
