@@ -14,7 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// GDI text on Core Text: fonts, drawing, DrawText layout, measurement, metrics, font enumeration.
+// GDI text: fonts, drawing, DrawText layout, measurement, metrics, font enumeration. The platform's
+// fonts (Canvas.h's NativeFont) do the shaping and drawing; Windows' rules stay here.
 
 #include "Gdi.h"
 
@@ -25,20 +26,7 @@ namespace nppmac::gdi
 {
 	namespace
 	{
-		CFStringRef createString(std::u16string_view text)
-		{
-			return CFStringCreateWithCharacters(nullptr, reinterpret_cast<const UniChar*>(text.data()), static_cast<CFIndex>(text.size()));
-		}
-
-		std::u16string fromCFString(CFStringRef string)
-		{
-			const CFIndex length = CFStringGetLength(string);
-			std::u16string result(static_cast<size_t>(length), u'\0');
-			CFStringGetCharacters(string, CFRangeMake(0, length), reinterpret_cast<UniChar*>(result.data()));
-			return result;
-		}
-
-		// Windows faces that macOS does not have, and what stands in for them.
+		// Windows' own UI faces, which stand for the system's UI font.
 		bool isSystemUIFace(std::u16string_view face)
 		{
 			static const char16_t* const uiFaces[] = {
@@ -53,103 +41,32 @@ namespace nppmac::gdi
 			return false;
 		}
 
-		std::u16string substituteFace(std::u16string_view face)
+		// What GDI asks of the platform for a LOGFONT: the face, Windows' UI faces as the system's, the
+		// size (a positive height being the cell height, ascent plus descent), weight, slant and pitch.
+		std::unique_ptr<NativeFont> createFontFor(const LOGFONTW& log)
 		{
-			static const std::pair<const char16_t*, const char16_t*> substitutes[] = {
-				{u"Consolas", u"Menlo"}, {u"Lucida Console", u"Menlo"}, {u"Cascadia Code", u"Menlo"}, {u"Cascadia Mono", u"Menlo"},
-				{u"Fixedsys", u"Menlo"}, {u"Terminal", u"Menlo"}, {u"Segoe UI Symbol", u"Apple Symbols"},
-				{u"Segoe UI Emoji", u"Apple Color Emoji"}, {u"Webdings", u"Apple Symbols"}, {u"Wingdings", u"Apple Symbols"},
-				{u"Calibri", u"Helvetica Neue"}, {u"Cambria", u"Georgia"},
-			};
-			for (const auto& [windowsFace, macFace] : substitutes)
-			{
-				if (_wcsicmp(std::u16string{face}.c_str(), windowsFace) == 0)
-					return macFace;
-			}
-			return std::u16string{face};
+			FontRequest request;
+			request._face = log.lfFaceName;
+			request._systemFace = isSystemUIFace(request._face);
+			request._size = log.lfHeight == 0 ? 12 : std::abs(log.lfHeight);
+			request._cellHeight = log.lfHeight > 0;
+			request._bold = log.lfWeight >= FW_SEMIBOLD;
+			request._italic = log.lfItalic != 0;
+			request._fixedPitch = (log.lfPitchAndFamily & 0x3) == FIXED_PITCH;
+			return createFont(request);
 		}
 
-		CTFontRef createFont(const LOGFONTW& log)
+		int ascentOf(const NativeFont& font)
 		{
-			const std::u16string face{log.lfFaceName};
-			CGFloat size = log.lfHeight == 0 ? 12 : std::abs(log.lfHeight);
-			CTFontRef font = nullptr;
-			if (isSystemUIFace(face))
-			{
-				font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, nullptr);
-			}
-			else
-			{
-				CFStringRef name = createString(substituteFace(face));
-				font = CTFontCreateWithName(name, size, nullptr);
-				// Core Text falls back to Helvetica for unknown names: use the system font instead.
-				CFStringRef family = CTFontCopyFamilyName(font);
-				const std::u16string actual = fromCFString(family);
-				CFRelease(family);
-				if (_wcsicmp(actual.c_str(), substituteFace(face).c_str()) != 0 && _wcsicmp(actual.c_str(), u"Helvetica") == 0)
-				{
-					CFRelease(font);
-					font = (log.lfPitchAndFamily & 0x3) == FIXED_PITCH
-						? CTFontCreateWithName(CFSTR("Menlo"), size, nullptr)
-						: CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, nullptr);
-				}
-				CFRelease(name);
-			}
-
-			// A positive height is the cell height (ascent + descent), not the em size.
-			if (log.lfHeight > 0)
-			{
-				const CGFloat cell = CTFontGetAscent(font) + CTFontGetDescent(font);
-				if (cell > 0)
-				{
-					CTFontRef resized = CTFontCreateCopyWithAttributes(font, size * size / cell, nullptr, nullptr);
-					CFRelease(font);
-					font = resized;
-				}
-			}
-
-			CTFontSymbolicTraits traits = 0;
-			if (log.lfWeight >= FW_SEMIBOLD)
-				traits |= kCTFontBoldTrait;
-			if (log.lfItalic)
-				traits |= kCTFontItalicTrait;
-			if (traits)
-			{
-				CTFontRef styled = CTFontCreateCopyWithSymbolicTraits(font, 0, nullptr, traits, traits);
-				if (styled)
-				{
-					CFRelease(font);
-					font = styled;
-				}
-			}
-			return font;
+			return static_cast<int>(std::ceil(font.ascent()));
 		}
 
-		CTLineRef createLine(CTFontRef font, std::u16string_view text)
+		int descentOf(const NativeFont& font)
 		{
-			CFStringRef string = createString(text);
-			const void* keys[] = {kCTFontAttributeName, kCTForegroundColorFromContextAttributeName};
-			const void* values[] = {font, kCFBooleanTrue};
-			CFDictionaryRef attributes = CFDictionaryCreate(nullptr, keys, values, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-			CFAttributedStringRef attributed = CFAttributedStringCreate(nullptr, string, attributes);
-			CTLineRef line = CTLineCreateWithAttributedString(attributed);
-			CFRelease(attributed);
-			CFRelease(attributes);
-			CFRelease(string);
-			return line;
+			return static_cast<int>(std::ceil(font.descent()));
 		}
 
-		int ascentOf(CTFontRef font)
-		{
-			return static_cast<int>(std::ceil(CTFontGetAscent(font)));
-		}
-
-		int descentOf(CTFontRef font)
-		{
-			return static_cast<int>(std::ceil(CTFontGetDescent(font)));
-		}
-
-		int lineHeightOf(CTFontRef font)
+		int lineHeightOf(const NativeFont& font)
 		{
 			return ascentOf(font) + descentOf(font);
 		}
@@ -192,7 +109,7 @@ namespace nppmac::gdi
 		}
 
 		// Shortens text with an ellipsis to fit a width; DT_PATH_ELLIPSIS keeps the end of a path.
-		std::u16string ellipsize(CTFontRef font, const std::u16string& text, double width, bool pathEllipsis)
+		std::u16string ellipsize(const NativeFont& font, const std::u16string& text, double width, bool pathEllipsis)
 		{
 			if (textWidth(font, text) <= width)
 				return text;
@@ -214,7 +131,7 @@ namespace nppmac::gdi
 		}
 
 		// Greedy word wrapping at spaces, for DT_WORDBREAK; explicit line breaks always break.
-		std::vector<std::u16string> wrapLines(CTFontRef font, std::u16string_view text, double width, bool wordBreak, bool singleLine)
+		std::vector<std::u16string> wrapLines(const NativeFont& font, std::u16string_view text, double width, bool wordBreak, bool singleLine)
 		{
 			std::vector<std::u16string> lines;
 			if (singleLine)
@@ -268,57 +185,43 @@ namespace nppmac::gdi
 		}
 	}
 
-	CTFontRef Font::ctFont()
+	const NativeFont& Font::native()
 	{
-		if (!_ctFont)
-			_ctFont = createFont(_log);
-		return _ctFont;
+		if (!_native)
+			_native = createFontFor(_log);
+		return *_native;
 	}
 
-	CTFontRef fontFor(DC* dc)
+	const NativeFont& fontFor(DC* dc)
 	{
 		Font* font = currentFont(dc);
 		if (!font)
 			font = objectAs<Font>(GetStockObject(SYSTEM_FONT), ObjectType::font);
-		return font->ctFont();
+		return font->native();
 	}
 
-	double textWidth(CTFontRef font, std::u16string_view text)
+	double textWidth(const NativeFont& font, std::u16string_view text)
 	{
-		if (text.empty())
-			return 0;
-		CTLineRef line = createLine(font, text);
-		const double width = CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr);
-		CFRelease(line);
-		return width;
+		return text.empty() ? 0 : font.width(text);
 	}
 
-	void drawText(DC* dc, CGContextRef context, std::u16string_view text, double x, double baseline, COLORREF color)
+	void drawText(DC* dc, Canvas* canvas, std::u16string_view text, double x, double baseline, COLORREF color)
 	{
 		if (text.empty())
 			return;
-		CTFontRef font = fontFor(dc);
-		CTLineRef line = createLine(font, text);
-		CGContextSaveGState(context);
-		CGContextSetShouldAntialias(context, true);
-		CGContextSetShouldSmoothFonts(context, false);
-		setFillColor(context, color);
-		CGContextSetTextMatrix(context, CGAffineTransformMakeScale(1, -1));
-		CGContextSetTextPosition(context, x, baseline);
-		CTLineDraw(line, context);
-		CGContextRestoreGState(context);
+		const NativeFont& font = fontFor(dc);
+		canvas->drawText(font, text, x, baseline, color);
 
 		Font* logical = currentFont(dc);
 		if (logical && (logical->_log.lfUnderline || logical->_log.lfStrikeOut))
 		{
-			const double width = CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr);
-			setFillColor(context, color);
+			const double width = font.width(text);
+			canvas->setFillColor(color);
 			if (logical->_log.lfUnderline)
-				CGContextFillRect(context, CGRectMake(x, std::round(baseline + 1), width, 1));
+				canvas->fillRect({x, std::round(baseline + 1), width, 1});
 			if (logical->_log.lfStrikeOut)
-				CGContextFillRect(context, CGRectMake(x, std::round(baseline - CTFontGetXHeight(font) / 2), width, 1));
+				canvas->fillRect({x, std::round(baseline - font.xHeight() / 2), width, 1});
 		}
-		CFRelease(line);
 	}
 }
 
@@ -332,7 +235,7 @@ BOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* rect, L
 	if (!dc)
 		return FALSE;
 	const std::u16string_view string{text ? text : u"", text ? count : 0};
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 
 	if (dc->_state._textAlign & TA_UPDATECP)
 	{
@@ -380,24 +283,24 @@ BOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* rect, L
 		DeleteObject(background);
 	}
 
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
 	if ((options & ETO_CLIPPED) && rect)
-		CGContextClipToRect(context, toCGRect(*rect));
+		canvas->clipToRect(toCanvasRect(*rect));
 	if (dx && count > 0)
 	{
 		// Character positions given by the caller: draw each character at its cell.
 		double position = left;
 		for (UINT i = 0; i < count; ++i)
 		{
-			drawText(dc, context, string.substr(i, 1), position, baseline, dc->_state._textColor);
+			drawText(dc, canvas, string.substr(i, 1), position, baseline, dc->_state._textColor);
 			position += dx[i];
 		}
 	}
 	else
 	{
-		drawText(dc, context, string, left, baseline, dc->_state._textColor);
+		drawText(dc, canvas, string, left, baseline, dc->_state._textColor);
 	}
 	dc->end();
 
@@ -423,7 +326,7 @@ int WINAPI DrawTextExW(HDC hdc, LPWSTR text, int count, LPRECT rect, UINT format
 	if (!dc || !rect)
 		return 0;
 	std::u16string_view source{text ? text : u"", text ? (count < 0 ? wcslen(text) : static_cast<size_t>(count)) : 0};
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 	const int lineHeight = lineHeightOf(font);
 	const double availableWidth = std::max<LONG>(0, rect->right - rect->left);
 
@@ -460,15 +363,15 @@ int WINAPI DrawTextExW(HDC hdc, LPWSTR text, int count, LPRECT rect, UINT format
 	else if (singleLine && (format & DT_BOTTOM))
 		top = rect->bottom - lineHeight;
 
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return 0;
 	if (!(format & DT_NOCLIP))
-		CGContextClipToRect(context, toCGRect(*rect));
+		canvas->clipToRect(toCanvasRect(*rect));
 	if (dc->_state._backgroundMode == OPAQUE)
 	{
-		setFillColor(context, dc->_state._backgroundColor);
-		CGContextFillRect(context, CGRectMake(rect->left, top, availableWidth, totalHeight));
+		canvas->setFillColor(dc->_state._backgroundColor);
+		canvas->fillRect({static_cast<double>(rect->left), static_cast<double>(top), static_cast<double>(availableWidth), static_cast<double>(totalHeight)});
 	}
 	for (size_t i = 0; i < lines.size(); ++i)
 	{
@@ -479,13 +382,13 @@ int WINAPI DrawTextExW(HDC hdc, LPWSTR text, int count, LPRECT rect, UINT format
 		else if (format & DT_RIGHT)
 			left = rect->right - width;
 		const double baseline = top + static_cast<int>(i) * lineHeight + ascentOf(font);
-		drawText(dc, context, lines[i], left, baseline, dc->_state._textColor);
+		drawText(dc, canvas, lines[i], left, baseline, dc->_state._textColor);
 		if (i == 0 && underlined != std::u16string::npos && underlined < lines[0].size() && !(format & DT_HIDEPREFIX))
 		{
 			const double start = left + textWidth(font, std::u16string_view{lines[0]}.substr(0, underlined));
 			const double charWidth = textWidth(font, std::u16string_view{lines[0]}.substr(underlined, 1));
-			setFillColor(context, dc->_state._textColor);
-			CGContextFillRect(context, CGRectMake(start, std::round(baseline + 1), charWidth, 1));
+			canvas->setFillColor(dc->_state._textColor);
+			canvas->fillRect({start, std::round(baseline + 1), charWidth, 1});
 		}
 	}
 	dc->end();
@@ -510,7 +413,7 @@ BOOL WINAPI GetTextExtentPoint32W(HDC hdc, LPCWSTR text, int count, LPSIZE size)
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 	const std::u16string_view string{text ? text : u"", text ? static_cast<size_t>(std::max(0, count)) : 0};
 	size->cx = static_cast<LONG>(std::ceil(textWidth(font, string)));
 	size->cy = lineHeightOf(font);
@@ -533,7 +436,7 @@ BOOL WINAPI GetTextExtentExPointW(HDC hdc, LPCWSTR text, int count, int maxExten
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 	int fitting = 0;
 	for (int i = 1; i <= count; ++i)
 	{
@@ -553,16 +456,16 @@ BOOL WINAPI GetTextMetricsW(HDC hdc, LPTEXTMETRICW metrics)
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 	std::memset(metrics, 0, sizeof(*metrics));
 	metrics->tmAscent = ascentOf(font);
 	metrics->tmDescent = descentOf(font);
 	metrics->tmHeight = metrics->tmAscent + metrics->tmDescent;
-	metrics->tmInternalLeading = std::max<LONG>(0, metrics->tmHeight - static_cast<LONG>(std::lround(CTFontGetSize(font))));
-	metrics->tmExternalLeading = static_cast<LONG>(std::lround(CTFontGetLeading(font)));
+	metrics->tmInternalLeading = std::max<LONG>(0, metrics->tmHeight - static_cast<LONG>(std::lround(font.size())));
+	metrics->tmExternalLeading = static_cast<LONG>(std::lround(font.leading()));
 	// The average width Windows uses for dialog units: the alphabet's average.
 	metrics->tmAveCharWidth = static_cast<LONG>(std::lround(textWidth(font, u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") / 52));
-	metrics->tmMaxCharWidth = static_cast<LONG>(std::ceil(CTFontGetBoundingBox(font).size.width));
+	metrics->tmMaxCharWidth = static_cast<LONG>(std::ceil(font.maxCharWidth()));
 	Font* logical = currentFont(dc);
 	metrics->tmWeight = logical && logical->_log.lfWeight ? logical->_log.lfWeight : FW_NORMAL;
 	metrics->tmItalic = logical ? logical->_log.lfItalic : 0;
@@ -576,7 +479,7 @@ BOOL WINAPI GetTextMetricsW(HDC hdc, LPTEXTMETRICW metrics)
 	metrics->tmDigitizedAspectY = 96;
 	metrics->tmCharSet = ANSI_CHARSET;
 	// TMPF_FIXED_PITCH set means variable pitch (the name is the wrong way round on Windows).
-	const bool monospaced = (CTFontGetSymbolicTraits(font) & kCTFontMonoSpaceTrait) != 0;
+	const bool monospaced = font.monospaced();
 	metrics->tmPitchAndFamily = static_cast<BYTE>((monospaced ? 0 : TMPF_FIXED_PITCH) | TMPF_TRUETYPE | TMPF_VECTOR);
 	return TRUE;
 }
@@ -599,7 +502,7 @@ BOOL WINAPI GetCharWidth32W(HDC hdc, UINT first, UINT last, LPINT widths)
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CTFontRef font = fontFor(dc);
+	const NativeFont& font = fontFor(dc);
 	for (UINT ch = first; ch <= last; ++ch)
 	{
 		const char16_t c = static_cast<char16_t>(ch);
@@ -617,14 +520,12 @@ BOOL WINAPI GetCharWidthW(HDC hdc, UINT first, UINT last, LPINT widths)
 
 int WINAPI EnumFontFamiliesExW(HDC, LPLOGFONTW filter, FONTENUMPROCW callback, LPARAM parameter, DWORD)
 {
-	CFArrayRef families = CTFontManagerCopyAvailableFontFamilyNames();
+	const std::vector<FontFamily> families = fontFamilies();
 	const std::u16string wanted = filter ? filter->lfFaceName : u"";
 	int result = 1;
-	const CFIndex count = CFArrayGetCount(families);
-	for (CFIndex i = 0; i < count && result; ++i)
+	for (size_t i = 0; i < families.size() && result; ++i)
 	{
-		auto family = static_cast<CFStringRef>(CFArrayGetValueAtIndex(families, i));
-		const std::u16string name = fromCFString(family);
+		const std::u16string& name = families[i]._name;
 		if (name.empty() || name[0] == u'.' || name.size() >= LF_FACESIZE)
 			continue;
 		if (!wanted.empty() && _wcsicmp(wanted.c_str(), name.c_str()) != 0)
@@ -637,9 +538,7 @@ int WINAPI EnumFontFamiliesExW(HDC, LPLOGFONTW filter, FONTENUMPROCW callback, L
 		logFont.elfLogFont.lfHeight = -12;
 		logFont.elfLogFont.lfWeight = FW_NORMAL;
 
-		CTFontRef font = CTFontCreateWithName(family, 12, nullptr);
-		const bool monospaced = (CTFontGetSymbolicTraits(font) & kCTFontMonoSpaceTrait) != 0;
-		CFRelease(font);
+		const bool monospaced = families[i]._monospaced;
 		logFont.elfLogFont.lfPitchAndFamily = static_cast<BYTE>((monospaced ? FIXED_PITCH : VARIABLE_PITCH) | (monospaced ? FF_MODERN : FF_SWISS));
 
 		NEWTEXTMETRICEXW metrics{};
@@ -651,7 +550,6 @@ int WINAPI EnumFontFamiliesExW(HDC, LPLOGFONTW filter, FONTENUMPROCW callback, L
 		metrics.ntmTm.ntmFlags = NTM_REGULAR;
 		result = callback(&logFont.elfLogFont, reinterpret_cast<const TEXTMETRICW*>(&metrics), TRUETYPE_FONTTYPE, parameter);
 	}
-	CFRelease(families);
 	return result;
 }
 

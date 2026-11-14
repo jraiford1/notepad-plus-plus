@@ -71,17 +71,16 @@ namespace
 				std::copy_n(source->rowPointer(y) + sourceX, width, image->rowPointer(y));
 			return image;
 		}
-		CGImageRef whole = source->createImage();
-		CGImageRef part = CGImageCreateWithImageInRect(whole, CGRectMake(sourceX, 0, sourceWidth, source->_height));
-		CGContextRef context = image->context();
-		CGContextSaveGState(context);
-		CGContextTranslateCTM(context, 0, height);
-		CGContextScaleCTM(context, 1, -1);
-		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-		CGContextDrawImage(context, CGRectMake(0, 0, width, height), part);
-		CGContextRestoreGState(context);
-		CGImageRelease(part);
-		CGImageRelease(whole);
+		const std::shared_ptr<nppmac::gdi::CanvasImage> whole = source->image();
+		const std::shared_ptr<nppmac::gdi::CanvasImage> part = whole ? whole->cropped({static_cast<double>(sourceX), 0, static_cast<double>(sourceWidth),
+			static_cast<double>(source->_height)}) : nullptr;
+		if (nppmac::gdi::Canvas* canvas = image->canvas(); canvas && part)
+		{
+			canvas->save();
+			canvas->setInterpolation(nppmac::gdi::Interpolation::high);
+			canvas->drawImage(*part, {0, 0, static_cast<double>(width), static_cast<double>(height)});
+			canvas->restore();
+		}
 		return image;
 	}
 
@@ -340,19 +339,17 @@ BOOL WINAPI ImageList_DrawEx(HIMAGELIST handle, int index, HDC hdc, int x, int y
 		nppmac::gdi::fillRect(dc, {x, y, x + width, y + height}, brush);
 		DeleteObject(brush);
 	}
-	CGContextRef context = dc->begin();
-	if (context)
+	if (nppmac::gdi::Canvas* canvas = dc->begin())
 	{
-		CGImageRef image = list->_images[static_cast<size_t>(index)]->createImageFor(context);
-		CGContextSaveGState(context);
-		CGContextTranslateCTM(context, x, y + height);
-		CGContextScaleCTM(context, 1, -1);
-		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-		if (style & (ILD_BLEND25 | ILD_BLEND50))
-			CGContextSetAlpha(context, 0.5);
-		CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
-		CGContextRestoreGState(context);
-		CGImageRelease(image);
+		if (const std::shared_ptr<nppmac::gdi::CanvasImage> image = list->_images[static_cast<size_t>(index)]->imageFor(canvas))
+		{
+			canvas->save();
+			canvas->setInterpolation(nppmac::gdi::Interpolation::high);
+			if (style & (ILD_BLEND25 | ILD_BLEND50))
+				canvas->setAlpha(0.5);
+			canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+			canvas->restore();
+		}
 		dc->end();
 	}
 	return TRUE;

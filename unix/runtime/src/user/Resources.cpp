@@ -18,8 +18,6 @@
 // the system's cursors and icons. FindResource and friends, strings, icons, cursors, bitmaps and
 // version information. Menus, accelerators and dialogs are built from these in their own modules.
 
-#include <ImageIO/ImageIO.h>
-
 #include "Resources.h"
 #include "kernel/Internal.h"
 #include "kernel/Modules.h"
@@ -254,24 +252,16 @@ namespace nppmac::user
 
 		std::shared_ptr<gdi::Bitmap> decodePng(const BYTE* data, size_t size)
 		{
-			CFDataRef cfData = CFDataCreate(nullptr, data, static_cast<CFIndex>(size));
-			CGImageSourceRef source = CGImageSourceCreateWithData(cfData, nullptr);
-			CFRelease(cfData);
-			if (!source)
+			int width = 0;
+			int height = 0;
+			std::vector<uint32_t> pixels;
+			if (!gdi::decodePng({data, size}, width, height, pixels) || !gdi::isAllowedBitmapSize(width, height))
 				return nullptr;
-			CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, nullptr);
-			CFRelease(source);
-			if (!image)
-				return nullptr;
-			auto bitmap = newBitmap(static_cast<int>(CGImageGetWidth(image)), static_cast<int>(CGImageGetHeight(image)));
-			CGContextRef context = bitmap->context();
-			// The context has a top-left origin; draw the image upright.
-			CGContextSaveGState(context);
-			CGContextTranslateCTM(context, 0, bitmap->_height);
-			CGContextScaleCTM(context, 1, -1);
-			CGContextDrawImage(context, CGRectMake(0, 0, bitmap->_width, bitmap->_height), image);
-			CGContextRestoreGState(context);
-			CGImageRelease(image);
+			auto bitmap = std::make_shared<gdi::Bitmap>();
+			bitmap->_width = width;
+			bitmap->_height = height;
+			bitmap->_ownedPixels = std::move(pixels);
+			bitmap->_pixels = bitmap->_ownedPixels.data();
 			bitmap->_hasAlpha = true;
 			return bitmap;
 		}

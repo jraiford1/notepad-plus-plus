@@ -55,7 +55,7 @@ namespace
 		HBITMAP surface = CreateBitmap(16 * scale, 16 * scale, 1, 32, nullptr);
 		HGDIOBJ old = SelectObject(hdc, surface);
 		auto* bitmap = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(surface, nppmac::gdi::ObjectType::bitmap);
-		CGContextScaleCTM(bitmap->context(), scale, scale);
+		bitmap->canvas()->scale(scale, scale); // a surface with that many pixels per point
 		ImageList_Draw(list, 0, hdc, 0, 0, ILD_TRANSPARENT);
 		int differences = 0;
 		for (int y = 0; y < expected._height; ++y)

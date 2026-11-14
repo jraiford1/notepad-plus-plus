@@ -57,27 +57,22 @@ namespace
 		return (size * windowsPointsPerInch + windowsPixelsPerInch / 2) / windowsPixelsPerInch;
 	}
 
-	// Printing: Notepad++ gives SCI_FORMATRANGEFULL the printer's HDC, and Scintilla's Cocoa layer draws
-	// into a CGContext: the DC's, ready for drawing. Pages it only measures (no page is open) get a
-	// scratch context.
+	// Printing: Notepad++ gives SCI_FORMATRANGEFULL the printer's HDC, and Scintilla's platform layer
+	// draws with the platform's own drawing object (a CGContext, a QPainter): the DC's canvas's, ready
+	// for drawing. Pages it only measures (no page is open) get a scratch canvas's.
 	template <typename Range>
 	sptr_t formatRange(const ScintillaData& data, unsigned int message, uptr_t draw, sptr_t lParam)
 	{
 		if (!lParam)
 			return data._direct(data._directPointer, message, draw, lParam);
-		static CGContextRef scratch = []
-		{
-			CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-			CGContextRef context = CGBitmapContextCreate(nullptr, 1, 1, 8, 4, colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst));
-			CGColorSpaceRelease(colorSpace);
-			return context;
-		}();
+		static uint32_t scratchPixel = 0;
+		static const std::unique_ptr<nppmac::gdi::Canvas> scratch = nppmac::gdi::canvasOverPixels(&scratchPixel, 1, 1, false);
 		Range range = *reinterpret_cast<const Range*>(lParam);
 		nppmac::gdi::DC* dc = nppmac::gdi::toDC(static_cast<HDC>(range.hdc));
-		CGContextRef context = dc ? dc->begin() : nullptr;
-		range.hdc = range.hdcTarget = context ? context : scratch;
-		const sptr_t result = data._direct(data._directPointer, message, context ? draw : 0, reinterpret_cast<sptr_t>(&range));
-		if (context)
+		nppmac::gdi::Canvas* canvas = dc ? dc->begin() : nullptr;
+		range.hdc = range.hdcTarget = (canvas ? canvas : scratch.get())->nativeHandle();
+		const sptr_t result = data._direct(data._directPointer, message, canvas ? draw : 0, reinterpret_cast<sptr_t>(&range));
+		if (canvas)
 			dc->end();
 		return result;
 	}

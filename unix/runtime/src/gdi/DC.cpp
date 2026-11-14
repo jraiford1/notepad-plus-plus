@@ -67,8 +67,6 @@ namespace nppmac::gdi
 
 		void destroyDC(DC* dc)
 		{
-			if (dc->_gstateSaved)
-				CGContextRestoreGState(dc->_context);
 			auto release = [](const DCState& state)
 			{
 				deselect(state._pen);
@@ -80,10 +78,8 @@ namespace nppmac::gdi
 				release(state);
 			if (dc->_bitmap)
 				deselect(dc->_bitmap);
-			// A window DC keeps its window's surface until it is released (the window may resize, or
-			// give its surface up when hidden, in the meantime).
-			if (dc->_kind == DCKind::window && dc->_context)
-				CGContextRelease(dc->_context);
+			// A window DC keeps its window's surface (_surface) until it is released (the window may
+			// resize, or give its surface up when hidden, in the meantime).
 			{
 				std::lock_guard lock{g_dcsMutex};
 				liveDCs().erase(dc);
@@ -117,19 +113,20 @@ namespace nppmac::gdi
 		return reinterpret_cast<HDC>(dc);
 	}
 
-	CGContextRef DC::begin()
+	Canvas* DC::begin()
 	{
-		if (_kind == DCKind::memory && !_context)
+		if (_kind == DCKind::memory && !_canvas)
 		{
 			auto* bitmap = objectAs<Bitmap>(_bitmap, ObjectType::bitmap);
-			_context = bitmap ? bitmap->context() : nullptr;
+			_canvas = bitmap ? bitmap->canvas() : nullptr;
 		}
-		if (!_context)
+		if (!_canvas)
 			return nullptr;
-		CGContextSaveGState(_context);
+		_canvas->save();
 
 		// Clip in device coordinates, before the logical offset.
-		std::vector<CGRect> clip;
+		std::vector<CanvasRect> clip;
+		bool clipped = false;
 		const RECT bounds{0, 0, _width, _height};
 		auto addClip = [&](const RECT& rect)
 		{
@@ -139,43 +136,41 @@ namespace nppmac::gdi
 			if (_width > 0 && _height > 0)
 				IntersectRect(&area, &area, &bounds);
 			if (!IsRectEmpty(&area))
-				clip.push_back(toCGRect(area));
+				clip.push_back(toCanvasRect(area));
 		};
 		if (_state._clipped)
 		{
 			for (const RECT& rect : _state._clip)
 				addClip(rect);
-			if (clip.empty())
-				clip.push_back(CGRectZero);
+			clipped = true;
 		}
 		else if (_hasPaintClip)
 		{
 			addClip(_paintClip);
-			if (clip.empty())
-				clip.push_back(CGRectZero);
+			clipped = true;
 		}
-		if (!clip.empty())
-			CGContextClipToRects(_context, clip.data(), clip.size());
+		if (clipped)
+			_canvas->clipToRects(clip); // nothing left in it clips everything away
 
 		const POINT offset = logicalToDeviceOffset(_state);
-		CGContextTranslateCTM(_context, offset.x, offset.y);
-		CGContextSetShouldAntialias(_context, false);
-		return _context;
+		_canvas->translate(offset.x, offset.y);
+		_canvas->setAntialias(false);
+		return _canvas;
 	}
 
 	void DC::end()
 	{
-		if (_context)
-			CGContextRestoreGState(_context);
+		if (_canvas)
+			_canvas->restore();
 	}
 
 	HDC createWindowDC(user::Window* window)
 	{
 		DC* dc = createDC(DCKind::window);
 		dc->_window = window;
-		dc->_context = window && window->_view && !window->_nativeControl ? static_cast<CGContextRef>(ui::surfaceContext(window->_view)) : nullptr;
-		if (dc->_context)
-			CGContextRetain(dc->_context);
+		if (window && window->_view && !window->_nativeControl)
+			dc->_surface = canvasOverSurface(ui::surfaceContext(window->_view));
+		dc->_canvas = dc->_surface.get();
 		dc->_width = window ? window->_clientWidth : 0;
 		dc->_height = window ? window->_clientHeight : 0;
 		if (window && window->_font)
@@ -348,7 +343,7 @@ HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ handle)
 			++object->_selectedCount;
 			dc->_bitmap = static_cast<HBITMAP>(handle);
 			auto* bitmap = static_cast<Bitmap*>(object);
-			dc->_context = nullptr; // taken from the bitmap at the next drawing
+			dc->_canvas = nullptr; // taken from the bitmap at the next drawing
 			dc->_width = bitmap->_width;
 			dc->_height = bitmap->_height;
 			break;
