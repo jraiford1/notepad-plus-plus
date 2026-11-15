@@ -18,7 +18,7 @@
 // normalization, the trash). Compiled without the Win32 headers, as the Mac's .mm side is.
 //
 // The services that need windows (alerts, the file, color and font choosers, the clipboard, printing)
-// answer their test settings (NPPMAC_TEST_*) and otherwise report failure, until J4's dialogs step.
+// are Qt Widgets', as the Mac's are AppKit's; they answer their test settings (NPPMAC_TEST_*) first.
 
 #include "../Platform.h"
 
@@ -28,15 +28,29 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QLocale>
 #include <QtCore/QProcess>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QUrl>
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
+#include <QtCore/QMimeData>
+#include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
+#include <QtGui/QPageLayout>
 #include <QtGui/QPalette>
 #include <QtGui/QStyleHints>
+#include <QtPrintSupport/QPrintDialog>
+#include <QtPrintSupport/QPrinter>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QColorDialog>
+#include <QtWidgets/QFileDialog>
+#include <QtWidgets/QFontDialog>
+#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QMessageBox>
+#include <QtWidgets/QPushButton>
 
 #include <algorithm>
 #include <cctype>
@@ -588,9 +602,39 @@ namespace nppmac::platform
 		return 0;
 	}
 
+	namespace
+	{
+		bool hasWidgets()
+		{
+			return qobject_cast<QApplication*>(QCoreApplication::instance()) != nullptr;
+		}
+
+		// The window a dialog belongs to: the active one, or the program's first window shown.
+		QWidget* dialogParent()
+		{
+			if (!hasWidgets())
+				return nullptr;
+			if (QWidget* active = QApplication::activeWindow())
+				return active;
+			for (QWidget* widget : QApplication::topLevelWidgets())
+			{
+				if (widget->isVisible() && widget->isWindow() && !(widget->windowType() == Qt::ToolTip || widget->windowType() == Qt::Popup))
+					return widget;
+			}
+			return nullptr;
+		}
+	}
+
 	void activateApplication()
 	{
-		// With J4's window step. A test run never takes the keyboard.
+		// A test run never takes the keyboard.
+		if (std::getenv("NPPMAC_TEST_RUN"))
+			return;
+		if (QWidget* window = dialogParent())
+		{
+			window->raise();
+			window->activateWindow();
+		}
 	}
 
 	void registerApplication()
@@ -773,27 +817,104 @@ namespace nppmac::platform
 
 	void beep()
 	{
-		// With J4's dialogs step (the desktop's alert sound).
+		if (hasWidgets())
+			QApplication::beep();
+	}
+
+	// --- The clipboard ---------------------------------------------------------------------------
+
+	namespace
+	{
+		// Pasteboard types are the Mac's (UTIs); the clipboard's are MIME types. Text is text/plain, and
+		// the program's own formats travel as application/x-<their type>.
+		constexpr const char* textType = "public.utf8-plain-text";
+		const QString ownPrefix = QStringLiteral("application/x-");
+
+		long g_clipboardChanges = 0;
+
+		QClipboard* clipboard()
+		{
+			if (!qobject_cast<QGuiApplication*>(QCoreApplication::instance()))
+				return nullptr;
+			QClipboard* board = QGuiApplication::clipboard();
+			static bool watching = false;
+			if (!watching)
+			{
+				watching = true;
+				QObject::connect(board, &QClipboard::dataChanged, board, [] { ++g_clipboardChanges; });
+			}
+			return board;
+		}
 	}
 
 	long pasteboardChangeCount()
 	{
-		return 0; // with J4's dialogs step
+		clipboard();
+		return g_clipboardChanges;
 	}
 
 	std::vector<std::string> pasteboardTypes()
 	{
-		return {}; // with J4's dialogs step
+		std::vector<std::string> types;
+		QClipboard* board = clipboard();
+		const QMimeData* data = board ? board->mimeData() : nullptr;
+		if (!data)
+			return types;
+		if (data->hasText())
+			types.push_back(textType);
+		for (const QString& format : data->formats())
+		{
+			if (format.startsWith(ownPrefix))
+				types.push_back(toString(format.mid(ownPrefix.size())));
+		}
+		return types;
 	}
 
-	std::vector<unsigned char> pasteboardData(const std::string&)
+	std::vector<unsigned char> pasteboardData(const std::string& type)
 	{
-		return {}; // with J4's dialogs step
+		QClipboard* board = clipboard();
+		const QMimeData* data = board ? board->mimeData() : nullptr;
+		if (!data)
+			return {};
+		const QByteArray bytes = type == textType ? data->text().toUtf8() : data->data(ownPrefix + toQString(type));
+		return std::vector<unsigned char>(bytes.begin(), bytes.end());
 	}
 
-	void setPasteboard(const std::vector<std::pair<std::string, std::vector<unsigned char>>>&)
+	void setPasteboard(const std::vector<std::pair<std::string, std::vector<unsigned char>>>& items)
 	{
-		// with J4's dialogs step
+		QClipboard* board = clipboard();
+		if (!board)
+			return;
+		auto* data = new QMimeData;
+		for (const auto& [type, bytes] : items)
+		{
+			const QByteArray content(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size()));
+			if (type == textType)
+				data->setText(QString::fromUtf8(content));
+			else
+				data->setData(ownPrefix + toQString(type), content);
+		}
+		board->setMimeData(data);
+	}
+
+	// --- Dialogs ---------------------------------------------------------------------------------
+
+	namespace
+	{
+		// A Windows file type ("C++ source file (*.cpp;*.cxx)") as Qt's file dialog reads one: patterns
+		// separated by spaces, and every file for *.* (which on Linux would want a dot in the name).
+		QString nameFilter(const std::string& name)
+		{
+			QString filter = toQString(name);
+			const qsizetype open = filter.lastIndexOf('(');
+			const qsizetype close = filter.lastIndexOf(')');
+			if (open < 0 || close < open)
+				return filter + " (*)";
+			QStringList patterns;
+			for (QString pattern : filter.mid(open + 1, close - open - 1).split(QRegularExpression("[;, ]+"), Qt::SkipEmptyParts))
+				patterns << (pattern == "*.*" ? QStringLiteral("*") : pattern);
+			return filter.left(open) + '(' + (patterns.isEmpty() ? QStringLiteral("*") : patterns.join(' ')) + ')';
+		}
 	}
 
 	FilePanelResult runFilePanel(const FilePanelRequest& request)
@@ -806,8 +927,66 @@ namespace nppmac::platform
 			result._ok = *test != '\0';
 			if (result._ok)
 				result._paths.push_back(test);
+			return result;
 		}
-		return result; // the panel itself with J4's dialogs step
+		if (!hasWidgets())
+			return result;
+
+		// Qt's own dialog, which takes the program's check boxes (a desktop's own may not).
+		QFileDialog dialog(dialogParent());
+		dialog.setOption(QFileDialog::DontUseNativeDialog);
+		dialog.setFilter(dialog.filter() | QDir::Hidden);
+		if (request._save)
+		{
+			dialog.setAcceptMode(QFileDialog::AcceptSave);
+			dialog.setFileMode(QFileDialog::AnyFile);
+		}
+		else if (request._pickFolders)
+		{
+			dialog.setFileMode(QFileDialog::Directory);
+			dialog.setOption(QFileDialog::ShowDirsOnly);
+		}
+		else
+			dialog.setFileMode(request._multipleSelection ? QFileDialog::ExistingFiles : QFileDialog::ExistingFile);
+		if (!request._title.empty())
+			dialog.setWindowTitle(toQString(request._title));
+		if (!request._directory.empty())
+			dialog.setDirectory(toQString(request._directory));
+		if (!request._fileName.empty())
+			dialog.selectFile(toQString(request._fileName));
+		QStringList filters;
+		for (const std::string& name : request._fileTypeNames)
+			filters << nameFilter(name);
+		if (!filters.isEmpty() && !request._pickFolders)
+		{
+			dialog.setNameFilters(filters);
+			if (request._fileTypeIndex >= 0 && request._fileTypeIndex < filters.size())
+				dialog.selectNameFilter(filters[request._fileTypeIndex]);
+		}
+		std::vector<QCheckBox*> checkBoxes;
+		if (auto* grid = qobject_cast<QGridLayout*>(dialog.layout()))
+		{
+			for (const FilePanelCheckBox& checkBox : request._checkBoxes)
+			{
+				auto* box = new QCheckBox(toQString(checkBox._label), &dialog);
+				box->setChecked(checkBox._checked);
+				box->setEnabled(checkBox._enabled);
+				grid->addWidget(box, grid->rowCount(), 0, 1, -1);
+				checkBoxes.push_back(box);
+			}
+		}
+
+		activateApplication();
+		if (dialog.exec() != QDialog::Accepted)
+			return result;
+		for (const QString& file : dialog.selectedFiles())
+			result._paths.push_back(toString(file));
+		result._ok = !result._paths.empty();
+		if (const qsizetype index = filters.indexOf(dialog.selectedNameFilter()); index >= 0)
+			result._fileTypeIndex = static_cast<int>(index);
+		for (size_t i = 0; i < checkBoxes.size() && i < result._checkBoxes.size(); ++i)
+			result._checkBoxes[i]._checked = checkBoxes[i]->isChecked();
+		return result;
 	}
 
 	bool chooseColor(unsigned& rgb)
@@ -817,7 +996,14 @@ namespace nppmac::platform
 			rgb = static_cast<unsigned>(std::strtoul(test, nullptr, 16)) & 0xFFFFFF;
 			return true;
 		}
-		return false; // the chooser with J4's dialogs step
+		if (!hasWidgets())
+			return false;
+		activateApplication();
+		const QColor color = QColorDialog::getColor(QColor::fromRgb(rgb & 0xFFFFFF), dialogParent());
+		if (!color.isValid())
+			return false;
+		rgb = color.rgb() & 0xFFFFFF;
+		return true;
 	}
 
 	bool chooseFont(FontChoice& choice)
@@ -838,26 +1024,156 @@ namespace nppmac::platform
 			}
 			return true;
 		}
-		return false; // the chooser with J4's dialogs step
+		if (!hasWidgets())
+			return false;
+		// Sizes are GDI units, 96 per inch, as the canvas draws them; Qt's dialog shows points.
+		QFont initial(toQString(choice._family));
+		initial.setPointSizeF(std::max(1.0, choice._size * 72.0 / 96.0));
+		initial.setBold(choice._bold);
+		initial.setItalic(choice._italic);
+		bool ok = false;
+		activateApplication();
+		const QFont chosen = QFontDialog::getFont(&ok, initial, dialogParent());
+		if (!ok)
+			return false;
+		choice._family = toString(chosen.family());
+		if (chosen.pointSizeF() > 0)
+			choice._size = chosen.pointSizeF() * 96.0 / 72.0;
+		else if (chosen.pixelSize() > 0)
+			choice._size = chosen.pixelSize();
+		choice._bold = chosen.weight() >= QFont::Bold;
+		choice._italic = chosen.italic();
+		return true;
 	}
 
-	bool choosePrinter(PrintSetup&, bool)
+	// --- Printing ----------------------------------------------------------------------------------
+
+	namespace
 	{
-		return std::getenv("NPPMAC_TEST_PRINT_PDF") != nullptr; // the printer with J4's dialogs step
+		// The printer and settings the last print dialog chose, for printPdf.
+		QPrinter& printer()
+		{
+			static auto* kept = new QPrinter(QPrinter::HighResolution);
+			return *kept;
+		}
 	}
 
-	bool printPdf(const std::string& pdfPath, const std::string&)
+	bool choosePrinter(PrintSetup& setup, bool showPanel)
+	{
+		if (std::getenv("NPPMAC_TEST_PRINT_PDF"))
+			return true; // the paper as given
+		if (!hasWidgets())
+			return false;
+		QPrinter& chosen = printer();
+		// Printing at once needs a printer to print on: without a default one, the dialog asks.
+		if (showPanel || (chosen.printerName().isEmpty() && chosen.outputFileName().isEmpty()))
+		{
+			QPrintDialog dialog(&chosen, dialogParent());
+			QAbstractPrintDialog::PrintDialogOptions options = QAbstractPrintDialog::PrintPageRange | QAbstractPrintDialog::PrintToFile
+				| QAbstractPrintDialog::PrintShowPageSize | QAbstractPrintDialog::PrintCollateCopies;
+			// As on Windows, a selection is what is printed unless the user says otherwise.
+			if (setup._offerSelection)
+			{
+				options |= QAbstractPrintDialog::PrintSelection;
+				chosen.setPrintRange(QPrinter::Selection);
+			}
+			else if (chosen.printRange() == QPrinter::Selection)
+				chosen.setPrintRange(QPrinter::AllPages);
+			dialog.setOptions(options);
+			activateApplication();
+			if (dialog.exec() != QDialog::Accepted)
+				return false;
+		}
+
+		const QPageLayout layout = chosen.pageLayout();
+		const QRectF paper = layout.fullRect(QPageLayout::Point);
+		const QRectF printable = layout.paintRect(QPageLayout::Point);
+		setup._paperWidth = paper.width();
+		setup._paperHeight = paper.height();
+		setup._printableLeft = printable.left();
+		setup._printableTop = printable.top();
+		setup._printableWidth = printable.width();
+		setup._printableHeight = printable.height();
+		setup._selectionOnly = setup._offerSelection && chosen.printRange() == QPrinter::Selection;
+		setup._pageRange = !setup._selectionOnly && chosen.printRange() == QPrinter::PageRange;
+		if (setup._pageRange)
+		{
+			setup._firstPage = std::max(1, chosen.fromPage());
+			setup._lastPage = std::max(setup._firstPage, chosen.toPage());
+		}
+		return true;
+	}
+
+	bool printPdf(const std::string& pdfPath, const std::string& jobName)
 	{
 		if (const char* test = std::getenv("NPPMAC_TEST_PRINT_PDF"))
 		{
 			QFile::remove(test);
 			return QFile::copy(toQString(pdfPath), test);
 		}
-		return false; // with J4's dialogs step
+		QPrinter& chosen = printer();
+		// Printed to a file: the PDF is that file.
+		if (!chosen.outputFileName().isEmpty())
+		{
+			QFile::remove(chosen.outputFileName());
+			return QFile::copy(toQString(pdfPath), chosen.outputFileName());
+		}
+		if (chosen.printerName().isEmpty())
+			return false;
+		// The document already holds only the pages chosen, each the paper's size: CUPS prints PDFs as
+		// they are, with the printer's settings from the dialog.
+		QStringList arguments{"-d", chosen.printerName(), "-n", QString::number(std::max(1, chosen.copyCount()))};
+		if (!jobName.empty())
+			arguments << "-t" << toQString(jobName);
+		if (chosen.collateCopies())
+			arguments << "-o" << "collate=true";
+		switch (chosen.duplex())
+		{
+			case QPrinter::DuplexNone:
+				arguments << "-o" << "sides=one-sided";
+				break;
+			case QPrinter::DuplexLongSide:
+				arguments << "-o" << "sides=two-sided-long-edge";
+				break;
+			case QPrinter::DuplexShortSide:
+				arguments << "-o" << "sides=two-sided-short-edge";
+				break;
+			default:
+				break;
+		}
+		if (chosen.colorMode() == QPrinter::GrayScale)
+			arguments << "-o" << "print-color-mode=monochrome";
+		arguments << "--" << toQString(pdfPath);
+		QProcess lp;
+		lp.start("lp", arguments);
+		return lp.waitForFinished(30000) && lp.exitStatus() == QProcess::NormalExit && lp.exitCode() == 0;
 	}
 
-	int showAlert(const std::string&, const std::string&, const std::vector<std::string>&, AlertStyle, int defaultButton, int)
+	int showAlert(const std::string& title, const std::string& message, const std::vector<std::string>& buttons,
+		AlertStyle style, int defaultButton, int escapeButton)
 	{
-		return defaultButton; // the alert with J4's dialogs step
+		// Test runs say what they ask, so a test can tell which alert came up, and take the default
+		// answer without showing it (nothing of a test run appears on screen).
+		if (std::getenv("NPPMAC_TEST_RUN") || !hasWidgets())
+		{
+			std::fprintf(stderr, "NPPMAC alert: %s | %s\n", title.c_str(), message.c_str());
+			return defaultButton;
+		}
+		const QMessageBox::Icon icon = style == AlertStyle::critical ? QMessageBox::Critical
+			: (style == AlertStyle::warning ? QMessageBox::Warning : QMessageBox::Information);
+		QMessageBox box(icon, toQString(title), toQString(message), QMessageBox::NoButton, dialogParent());
+		box.setTextFormat(Qt::PlainText);
+		// One role for all, so they keep Windows' order, left to right.
+		std::vector<QAbstractButton*> pushed;
+		for (const std::string& label : buttons)
+			pushed.push_back(box.addButton(toQString(label), QMessageBox::ActionRole));
+		if (defaultButton >= 0 && defaultButton < static_cast<int>(pushed.size()))
+			box.setDefaultButton(static_cast<QPushButton*>(pushed[static_cast<size_t>(defaultButton)]));
+		if (escapeButton >= 0 && escapeButton < static_cast<int>(pushed.size()))
+			box.setEscapeButton(pushed[static_cast<size_t>(escapeButton)]);
+		activateApplication();
+		box.exec();
+		const auto chosen = std::find(pushed.begin(), pushed.end(), box.clickedButton());
+		return chosen != pushed.end() ? static_cast<int>(chosen - pushed.begin()) : escapeButton;
 	}
 }

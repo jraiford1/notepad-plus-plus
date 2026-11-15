@@ -314,8 +314,9 @@ namespace nppmac::ui
 		// --- Test aids -----------------------------------------------------------------------------
 
 		// NPPMAC_SNAPSHOT=<png>: after NPPMAC_SNAPSHOT_DELAY seconds (default 5) the view the window
-		// manager chooses is drawn into the file; with NPPMAC_DUMP_TREE the window tree goes to stderr
-		// first, and NPPMAC_SNAPSHOT_EXIT ends the program afterwards.
+		// manager chooses (or a Qt dialog open over it: a file, colour, font or print dialog, an alert) is
+		// drawn into the file; with NPPMAC_DUMP_TREE the window tree goes to stderr first, and
+		// NPPMAC_SNAPSHOT_EXIT ends the program afterwards.
 		void scheduleSnapshot()
 		{
 			const char* path = std::getenv("NPPMAC_SNAPSHOT");
@@ -330,6 +331,8 @@ namespace nppmac::ui
 					windowManagerDumpTree();
 				NativeView* view = windowManagerSnapshotView();
 				QWidget* shown = view ? (view->_window ? view->_window.data() : view->_widget.data()) : nullptr;
+				if (QWidget* dialog = QApplication::activeModalWidget())
+					shown = dialog;
 				if (shown)
 					shown->grab().save(file, "PNG");
 				if (std::getenv("NPPMAC_SNAPSHOT_EXIT"))
