@@ -15,7 +15,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-// The desktop's session ending, as Windows' WM_QUERYENDSESSION and WM_ENDSESSION. GNOME's session
+// The desktop's session ending, as Windows' WM_QUERYENDSESSION and WM_ENDSESSION; and its light or dark
+// preference changing, as WM_SETTINGCHANGE. GNOME's session
 // manager asks the programs registered with it over D-Bus before the session ends: Notepad++ answers
 // as it does on Windows (with unsaved documents and no backups it declines and asks to save them, which
 // GNOME shows as a program holding up the logout), and saves its session when it ends. A session ended
@@ -29,6 +30,7 @@
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
 #include <QtDBus/QDBusObjectPath>
+#include <QtDBus/QDBusVariant>
 
 #include <csignal>
 #include <cstdlib>
@@ -115,6 +117,28 @@ namespace nppmac::ui
 		}
 	};
 
+	// The desktop's light or dark preference changing (the settings portal's SettingChanged), as
+	// Windows' WM_SETTINGCHANGE "ImmersiveColorSet": Qt's colour scheme is the program's, so it does not
+	// tell of the desktop's.
+	class AppearanceWatcher : public QObject
+	{
+		Q_OBJECT
+
+	public:
+		explicit AppearanceWatcher(QObject* parent) : QObject(parent)
+		{
+			QDBusConnection::sessionBus().connect("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+				"org.freedesktop.portal.Settings", "SettingChanged", this, SLOT(settingChanged(QString, QString, QDBusVariant)));
+		}
+
+	private slots:
+		void settingChanged(const QString& group, const QString& key, const QDBusVariant&)
+		{
+			if (group == QLatin1String("org.freedesktop.appearance") && key == QLatin1String("color-scheme"))
+				windowManagerAppearanceChanged();
+		}
+	};
+
 	void startSessionHandling()
 	{
 		auto* application = QCoreApplication::instance();
@@ -142,6 +166,7 @@ namespace nppmac::ui
 		// A test run is no client of the user's session.
 		if (!std::getenv("NPPMAC_TEST_RUN"))
 			new SessionClient(application);
+		new AppearanceWatcher(application);
 	}
 }
 

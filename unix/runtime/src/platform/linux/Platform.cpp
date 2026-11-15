@@ -35,6 +35,7 @@
 #include <QtCore/QUrl>
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
+#include <QtDBus/QDBusVariant>
 #include <QtCore/QMimeData>
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
@@ -646,8 +647,19 @@ namespace nppmac::platform
 	{
 		if (const char* test = std::getenv("NPPMAC_TEST_APPEARANCE"))
 			return std::strcmp(test, "dark") == 0;
-		if (qobject_cast<QGuiApplication*>(QCoreApplication::instance()))
-			return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+		// The desktop's preference, from the settings portal: Qt's own colour scheme is the program's
+		// (the backend's setApplicationAppearance), not the desktop's. 1 is dark, 2 light, 0 none.
+		QDBusMessage call = QDBusMessage::createMethodCall("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+			"org.freedesktop.portal.Settings", "ReadOne");
+		call << QStringLiteral("org.freedesktop.appearance") << QStringLiteral("color-scheme");
+		const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 1000);
+		if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
+		{
+			QVariant value = reply.arguments().constFirst();
+			if (value.canConvert<QDBusVariant>())
+				value = qvariant_cast<QDBusVariant>(value).variant();
+			return value.toUInt() == 1;
+		}
 		return false;
 	}
 
