@@ -27,7 +27,7 @@ if(APPLE)
 	set(NPPMAC_PLATFORM macos)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(NPPMAC_PLATFORM linux)
-	find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus)
+	find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus PrintSupport)
 	# The compilers predefine unix and linux as 1 in their GNU modes, and upstream names things unix
 	# (EolType::unix): a compiler-level difference, undone for every file.
 	add_compile_options(-Uunix -Ulinux)

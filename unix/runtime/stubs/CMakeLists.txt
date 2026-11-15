@@ -11,7 +11,7 @@ else()
 	# The C and C++ libraries, and Qt's (whose C names, such as qt_version_tag, the runtime's native side
 	# refers to).
 	set(nppSystemLibraries -lstdc++ -lm $<TARGET_FILE:Qt6::Core> $<TARGET_FILE:Qt6::Gui> $<TARGET_FILE:Qt6::Widgets>
-		$<TARGET_FILE:Qt6::DBus>)
+		$<TARGET_FILE:Qt6::DBus> $<TARGET_FILE:Qt6::PrintSupport>)
 endif()
 string(REPLACE ";" "|" nppSystemLibrariesArgument "${nppSystemLibraries}") # a list cannot pass through -D
 string(REPLACE " " "|" nppSystemLibrariesArgument "${nppSystemLibrariesArgument}")

@@ -49,7 +49,7 @@ else()
 	target_include_directories(nppRuntimeNative PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src "${NPP_ROOT}/scintilla/include"
 		"${NPP_ROOT}/scintilla/src" "${NPP_ROOT}/scintilla/qt/ScintillaEditBase")
 	target_compile_definitions(nppRuntimeNative PRIVATE SCINTILLA_QT=1)
-	target_link_libraries(nppRuntimeNative PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus)
+	target_link_libraries(nppRuntimeNative PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus Qt6::PrintSupport)
 endif()
 add_library(nppRuntime STATIC ${nppRuntimeSources})
 if(NPPMAC_PLATFORM STREQUAL "linux")
@@ -66,7 +66,7 @@ if(NPPMAC_PLATFORM STREQUAL "macos")
 	# The Scintilla window class talks to Scintilla's Cocoa view.
 	target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include" "${NPP_ROOT}/scintilla/cocoa")
 else()
-	target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus ${CMAKE_DL_LIBS})
+	target_link_libraries(nppRuntime PUBLIC nppRuntimeHeaders Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus Qt6::PrintSupport ${CMAKE_DL_LIBS})
 	target_include_directories(nppRuntime PRIVATE "${NPP_ROOT}/scintilla/include")
 endif()
 
