@@ -214,9 +214,24 @@ namespace nppmac::gdi
 
 	std::shared_ptr<CanvasImage> Bitmap::imageFor(const Canvas* canvas) const
 	{
-		if (_hiRes && canvas && canvas->deviceScale() >= 1.5)
+		const double scale = canvas ? canvas->deviceScale() : 1;
+		if (_hiRes && scale > 1.01)
 			return _hiRes->image();
-		return image();
+		constexpr int largestEnlarged = 64; // icons, not pictures
+		const int factor = static_cast<int>(std::ceil(scale - 0.01));
+		if (factor < 2 || scaled() || _width > largestEnlarged || _height > largestEnlarged)
+			return image();
+		const int width = _width * factor;
+		const int height = _height * factor;
+		_enlargedPixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+		for (int y = 0; y < height; ++y)
+		{
+			const uint32_t* source = readRow(y / factor);
+			uint32_t* row = _enlargedPixels.data() + static_cast<size_t>(y) * static_cast<size_t>(width);
+			for (int x = 0; x < width; ++x)
+				row[x] = source[x / factor];
+		}
+		return imageFromPixels(_enlargedPixels.data(), width, height);
 	}
 
 	std::shared_ptr<CanvasImage> Bitmap::image() const
