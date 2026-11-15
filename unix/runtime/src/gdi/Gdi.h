@@ -114,15 +114,54 @@ namespace nppmac::gdi
 		// program sees only this bitmap's size; drawing on a Retina surface uses the larger image.
 		std::shared_ptr<Bitmap> _hiRes;
 
-		// A canvas drawing into the pixels with a top-left origin.
+		// A bitmap made for a screen with more than one pixel per unit (CreateCompatibleBitmap for a
+		// scaled window's DC: a double buffer) is drawn at the screen's resolution. Its canvas and its
+		// image use _scaledPixels, _scale pixels per unit, so copying it to the window is pixel for pixel.
+		// The unit pixels in _pixels, which pixel-level functions read and write, follow them: readRow
+		// and writeRow bring them up to date after drawing, and after writeRow the scaled pixels are
+		// made again from them before they are next drawn on or shown.
+		double _scale = 1;
+		int _scaledWidth = 0;
+		int _scaledHeight = 0;
+		mutable std::vector<uint32_t> _scaledPixels;
+		mutable bool _unitStale = false;   // drawn on since the unit pixels were made from the scaled ones
+		mutable bool _scaledStale = false; // unit pixels written since the scaled ones were made from them
+
+		bool scaled() const { return _scale != 1; }
+		// Gives the bitmap a second set of pixels, scale per unit (a newly made bitmap).
+		void makeScaled(double scale);
+		// A canvas drawing into the pixels (the scaled ones, scaled) with a top-left origin.
 		Canvas* canvas();
+		// Called before drawing on the canvas.
+		void willDraw();
+		// The pixels to draw: the scaled ones, at their size, for a scaled bitmap.
 		std::shared_ptr<CanvasImage> image() const;
+		// A part of the image, given in units: the whole pixels covering it (more than one per unit for a
+		// scaled bitmap), within the image; and the area those pixels cover, in units.
+		std::shared_ptr<CanvasImage> imagePart(const CanvasRect& area, CanvasRect* covered = nullptr) const;
 		// The image to draw on a canvas: the larger one where the canvas has more than one pixel per
 		// point (Retina), when there is one.
 		std::shared_ptr<CanvasImage> imageFor(const Canvas* canvas) const;
-		uint32_t* rowPointer(int y) {
+		// A row of unit pixels, to read, or to write.
+		const uint32_t* readRow(int y) const
+		{
+			syncUnit();
+			return rowAt(y);
+		}
+		uint32_t* writeRow(int y)
+		{
+			syncUnit();
+			_scaledStale = _scaledStale || scaled();
+			return rowAt(y);
+		}
+
+	private:
+		uint32_t* rowAt(int y) const
+		{
 			return _pixels + static_cast<size_t>(_bottomUp ? _height - 1 - y : y) * static_cast<size_t>(_width);
 		}
+		void syncUnit() const;
+		void syncScaled() const;
 	};
 
 	struct Region : GdiObject
@@ -203,6 +242,7 @@ namespace nppmac::gdi
 		RECT _paintClip{};           // BeginPaint's update rectangle, intersected with every clip
 		bool _hasPaintClip = false;
 		std::shared_ptr<PrintDocument> _print; // printer DCs
+		double _compatibleScale = 1; // memory DCs: the pixels per unit of the DC they were made for
 
 		// Prepares the canvas for drawing: clip and logical-to-device offset applied. The caller
 		// must call end() afterwards.
@@ -225,6 +265,9 @@ namespace nppmac::gdi
 	}
 
 	HDC createWindowDC(user::Window* window);
+	// The pixels per unit of what a DC draws on: a window's screen, or (memory DCs) the DC's they were
+	// made for. Bitmaps made compatible with the DC have as many.
+	double compatibleScale(DC* dc);
 	// A printer DC for the paper and printable area chosen; its size is the printable area.
 	HDC createPrinterDC(const platform::PrintSetup& setup);
 	void releaseWindowDC(HDC hdc);

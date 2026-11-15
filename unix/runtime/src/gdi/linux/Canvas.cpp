@@ -448,17 +448,19 @@ namespace nppmac::gdi
 		class PixelPainter : public Painter
 		{
 		public:
-			PixelPainter(uint32_t* pixels, int width, int height, bool bottomUp)
+			PixelPainter(uint32_t* pixels, int width, int height, bool bottomUp, double scale)
 				: Painter{&_ownPainter, false},
 				  _image{reinterpret_cast<uchar*>(pixels), width, height, static_cast<qsizetype>(width) * 4, QImage::Format_ARGB32_Premultiplied}
 			{
+				// More pixels per unit as a window's surface has them, so text is drawn as there.
+				_image.setDevicePixelRatio(scale);
 				_image.setDotsPerMeterX(dotsPerMeter);
 				_image.setDotsPerMeterY(dotsPerMeter);
 				_ownPainter.begin(&_image);
 				// A bottom-up DIB's rows run upward in memory: GDI's top row is the last one there.
 				if (bottomUp)
 				{
-					_ownPainter.translate(0, height);
+					_ownPainter.translate(0, height / scale);
 					_ownPainter.scale(1, -1);
 				}
 				initialize();
@@ -593,11 +595,11 @@ namespace nppmac::gdi
 		return result;
 	}
 
-	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp)
+	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp, double scale)
 	{
 		if (!pixels || width <= 0 || height <= 0)
 			return nullptr;
-		return std::make_unique<PixelPainter>(pixels, width, height, bottomUp);
+		return std::make_unique<PixelPainter>(pixels, width, height, bottomUp, scale);
 	}
 
 	std::unique_ptr<Canvas> canvasOverSurface(void* surface)

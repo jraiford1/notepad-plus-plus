@@ -557,7 +557,7 @@ namespace nppmac::gdi
 		return result;
 	}
 
-	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp)
+	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp, double scale)
 	{
 		CGContextRef context = CGBitmapContextCreate(pixels, static_cast<size_t>(width), static_cast<size_t>(height), 8,
 			static_cast<size_t>(width) * 4, sRGB(), bgraPremultiplied);
@@ -570,6 +570,8 @@ namespace nppmac::gdi
 			CGContextTranslateCTM(context, 0, height);
 			CGContextScaleCTM(context, 1, -1);
 		}
+		if (scale != 1)
+			CGContextScaleCTM(context, scale, scale);
 		return std::make_unique<Context>(context, false);
 	}
 

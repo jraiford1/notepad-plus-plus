@@ -115,10 +115,13 @@ namespace nppmac::gdi
 
 	Canvas* DC::begin()
 	{
-		if (_kind == DCKind::memory && !_canvas)
+		if (_kind == DCKind::memory)
 		{
 			auto* bitmap = objectAs<Bitmap>(_bitmap, ObjectType::bitmap);
-			_canvas = bitmap ? bitmap->canvas() : nullptr;
+			if (!_canvas)
+				_canvas = bitmap ? bitmap->canvas() : nullptr;
+			if (bitmap)
+				bitmap->willDraw();
 		}
 		if (!_canvas)
 			return nullptr;
@@ -176,6 +179,24 @@ namespace nppmac::gdi
 		if (window && window->_font)
 			SelectObject(fromDC(dc), window->_font);
 		return fromDC(dc);
+	}
+
+	double compatibleScale(DC* dc)
+	{
+		if (!dc)
+			return 1;
+		switch (dc->_kind)
+		{
+			case DCKind::window:
+				return dc->_canvas ? std::max(1.0, dc->_canvas->deviceScale()) : 1;
+			case DCKind::memory:
+			{
+				auto* bitmap = objectAs<Bitmap>(dc->_bitmap, ObjectType::bitmap);
+				return bitmap && bitmap->scaled() ? bitmap->_scale : dc->_compatibleScale;
+			}
+			default:
+				return 1;
+		}
 	}
 
 	void releaseWindowDC(HDC hdc)
@@ -280,9 +301,11 @@ HDC nppmac::gdi::createPrinterDC(const platform::PrintSetup& setup)
 
 // --- Memory DCs -----------------------------------------------------------------------------------
 
-HDC WINAPI CreateCompatibleDC(HDC)
+HDC WINAPI CreateCompatibleDC(HDC hdc)
 {
+	const double scale = compatibleScale(toDC(hdc));
 	DC* dc = createDC(DCKind::memory);
+	dc->_compatibleScale = scale;
 	dc->_bitmap = static_cast<HBITMAP>(GetStockObject(STOCK_LAST));
 	++toObject(dc->_bitmap)->_selectedCount;
 	dc->_width = 1;

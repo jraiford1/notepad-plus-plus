@@ -146,11 +146,70 @@ namespace nppmac::gdi
 
 	// --- Bitmap -----------------------------------------------------------------------------------
 
+	void Bitmap::makeScaled(double scale)
+	{
+		_scale = scale;
+		_scaledWidth = static_cast<int>(std::ceil(_width * scale - 0.001));
+		_scaledHeight = static_cast<int>(std::ceil(_height * scale - 0.001));
+		_scaledStale = true; // made from the unit pixels when first used
+		_canvas.reset();
+	}
+
 	Canvas* Bitmap::canvas()
 	{
 		if (!_canvas)
-			_canvas = canvasOverPixels(_pixels, _width, _height, _bottomUp);
+		{
+			if (scaled())
+			{
+				syncScaled();
+				_canvas = canvasOverPixels(_scaledPixels.data(), _scaledWidth, _scaledHeight, false, _scale);
+			}
+			else
+				_canvas = canvasOverPixels(_pixels, _width, _height, _bottomUp);
+		}
 		return _canvas.get();
+	}
+
+	void Bitmap::willDraw()
+	{
+		if (!scaled())
+			return;
+		syncScaled();
+		_unitStale = true;
+	}
+
+	// A unit pixel is the scaled pixel at its centre; a scaled pixel, the unit pixel its centre is in.
+	void Bitmap::syncUnit() const
+	{
+		if (!_unitStale)
+			return;
+		_unitStale = false;
+		for (int y = 0; y < _height; ++y)
+		{
+			const int sy = std::min(_scaledHeight - 1, static_cast<int>((y + 0.5) * _scale));
+			const uint32_t* source = _scaledPixels.data() + static_cast<size_t>(sy) * static_cast<size_t>(_scaledWidth);
+			uint32_t* row = rowAt(y);
+			for (int x = 0; x < _width; ++x)
+				row[x] = source[std::min(_scaledWidth - 1, static_cast<int>((x + 0.5) * _scale))];
+		}
+	}
+
+	void Bitmap::syncScaled() const
+	{
+		if (!_scaledStale)
+			return;
+		_scaledStale = false;
+		_scaledPixels.resize(static_cast<size_t>(_scaledWidth) * static_cast<size_t>(_scaledHeight));
+		std::vector<int> columns(static_cast<size_t>(_scaledWidth));
+		for (int sx = 0; sx < _scaledWidth; ++sx)
+			columns[static_cast<size_t>(sx)] = std::min(_width - 1, static_cast<int>((sx + 0.5) / _scale));
+		for (int sy = 0; sy < _scaledHeight; ++sy)
+		{
+			const uint32_t* source = rowAt(std::min(_height - 1, static_cast<int>((sy + 0.5) / _scale)));
+			uint32_t* row = _scaledPixels.data() + static_cast<size_t>(sy) * static_cast<size_t>(_scaledWidth);
+			for (int sx = 0; sx < _scaledWidth; ++sx)
+				row[sx] = source[columns[static_cast<size_t>(sx)]];
+		}
 	}
 
 	std::shared_ptr<CanvasImage> Bitmap::imageFor(const Canvas* canvas) const
@@ -162,7 +221,34 @@ namespace nppmac::gdi
 
 	std::shared_ptr<CanvasImage> Bitmap::image() const
 	{
+		if (scaled())
+		{
+			syncScaled();
+			return imageFromPixels(_scaledPixels.data(), _scaledWidth, _scaledHeight);
+		}
 		return imageFromPixels(_pixels, _width, _height);
+	}
+
+	std::shared_ptr<CanvasImage> Bitmap::imagePart(const CanvasRect& area, CanvasRect* covered) const
+	{
+		const std::shared_ptr<CanvasImage> whole = image();
+		if (!whole)
+			return nullptr;
+		if (!scaled())
+		{
+			if (covered)
+				*covered = area;
+			return whole->cropped(area);
+		}
+		const double left = std::clamp(std::floor(area._x * _scale + 0.001), 0.0, static_cast<double>(_scaledWidth));
+		const double top = std::clamp(std::floor(area._y * _scale + 0.001), 0.0, static_cast<double>(_scaledHeight));
+		const double right = std::clamp(std::ceil((area._x + area._width) * _scale - 0.001), left, static_cast<double>(_scaledWidth));
+		const double bottom = std::clamp(std::ceil((area._y + area._height) * _scale - 0.001), top, static_cast<double>(_scaledHeight));
+		if (covered)
+			*covered = {left / _scale, top / _scale, (right - left) / _scale, (bottom - top) / _scale};
+		if (right <= left || bottom <= top)
+			return nullptr;
+		return whole->cropped({left, top, right - left, bottom - top});
 	}
 
 	// --- Region -----------------------------------------------------------------------------------
@@ -270,7 +356,7 @@ HBRUSH WINAPI CreatePatternBrush(HBITMAP bitmapHandle)
 		copy->_ownedPixels.resize(static_cast<size_t>(source->_width) * static_cast<size_t>(source->_height));
 		copy->_pixels = copy->_ownedPixels.data();
 		for (int y = 0; y < source->_height; ++y)
-			std::copy_n(source->rowPointer(y), source->_width, copy->rowPointer(y));
+			std::copy_n(source->readRow(y), source->_width, copy->writeRow(y));
 		brush->_pattern = copy;
 		// Its average color stands in where a pattern cannot be drawn.
 		brush->_color = RGB(128, 128, 128);
@@ -372,7 +458,7 @@ HBITMAP WINAPI CreateBitmap(int width, int height, UINT planes, UINT bitsPerPixe
 				for (int x = 0; x < width; ++x)
 				{
 					const bool set = (source[y * stride + x / 8] >> (7 - x % 8)) & 1;
-					bitmap->rowPointer(y)[x] = set ? 0xFFFFFFFF : 0xFF000000;
+					bitmap->writeRow(y)[x] = set ? 0xFFFFFFFF : 0xFF000000;
 				}
 			}
 		}
@@ -393,9 +479,14 @@ HBITMAP WINAPI CreateBitmapIndirect(const BITMAP* info)
 	return CreateBitmap(info->bmWidth, info->bmHeight, info->bmPlanes, info->bmBitsPixel, info->bmBits);
 }
 
-HBITMAP WINAPI CreateCompatibleBitmap(HDC, int width, int height)
+HBITMAP WINAPI CreateCompatibleBitmap(HDC hdc, int width, int height)
 {
-	return CreateBitmap(width, height, 1, 32, nullptr);
+	// For a scaled window (and memory DCs made for one), at the window's resolution.
+	HBITMAP handle = CreateBitmap(width, height, 1, 32, nullptr);
+	const double scale = compatibleScale(toDC(hdc));
+	if (auto* bitmap = objectAs<Bitmap>(handle, ObjectType::bitmap); bitmap && scale > 1.001)
+		bitmap->makeScaled(scale);
+	return handle;
 }
 
 HRGN WINAPI CreateRectRgn(int left, int top, int right, int bottom)
@@ -591,10 +682,12 @@ int WINAPI GetObjectW(HGDIOBJ handle, int size, LPVOID buffer)
 			auto* bitmap = static_cast<Bitmap*>(object);
 			if (!buffer)
 				return sizeof(BITMAP);
+			// A scaled bitmap's pixels are not its bits (as a Windows device-dependent bitmap has none).
+			void* bits = bitmap->scaled() ? nullptr : bitmap->_pixels;
 			if (static_cast<size_t>(size) >= sizeof(DIBSECTION))
 			{
 				DIBSECTION section{};
-				section.dsBm = {0, bitmap->_width, bitmap->_height, bitmap->_width * 4, 1, static_cast<WORD>(bitmap->_bitsPerPixel), bitmap->_pixels};
+				section.dsBm = {0, bitmap->_width, bitmap->_height, bitmap->_width * 4, 1, static_cast<WORD>(bitmap->_bitsPerPixel), bits};
 				section.dsBmih.biSize = sizeof(BITMAPINFOHEADER);
 				section.dsBmih.biWidth = bitmap->_width;
 				section.dsBmih.biHeight = bitmap->_bottomUp ? bitmap->_height : -bitmap->_height;
@@ -604,7 +697,7 @@ int WINAPI GetObjectW(HGDIOBJ handle, int size, LPVOID buffer)
 				std::memcpy(buffer, &section, sizeof(section));
 				return sizeof(DIBSECTION);
 			}
-			BITMAP info{0, bitmap->_width, bitmap->_height, bitmap->_width * 4, 1, static_cast<WORD>(bitmap->_bitsPerPixel), bitmap->_pixels};
+			BITMAP info{0, bitmap->_width, bitmap->_height, bitmap->_width * 4, 1, static_cast<WORD>(bitmap->_bitsPerPixel), bits};
 			std::memcpy(buffer, &info, std::min<size_t>(sizeof(info), static_cast<size_t>(size)));
 			return std::min<int>(sizeof(info), size);
 		}

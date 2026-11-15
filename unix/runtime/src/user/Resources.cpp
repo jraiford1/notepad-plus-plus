@@ -322,7 +322,7 @@ namespace nppmac::user
 			// Rows are stored bottom-up.
 			const BYTE* row = xorBits + xorStride * static_cast<size_t>(height - 1 - y);
 			const BYTE* mask = andBits + andStride * static_cast<size_t>(height - 1 - y);
-			uint32_t* out = bitmap->rowPointer(y);
+			uint32_t* out = bitmap->writeRow(y);
 			for (int x = 0; x < width; ++x)
 			{
 				uint32_t a = 0xFF;
@@ -367,7 +367,7 @@ namespace nppmac::user
 			for (int y = 0; y < height; ++y)
 			{
 				const BYTE* mask = andBits + andStride * static_cast<size_t>(height - 1 - y);
-				uint32_t* out = bitmap->rowPointer(y);
+				uint32_t* out = bitmap->writeRow(y);
 				for (int x = 0; x < width; ++x)
 				{
 					const bool transparent = hasAndMask && ((mask[x / 8] >> (7 - x % 8)) & 1);
@@ -535,10 +535,10 @@ namespace nppmac::user
 		auto* bitmap = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(handle, nppmac::gdi::ObjectType::bitmap);
 		if (!bitmap || bitmap->_width <= 0 || bitmap->_height <= 0)
 			return;
-		const uint32_t key = bitmap->rowPointer(0)[0] & 0xFFFFFF;
+		const uint32_t key = bitmap->readRow(0)[0] & 0xFFFFFF;
 		for (int y = 0; y < bitmap->_height; ++y)
 		{
-			uint32_t* row = bitmap->rowPointer(y);
+			uint32_t* row = bitmap->writeRow(y);
 			for (int x = 0; x < bitmap->_width; ++x)
 			{
 				row[x] = (row[x] & 0xFFFFFF) == key ? 0 : (row[x] | 0xFF000000);
@@ -751,7 +751,7 @@ HBITMAP WINAPI CreateMappedBitmap(HINSTANCE instance, INT_PTR id, UINT, LPCOLORM
 	auto toPixel = [](COLORREF color) { return 0xFF000000u | (static_cast<uint32_t>(GetRValue(color)) << 16) | (static_cast<uint32_t>(GetGValue(color)) << 8) | GetBValue(color); };
 	for (int y = 0; y < object->_height; ++y)
 	{
-		uint32_t* row = object->rowPointer(y);
+		uint32_t* row = object->writeRow(y);
 		for (int x = 0; x < object->_width; ++x)
 		{
 			for (INT i = 0; i < count; ++i)
@@ -814,7 +814,7 @@ HANDLE WINAPI CopyImage(HANDLE image, UINT type, int, int, UINT)
 	HBITMAP copy = CreateBitmap(bitmap->_width, bitmap->_height, 1, 32, nullptr);
 	auto* target = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(copy, nppmac::gdi::ObjectType::bitmap);
 	for (int y = 0; y < bitmap->_height; ++y)
-		std::copy_n(bitmap->rowPointer(y), bitmap->_width, target->rowPointer(y));
+		std::copy_n(bitmap->readRow(y), bitmap->_width, target->writeRow(y));
 	return copy;
 }
 

@@ -92,7 +92,8 @@ namespace nppmac::gdi
 		{
 			Bitmap* dst = selectedBitmap(destination);
 			Bitmap* src = source ? selectedBitmap(source) : nullptr;
-			if (!dst || destination->_state._clipped || destination->_hasPaintClip)
+			// Scaled bitmaps (double buffers at a screen's resolution) are copied by the canvas.
+			if (!dst || dst->scaled() || (src && src->scaled()) || destination->_state._clipped || destination->_hasPaintClip)
 				return false;
 			const POINT dstOffset{destination->_state._viewportOrigin.x - destination->_state._windowOrigin.x, destination->_state._viewportOrigin.y - destination->_state._windowOrigin.y};
 			x += dstOffset.x;
@@ -111,8 +112,8 @@ namespace nppmac::gdi
 				const int sy = sourceY + row;
 				if (dy < 0 || dy >= dst->_height || (src && (sy < 0 || sy >= src->_height)))
 					continue;
-				uint32_t* dstRow = dst->rowPointer(dy);
-				const uint32_t* srcRow = src ? src->rowPointer(sy) : nullptr;
+				uint32_t* dstRow = dst->writeRow(dy);
+				const uint32_t* srcRow = src ? src->readRow(sy) : nullptr;
 				for (int column = 0; column < width; ++column)
 				{
 					const int dx = x + column;
@@ -573,13 +574,22 @@ BOOL WINAPI StretchBlt(HDC destinationHandle, int x, int y, int width, int heigh
 
 	// Through the canvas: the source as an image (its bitmap, or the window surface).
 	std::shared_ptr<CanvasImage> image;
+	CanvasRect target{static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)};
+	bool clipToTarget = false;
 	if (Bitmap* bitmap = selectedBitmap(source))
 	{
-		const std::shared_ptr<CanvasImage> whole = bitmap->image();
 		const POINT offset{source->_state._viewportOrigin.x - source->_state._windowOrigin.x, source->_state._viewportOrigin.y - source->_state._windowOrigin.y};
-		if (whole)
-			image = whole->cropped({static_cast<double>(sourceX + offset.x), static_cast<double>(sourceY + offset.y), static_cast<double>(sourceWidth),
-				static_cast<double>(sourceHeight)});
+		const CanvasRect area{static_cast<double>(sourceX + offset.x), static_cast<double>(sourceY + offset.y), static_cast<double>(sourceWidth),
+			static_cast<double>(sourceHeight)};
+		CanvasRect covered{};
+		image = bitmap->imagePart(area, &covered);
+		if (bitmap->scaled() && width == sourceWidth && height == sourceHeight)
+		{
+			// Whole pixels at their size, so a double buffer reaches a window at its resolution pixel for
+			// pixel; they may reach a little past the rectangle asked for, so the copy is clipped to it.
+			target = {x + covered._x - area._x, y + covered._y - area._y, covered._width, covered._height};
+			clipToTarget = true;
+		}
 	}
 	else if (source->_canvas)
 	{
@@ -611,7 +621,9 @@ BOOL WINAPI StretchBlt(HDC destinationHandle, int x, int y, int width, int heigh
 			canvas->setBlendMode(BlendMode::copy);
 	}
 	canvas->setInterpolation(destination->_state._stretchMode == HALFTONE ? Interpolation::high : Interpolation::none);
-	canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+	if (clipToTarget)
+		canvas->clipToRect({static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+	canvas->drawImage(*image, target);
 	destination->end();
 	return TRUE;
 }
@@ -629,9 +641,8 @@ BOOL WINAPI AlphaBlend(HDC destinationHandle, int x, int y, int width, int heigh
 	Bitmap* bitmap = source ? selectedBitmap(source) : nullptr;
 	if (!destination || !bitmap)
 		return FALSE;
-	const std::shared_ptr<CanvasImage> whole = bitmap->image();
-	const std::shared_ptr<CanvasImage> image = whole ? whole->cropped({static_cast<double>(sourceX), static_cast<double>(sourceY),
-		static_cast<double>(sourceWidth), static_cast<double>(sourceHeight)}) : nullptr;
+	const std::shared_ptr<CanvasImage> image = bitmap->imagePart({static_cast<double>(sourceX), static_cast<double>(sourceY),
+		static_cast<double>(sourceWidth), static_cast<double>(sourceHeight)});
 	Canvas* canvas = destination->begin();
 	if (canvas && image)
 	{
@@ -661,8 +672,8 @@ BOOL WINAPI TransparentBlt(HDC destinationHandle, int x, int y, int width, int h
 		{
 			const int sx = sourceX + column;
 			const int sy = sourceY + row;
-			uint32_t pixel = (sx >= 0 && sy >= 0 && sx < bitmap->_width && sy < bitmap->_height) ? bitmap->rowPointer(sy)[sx] : 0;
-			target->rowPointer(row)[column] = (pixel & 0xFFFFFF) == key ? 0 : (pixel | 0xFF000000);
+			uint32_t pixel = (sx >= 0 && sy >= 0 && sx < bitmap->_width && sy < bitmap->_height) ? bitmap->readRow(sy)[sx] : 0;
+			target->writeRow(row)[column] = (pixel & 0xFFFFFF) == key ? 0 : (pixel | 0xFF000000);
 		}
 	}
 	HDC copyDC = CreateCompatibleDC(nullptr);
@@ -800,7 +811,7 @@ int WINAPI SetDIBits(HDC, HBITMAP handle, UINT start, UINT lines, const void* bi
 	(void)start;
 	const int rows = std::min({static_cast<int>(lines), height, bitmap->_height});
 	for (int y = 0; y < rows; ++y)
-		std::copy_n(pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(width), std::min(width, bitmap->_width), bitmap->rowPointer(y));
+		std::copy_n(pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(width), std::min(width, bitmap->_width), bitmap->writeRow(y));
 	return rows;
 }
 
@@ -831,7 +842,7 @@ int WINAPI GetDIBits(HDC, HBITMAP handle, UINT start, UINT lines, LPVOID bits, L
 		// Scan line "start + i" counts from the bottom for a bottom-up request.
 		const int scanLine = static_cast<int>(start + i);
 		const int sourceRow = bottomUp ? bitmap->_height - 1 - scanLine : scanLine;
-		const uint32_t* source = bitmap->rowPointer(sourceRow);
+		const uint32_t* source = bitmap->readRow(sourceRow);
 		BYTE* destination = out + stride * i;
 		for (int x = 0; x < bitmap->_width; ++x)
 		{
@@ -856,7 +867,7 @@ COLORREF WINAPI GetPixel(HDC hdc, int x, int y)
 	Bitmap* bitmap = selectedBitmap(dc);
 	if (!bitmap || x < 0 || y < 0 || x >= bitmap->_width || y >= bitmap->_height)
 		return CLR_INVALID;
-	return fromPixel(bitmap->rowPointer(y)[x]);
+	return fromPixel(bitmap->readRow(y)[x]);
 }
 
 COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
@@ -867,7 +878,7 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
 	if (Bitmap* bitmap = selectedBitmap(dc))
 	{
 		if (x >= 0 && y >= 0 && x < bitmap->_width && y < bitmap->_height)
-			bitmap->rowPointer(y)[x] = toPixel(color);
+			bitmap->writeRow(y)[x] = toPixel(color);
 		return color;
 	}
 	HBRUSH brush = CreateSolidBrush(color);
@@ -900,7 +911,7 @@ HICON WINAPI CreateIconIndirect(PICONINFO info)
 		bitmap->_ownedPixels.resize(static_cast<size_t>(source->_width) * static_cast<size_t>(source->_height));
 		bitmap->_pixels = bitmap->_ownedPixels.data();
 		for (int y = 0; y < source->_height; ++y)
-			std::copy_n(source->rowPointer(y), source->_width, bitmap->rowPointer(y));
+			std::copy_n(source->readRow(y), source->_width, bitmap->writeRow(y));
 		return bitmap;
 	};
 	icon->_color = copy(info->hbmColor);
@@ -923,8 +934,8 @@ HICON WINAPI CreateIconIndirect(PICONINFO info)
 			{
 				for (int x = 0; x < icon->_color->_width; ++x)
 				{
-					const bool transparent = (icon->_mask->rowPointer(y)[x] & 0xFFFFFF) != 0;
-					uint32_t& pixel = icon->_color->rowPointer(y)[x];
+					const bool transparent = (icon->_mask->readRow(y)[x] & 0xFFFFFF) != 0;
+					uint32_t& pixel = icon->_color->writeRow(y)[x];
 					pixel = transparent ? 0 : (pixel | 0xFF000000);
 				}
 			}
