@@ -1136,6 +1136,8 @@ namespace nppmac::ui
 		{
 			windowManagerApplicationActivated(state == Qt::ApplicationActive);
 		});
+		// The session's end (logging out, a signal) as Windows' WM_QUERYENDSESSION and WM_ENDSESSION.
+		startSessionHandling();
 		scheduleSnapshot();
 		scheduleCommands();
 		scheduleTyping();

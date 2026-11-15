@@ -312,6 +312,11 @@ namespace nppmac::ui
 	void windowManagerTestClick(int controlId);
 	// The program became the active one, or stopped being it (WM_ACTIVATEAPP to its top levels).
 	void windowManagerApplicationActivated(bool active);
+	// The desktop's session ends (logging out, shutting down), as Windows ends one: WM_QUERYENDSESSION
+	// to the top levels, true when all agree (critical: the session ends whatever they answer), then
+	// WM_ENDSESSION, after which Notepad++ has saved its session and quits.
+	bool windowManagerQueryEndSession(bool critical);
+	void windowManagerEndSession(bool critical);
 	// Files macOS asks the running program to open (Finder's Open With, a double-click, a drop on the
 	// Dock icon): dropped on the main window, as if dragged there. False when there is no main
 	// window yet.
