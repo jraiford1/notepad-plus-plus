@@ -37,4 +37,8 @@ namespace nppmac::scintilla
 
 	intptr_t message(void* view, unsigned message, uintptr_t wParam, intptr_t lParam);
 	void insertText(void* view, const std::u16string& text);
+	// What Scintilla's platform layer draws a printed page on (SCI_FORMATRANGEFULL's hdc), for the
+	// canvas's drawing object: the CGContext itself on macOS; on Linux the QPainter's paint device,
+	// whose active painter Scintilla's Qt layer then draws with.
+	void* printSurface(void* canvasHandle);
 }

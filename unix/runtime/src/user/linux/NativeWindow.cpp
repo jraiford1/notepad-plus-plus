@@ -50,12 +50,15 @@
 #include <QtGui/QScreen>
 #include <QtGui/QStyleHints>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QMenuBar>
+#include <QtWidgets/QMenu>
 #include <QtWidgets/QProxyStyle>
 #include <QtWidgets/QStyleOption>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QStyle>
 
 #include <algorithm>
+#include <chrono>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -267,7 +270,10 @@ namespace nppmac::ui
 			std::unique_ptr<QKeyEvent> _event;
 		};
 
-		thread_local bool t_forwardingKey = false;
+		// The key event being handed to a native control, which goes where Qt sends it. Only that one: a
+		// key that arrives meanwhile (the program pumps events while it handles the first) still goes
+		// through the window manager's queue, behind those already in it, or it would overtake them.
+		thread_local const QEvent* t_forwardedKey = nullptr;
 
 		// The views of the program's own windows: what the key filter takes keys from.
 		bool isRuntimeWindow(QObject* object)
@@ -285,7 +291,7 @@ namespace nppmac::ui
 					return false;
 				// A key handed to a native control, an open menu's keys, and the keys of windows that are
 				// not the program's (Qt's own dialogs) go where Qt sends them.
-				if (t_forwardingKey || QApplication::activePopupWidget() || !isRuntimeWindow(object))
+				if (event == t_forwardedKey || QApplication::activePopupWidget() || !isRuntimeWindow(object))
 					return false;
 				auto* key = static_cast<QKeyEvent*>(event);
 				const bool down = event->type() == QEvent::KeyPress;
@@ -317,10 +323,49 @@ namespace nppmac::ui
 
 		// --- Test aids -----------------------------------------------------------------------------
 
+		// A test aid's delay in milliseconds, for precise timers: Qt's default (coarse) timers may fire 5% of
+		// their interval early or late, which would reorder keys typed 50 ms apart three seconds on.
+		std::chrono::milliseconds testDelay(double seconds)
+		{
+			return std::chrono::milliseconds{static_cast<long long>(seconds * 1000)};
+		}
+
 		// NPPMAC_SNAPSHOT=<png>: after NPPMAC_SNAPSHOT_DELAY seconds (default 5) the view the window
 		// manager chooses (or a Qt dialog open over it: a file, colour, font or print dialog, an alert) is
 		// drawn into the file; with NPPMAC_DUMP_TREE the window tree goes to stderr first, and
 		// NPPMAC_SNAPSHOT_EXIT ends the program afterwards.
+		// The menus' items, one level in, as the Mac's dump has them (what tests read the Plugins menu from):
+		// titles without their shortcuts, the right end's items after the bar's own.
+		void dumpMenus(const QMenuBar* bar)
+		{
+			const auto title = [](const QAction* action)
+			{
+				QString text = action->text();
+				text = text.left(text.indexOf(u'\t') < 0 ? text.size() : text.indexOf(u'\t'));
+				return text.replace(QStringLiteral("&&"), QStringLiteral("&")).toStdString();
+			};
+			std::vector<const QWidget*> bars{bar};
+			if (const QWidget* corner = bar->cornerWidget(Qt::TopRightCorner))
+				bars.push_back(corner);
+			for (const QWidget* menuBar : bars)
+			{
+				for (const QAction* action : menuBar->actions())
+				{
+					if (action->isSeparator())
+						continue;
+					std::fprintf(stderr, "%s\n", title(action).c_str());
+					if (const QMenu* menu = action->menu())
+					{
+						for (const QAction* item : menu->actions())
+						{
+							if (!item->isSeparator())
+								std::fprintf(stderr, "  %s\n", title(item).c_str());
+						}
+					}
+				}
+			}
+		}
+
 		void scheduleSnapshot()
 		{
 			const char* path = std::getenv("NPPMAC_SNAPSHOT");
@@ -329,10 +374,20 @@ namespace nppmac::ui
 			const char* delayText = std::getenv("NPPMAC_SNAPSHOT_DELAY");
 			const double delay = delayText ? std::strtod(delayText, nullptr) : 5.0;
 			const QString file = QString::fromLocal8Bit(path);
-			QTimer::singleShot(static_cast<int>(delay * 1000), qApp, [file]
+			QTimer::singleShot(testDelay(delay), Qt::PreciseTimer, qApp, [file]
 			{
 				if (std::getenv("NPPMAC_DUMP_TREE"))
+				{
 					windowManagerDumpTree();
+					for (QWidget* widget : QApplication::topLevelWidgets())
+					{
+						if (auto* menuBar = widget->findChild<QMenuBar*>(QString(), Qt::FindDirectChildrenOnly); menuBar && widget->isVisible())
+						{
+							dumpMenus(menuBar);
+							break;
+						}
+					}
+				}
 				NativeView* view = windowManagerSnapshotView();
 				QWidget* shown = view ? (view->_window ? view->_window.data() : view->_widget.data()) : nullptr;
 				if (QWidget* dialog = QApplication::activeModalWidget())
@@ -363,7 +418,7 @@ namespace nppmac::ui
 				const int id = static_cast<int>(std::strtol(next, &end, 10));
 				if (end == next)
 					break;
-				QTimer::singleShot(static_cast<int>(delay * 1000), qApp, [click, id]
+				QTimer::singleShot(testDelay(delay), Qt::PreciseTimer, qApp, [click, id]
 				{
 					if (click)
 						windowManagerTestClick(id);
@@ -373,6 +428,109 @@ namespace nppmac::ui
 				delay += 0.5;
 				next = *end == ',' ? end + 1 : end;
 			}
+		}
+
+		// The widget keys go to, as the user's would: the one with the keyboard, else the active window,
+		// else the program's first window.
+		QWidget* keyboardWidget()
+		{
+			if (QWidget* focus = QApplication::focusWidget())
+				return focus;
+			if (QWidget* active = QApplication::activeWindow())
+				return active;
+			for (QWidget* widget : QApplication::topLevelWidgets())
+			{
+				if (widget->isVisible() && widget->isWindow())
+					return widget;
+			}
+			return nullptr;
+		}
+
+		// NPPMAC_TEST_TYPE=<text> types the text after NPPMAC_TEST_TYPE_DELAY seconds (default 2), one key
+		// every 50 ms, as key events going through the application like the user's, each to the window with
+		// the keyboard at its moment (a key that opens a dialog is followed by keys for the dialog); '\n'
+		// is Return, ESC is Escape, and '^' makes the next character a Ctrl shortcut ("^s" is Ctrl+S, where
+		// the Mac's is Command+S). NPPMAC_TEST_IME=<composing>[|<committed>] then plays an input method on
+		// that window: it composes the first text and, a second later, commits the second. As the Mac's.
+		void scheduleTyping()
+		{
+			const char* text = std::getenv("NPPMAC_TEST_TYPE");
+			const char* delayText = std::getenv("NPPMAC_TEST_TYPE_DELAY");
+			const double delay = delayText ? std::atof(delayText) : 2.0;
+			constexpr double keyInterval = 0.05;
+			int keyIndex = 0;
+			const QString characters = text ? QString::fromUtf8(text) : QString();
+			for (qsizetype i = 0; i < characters.size(); ++i)
+			{
+				Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+				if (characters[i] == u'^' && i + 1 < characters.size())
+				{
+					modifiers = Qt::ControlModifier;
+					++i;
+				}
+				const QChar character = characters[i];
+				int key = Qt::Key_unknown;
+				QString keyText{character};
+				if (character == u'\n')
+				{
+					key = Qt::Key_Return;
+					keyText = QStringLiteral("\r");
+				}
+				else if (character == QChar(0x1b))
+					key = Qt::Key_Escape;
+				else if (character.unicode() >= 0x20 && character.unicode() < 0x7f)
+				{
+					key = character.toUpper().unicode(); // Qt's keys are the characters there
+					if (modifiers & Qt::ControlModifier)
+						keyText = QString(QChar(character.toUpper().unicode() & 0x1f));
+				}
+				QTimer::singleShot(testDelay(delay + keyIndex++ * keyInterval), Qt::PreciseTimer, qApp, [key, modifiers, keyText]
+				{
+					QWidget* target = keyboardWidget();
+					if (!target)
+						return;
+					for (const QEvent::Type type : {QEvent::KeyPress, QEvent::KeyRelease})
+					{
+						QKeyEvent event(type, key, modifiers, keyText);
+						QCoreApplication::sendEvent(target, &event);
+					}
+				});
+			}
+
+			const char* ime = std::getenv("NPPMAC_TEST_IME");
+			if (!ime || !*ime)
+				return;
+			const QString imeText = QString::fromUtf8(ime);
+			const qsizetype bar = imeText.indexOf(u'|');
+			const QString composing = bar < 0 ? imeText : imeText.left(bar);
+			const QString committed = bar < 0 ? QString() : imeText.mid(bar + 1);
+			for (int step = 0; step < (committed.isEmpty() ? 1 : 2); ++step)
+			{
+				QTimer::singleShot(testDelay(delay + keyIndex * keyInterval + 0.3 + step), Qt::PreciseTimer, qApp, [step, composing, committed]
+				{
+					QWidget* target = keyboardWidget();
+					if (!target)
+						return;
+					QInputMethodEvent event(step == 0 ? composing : QString(), {});
+					if (step == 1)
+						event.setCommitString(committed);
+					QCoreApplication::sendEvent(target, &event);
+				});
+			}
+		}
+
+		// NPPMAC_TEST_SWITCH_BACK=<seconds> acts as if the user switched to another program and back then
+		// (a test run's program never becomes active). As the Mac's.
+		void scheduleSwitchBack()
+		{
+			const char* delayText = std::getenv("NPPMAC_TEST_SWITCH_BACK");
+			if (!delayText || !*delayText)
+				return;
+			QTimer::singleShot(testDelay(std::atof(delayText)), Qt::PreciseTimer, qApp, []
+			{
+				windowManagerApplicationActivated(false);
+				windowManagerApplicationActivated(true);
+			});
 		}
 
 		// --- Event loop ----------------------------------------------------------------------------
@@ -980,6 +1138,8 @@ namespace nppmac::ui
 		});
 		scheduleSnapshot();
 		scheduleCommands();
+		scheduleTyping();
+		scheduleSwitchBack();
 	}
 
 	void finishLaunching()
@@ -1467,9 +1627,10 @@ namespace nppmac::ui
 			return;
 		QWidget* target = view->_widget->focusProxy() ? view->_widget->focusProxy() : view->_widget.data();
 		std::unique_ptr<QKeyEvent> copy(static_cast<QKeyEvent*>(held->_event->clone()));
-		t_forwardingKey = true;
+		const QEvent* outer = t_forwardedKey;
+		t_forwardedKey = copy.get();
 		QCoreApplication::sendEvent(target, copy.get());
-		t_forwardingKey = false;
+		t_forwardedKey = outer;
 	}
 
 	TextInputResult interpretKey(NativeView* view, void*)

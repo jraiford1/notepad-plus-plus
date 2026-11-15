@@ -70,7 +70,7 @@ namespace
 		Range range = *reinterpret_cast<const Range*>(lParam);
 		nppmac::gdi::DC* dc = nppmac::gdi::toDC(static_cast<HDC>(range.hdc));
 		nppmac::gdi::Canvas* canvas = dc ? dc->begin() : nullptr;
-		range.hdc = range.hdcTarget = (canvas ? canvas : scratch.get())->nativeHandle();
+		range.hdc = range.hdcTarget = nppmac::scintilla::printSurface((canvas ? canvas : scratch.get())->nativeHandle());
 		const sptr_t result = data._direct(data._directPointer, message, canvas ? draw : 0, reinterpret_cast<sptr_t>(&range));
 		if (canvas)
 			dc->end();
