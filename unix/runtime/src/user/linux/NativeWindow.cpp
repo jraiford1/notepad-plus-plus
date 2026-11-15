@@ -44,7 +44,9 @@
 #include <QtGui/QImage>
 #include <QtGui/QInputMethodEvent>
 #include <QtGui/QKeyEvent>
+#include <QtCore/QDir>
 #include <QtGui/QPainter>
+#include <QtGui/QIcon>
 #include <QtGui/QScreen>
 #include <QtGui/QStyleHints>
 #include <QtWidgets/QApplication>
@@ -956,7 +958,15 @@ namespace nppmac::ui
 		static char* argv[] = {name, nullptr};
 		auto* application = new QApplication(argc, argv);
 		QApplication::setApplicationName("Notepad++");
+		// Its desktop file's name: on Wayland the desktop finds the program's launcher entry, and its
+		// icon, by it. Under X11 the windows take the icon from the program folder (appicon/).
 		QGuiApplication::setDesktopFileName("notepad-plus-plus");
+		QIcon icon;
+		const QDir icons(QCoreApplication::applicationDirPath() + "/appicon");
+		for (const QString& file : icons.entryList({"*.png"}, QDir::Files))
+			icon.addFile(icons.filePath(file));
+		if (!icon.isNull())
+			QApplication::setWindowIcon(icon);
 		// Quitting is the program's (PostQuitMessage), not the last window's closing.
 		application->setQuitOnLastWindowClosed(false);
 		application->installEventFilter(new KeyFilter);
@@ -974,7 +984,7 @@ namespace nppmac::ui
 
 	void finishLaunching()
 	{
-		// Files come on the command line; a second launch hands its files over with J4's desktop step.
+		// Files come on the command line; a second launch hands them to the running copy (RemoteWindows).
 	}
 
 	std::vector<std::string> takeLaunchFiles()

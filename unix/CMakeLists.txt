@@ -109,3 +109,20 @@ add_subdirectory(app)
 if(NPPMAC_PLATFORM STREQUAL "macos")
 	add_subdirectory(plugins)
 endif() # Linux: its updater and the plugins come with J4's later steps.
+
+# Linux: a .deb of what is installed (cpack in the build folder), for this machine's package manager.
+# It is made and installed locally; no package is published.
+if(NPPMAC_PLATFORM STREQUAL "linux")
+	file(STRINGS "${NPP_ROOT}/PowerEditor/src/resource.h" nppVersionLine REGEX "define VERSION_PRODUCT_VALUE")
+	string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" nppVersion "${nppVersionLine}")
+	set(CPACK_GENERATOR DEB)
+	set(CPACK_PACKAGE_NAME notepad-plus-plus)
+	set(CPACK_PACKAGE_VERSION "${nppVersion}")
+	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Notepad++, a source code editor (Linux build)")
+	set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+	set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Notepad++ macOS and Linux build")
+	set(CPACK_DEBIAN_PACKAGE_SECTION editors)
+	set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+	include(CPack)
+endif()

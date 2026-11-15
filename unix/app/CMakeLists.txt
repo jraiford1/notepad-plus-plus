@@ -279,10 +279,44 @@ else()
 		list(APPEND nppCopyCommands COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/${destination}"
 			COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${files} "${nppProgramDirectory}/${destination}")
 	endforeach()
-	add_custom_command(TARGET NotepadPlusPlus POST_BUILD ${nppCopyCommands}
-		COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
+	# The app icon at each of its sizes (appicon/<size>.png), made from NPPMAC_APP_ICON by a small Qt tool:
+	# beside the program (the windows' icon) and, installed, in the icon theme.
+	add_executable(npp-icon-pngs linux/IconPngs.cpp)
+	target_link_libraries(npp-icon-pngs PRIVATE Qt6::Gui)
+	set(nppIconFolder "${CMAKE_CURRENT_BINARY_DIR}/appicon")
+	set(nppIconStamp "${nppIconFolder}/made.stamp")
+	add_custom_command(
+		OUTPUT "${nppIconStamp}"
+		COMMAND "${CMAKE_COMMAND}" -E rm -rf "${nppIconFolder}"
+		COMMAND npp-icon-pngs "${NPPMAC_APP_ICON}" "${nppIconFolder}"
+		COMMAND "${CMAKE_COMMAND}" -E touch "${nppIconStamp}"
+		DEPENDS npp-icon-pngs "${NPPMAC_APP_ICON}"
+		COMMENT "Making the app icon's sizes"
 		VERBATIM
 	)
+	set_source_files_properties("${nppIconStamp}" PROPERTIES GENERATED TRUE)
+	target_sources(NotepadPlusPlus PRIVATE "${nppIconStamp}")
+
+	add_custom_command(TARGET NotepadPlusPlus POST_BUILD ${nppCopyCommands}
+		COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
+		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${nppIconFolder}" "${nppProgramDirectory}/appicon"
+		COMMAND "${CMAKE_COMMAND}" -E rm -f "${nppProgramDirectory}/appicon/made.stamp"
+		VERBATIM
+	)
+
+	# Installed (cmake --install, or the .deb CPack makes): the program folder as lib/notepad-plus-plus,
+	# bin/notepad++ to start it, its launcher entry and its icon in the desktop's places.
+	install(DIRECTORY "${nppProgramDirectory}/" DESTINATION lib/notepad-plus-plus USE_SOURCE_PERMISSIONS)
+	install(CODE "
+		file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin\")
+		file(CREATE_LINK ../lib/notepad-plus-plus/notepad++ \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/notepad++\" SYMBOLIC)
+		file(GLOB icons \"${nppIconFolder}/*.png\")
+		foreach(icon IN LISTS icons)
+			get_filename_component(size \"\${icon}\" NAME_WE)
+			file(INSTALL \"\${icon}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/\${size}x\${size}/apps\" RENAME notepad-plus-plus.png)
+		endforeach()
+	")
+	install(FILES linux/notepad-plus-plus.desktop DESTINATION share/applications)
 endif()
 
 # --- Tests -------------------------------------------------------------------------------------------
