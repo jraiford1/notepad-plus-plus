@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Notepad++
+GenericName=Text Editor
+Comment=Edit text and source code
+Exec=notepad++ %F
+TryExec=notepad++
+Icon=notepad-plus-plus
+Terminal=false
+StartupNotify=true
+StartupWMClass=notepad++
+Categories=Utility;TextEditor;Development;
+Keywords=text;editor;code;programming;notepad;
+MimeType=text/plain;
