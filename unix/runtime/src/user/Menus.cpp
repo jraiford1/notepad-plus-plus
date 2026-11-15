@@ -188,6 +188,7 @@ namespace nppmac::user
 					title.push_back(text[i]);
 				}
 				description._title = title;
+				description._markedTitle = text;
 				description._id = item._id;
 				description._submenu = reinterpret_cast<uintptr_t>(item._submenu);
 				description._checked = (item._state & MFS_CHECKED) != 0;

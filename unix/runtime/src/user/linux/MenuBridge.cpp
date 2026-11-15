@@ -47,8 +47,8 @@ namespace nppmac::ui
 
 		QString itemText(const MenuItemDescription& item)
 		{
-			QString text = QString::fromUtf16(item._title.data(), static_cast<qsizetype>(item._title.size()));
-			text.replace('&', "&&"); // Qt's mnemonic marker; the titles come without Windows' own
+			// Windows' mnemonic markers are Qt's: '&' before the letter, "&&" for a '&'.
+			QString text = QString::fromUtf16(item._markedTitle.data(), static_cast<qsizetype>(item._markedTitle.size()));
 			if (!item._shortcut.empty())
 				text += '\t' + QString::fromUtf16(item._shortcut.data(), static_cast<qsizetype>(item._shortcut.size()));
 			return text;
@@ -190,6 +190,45 @@ namespace nppmac::ui
 			{
 				removeMenuBar(it->_view);
 				list.erase(it);
+				return;
+			}
+		}
+	}
+
+	void activateMenuBar(NativeView* view, char16_t mnemonic)
+	{
+		QMenuBar* bar = view ? view->_menuBar.data() : nullptr;
+		if (!bar)
+			return;
+		const QChar wanted = QChar(mnemonic).toLower();
+		std::vector<QAction*> actions;
+		for (QAction* action : bar->actions())
+			actions.push_back(action);
+		if (auto* corner = qobject_cast<QMenuBar*>(bar->cornerWidget(Qt::TopRightCorner)))
+		{
+			for (QAction* action : corner->actions())
+				actions.push_back(action);
+		}
+		for (QAction* action : actions)
+		{
+			// The character after a single '&' (not "&&").
+			const QString text = action->text();
+			for (qsizetype i = 0; i + 1 < text.size(); ++i)
+			{
+				if (text[i] != u'&')
+					continue;
+				if (text[i + 1] == u'&')
+				{
+					++i;
+					continue;
+				}
+				if (text[i + 1].toLower() != wanted || !action->isEnabled())
+					break;
+				auto* owner = qobject_cast<QMenuBar*>(action->parent()) ? qobject_cast<QMenuBar*>(action->parent()) : bar;
+				if (action->menu())
+					owner->setActiveAction(action);
+				else
+					action->trigger();
 				return;
 			}
 		}

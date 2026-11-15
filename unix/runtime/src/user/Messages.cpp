@@ -19,6 +19,7 @@
 // conversion of native input to Win32 input messages.
 
 #include "Immortal.h"
+#include "MenuBridge.h"
 #include "Window.h"
 
 #include <algorithm>
@@ -1357,6 +1358,17 @@ LRESULT WINAPI DefWindowProcW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			DestroyWindow(hwnd);
 			return 0;
 
+		case WM_SYSCHAR:
+		{
+			// Alt and a character no accelerator took: the top-level window's menu (Alt+Space would be
+			// its system menu, which windows here do not have).
+			if (wParam != u' ')
+			{
+				if (HWND root = GetAncestor(hwnd, GA_ROOT))
+					SendMessageW(root, WM_SYSCOMMAND, SC_KEYMENU, static_cast<LPARAM>(wParam));
+			}
+			return 0;
+		}
 		case WM_SYSCOMMAND:
 		{
 			switch (wParam & 0xFFF0)
@@ -1372,6 +1384,11 @@ LRESULT WINAPI DefWindowProcW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					return 0;
 				case SC_RESTORE:
 					ShowWindow(hwnd, SW_RESTORE);
+					return 0;
+				case SC_KEYMENU:
+					// Alt and a letter: the menu bar's menu with that mnemonic.
+					if (lParam && GetMenu(hwnd) && window->_view)
+						nppmac::ui::activateMenuBar(window->_view, static_cast<char16_t>(lParam));
 					return 0;
 				default:
 					return 0;
@@ -1489,7 +1506,6 @@ LRESULT WINAPI DefWindowProcW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case WM_CHAR:
 		case WM_SYSKEYDOWN:
 		case WM_SYSKEYUP:
-		case WM_SYSCHAR:
 		case WM_MOUSEMOVE:
 		case WM_LBUTTONDOWN:
 		case WM_LBUTTONUP:

@@ -257,6 +257,11 @@ namespace nppmac::ui
 		NSApp.mainMenu = bar;
 	}
 
+	void activateMenuBar(NativeView*, char16_t)
+	{
+		// The Mac's menu bar is the system's: Option and a letter type a character there.
+	}
+
 	void clearMenuBar(void* context)
 	{
 		if (context != g_menuBarOwner)
