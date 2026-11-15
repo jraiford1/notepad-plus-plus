@@ -461,6 +461,32 @@ void nppmac::ui::windowManagerApplicationActivated(bool active)
 	}
 }
 
+bool nppmac::ui::windowManagerQueryEndSession(bool critical)
+{
+	using namespace nppmac::user;
+	const LPARAM flags = static_cast<LPARAM>(ENDSESSION_LOGOFF | (critical ? ENDSESSION_CRITICAL : 0));
+	bool agreed = true;
+	const std::vector<Window*> windows = topLevelWindows();
+	for (Window* window : windows)
+	{
+		if (fromHandle(window->_hwnd) && !window->send(WM_QUERYENDSESSION, 0, flags))
+			agreed = false;
+	}
+	return agreed;
+}
+
+void nppmac::ui::windowManagerEndSession(bool critical)
+{
+	using namespace nppmac::user;
+	const LPARAM flags = static_cast<LPARAM>(ENDSESSION_LOGOFF | (critical ? ENDSESSION_CRITICAL : 0));
+	const std::vector<Window*> windows = topLevelWindows();
+	for (Window* window : windows)
+	{
+		if (fromHandle(window->_hwnd))
+			window->send(WM_ENDSESSION, TRUE, flags);
+	}
+}
+
 bool nppmac::ui::windowManagerOpenFiles(const std::vector<std::string>& paths)
 {
 	using namespace nppmac::user;

@@ -53,4 +53,8 @@ namespace nppmac::ui
 	void removeMenuBar(NativeView* view);
 	// Gives a menu bar Windows' flat look (no line along its bottom).
 	void styleMenuBar(QMenuBar* bar);
+
+	// The desktop's session ending (Session.cpp): GNOME's session manager and the signals that end a
+	// program, as WM_QUERYENDSESSION and WM_ENDSESSION.
+	void startSessionHandling();
 }
