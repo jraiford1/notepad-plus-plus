@@ -51,8 +51,6 @@ else()
 	target_compile_definitions(nppRuntimeNative PRIVATE SCINTILLA_QT=1)
 	target_link_libraries(nppRuntimeNative PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus)
 endif()
-if(NPPMAC_PLATFORM STREQUAL "linux")
-endif()
 add_library(nppRuntime STATIC ${nppRuntimeSources})
 if(NPPMAC_PLATFORM STREQUAL "linux")
 	target_sources(nppRuntime PRIVATE $<TARGET_OBJECTS:nppRuntimeNative>)
@@ -81,6 +79,7 @@ target_link_libraries(nppRuntimeDirectoryChangesTest PRIVATE ${nppRuntimeWithStu
 add_test(NAME runtimeDirectoryChanges COMMAND nppRuntimeDirectoryChangesTest)
 
 add_executable(nppRuntimeSystemInfoTest test/SystemInfoTest.cpp)
+target_include_directories(nppRuntimeSystemInfoTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # The user layer (DwmGetColorizationColor) brings in the Scintilla window class.
 target_link_libraries(nppRuntimeSystemInfoTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
 add_test(NAME runtimeSystemInfo COMMAND nppRuntimeSystemInfoTest)
