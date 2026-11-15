@@ -25,6 +25,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtGui/QContextMenuEvent>
 #include <QtGui/QInputMethodEvent>
+#include <QtGui/QPainter>
 
 namespace nppmac::scintilla
 {
@@ -83,6 +84,12 @@ namespace nppmac::scintilla
 	intptr_t message(void* view, unsigned message, uintptr_t wParam, intptr_t lParam)
 	{
 		return static_cast<ScintillaEditBase*>(view)->send(message, wParam, lParam);
+	}
+
+	void* printSurface(void* canvasHandle)
+	{
+		auto* painter = static_cast<QPainter*>(canvasHandle);
+		return painter ? painter->device() : nullptr;
 	}
 
 	void insertText(void* view, const std::u16string& text)

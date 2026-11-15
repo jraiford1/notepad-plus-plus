@@ -115,6 +115,11 @@ namespace nppmac::scintilla
 		return [(__bridge ScintillaView*)view message:message wParam:wParam lParam:lParam];
 	}
 
+	void* printSurface(void* canvasHandle)
+	{
+		return canvasHandle; // the CGContext, as Scintilla's Cocoa layer draws on it
+	}
+
 	void insertText(void* view, const std::u16string& text)
 	{
 		NSString* string = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(text.data()) length:text.size()];

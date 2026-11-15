@@ -1,5 +1,5 @@
 #!/bin/bash
-# This file is part of Notepad++ project (macOS build)
+# This file is part of Notepad++ project (macOS and Linux build)
 # Copyright (C)2026 Notepad++ macOS contributors
 #
 # This program is free software: you can redistribute it and/or modify
@@ -31,10 +31,17 @@ plugin="${2:-}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/npp-smoke.XXXXXX")"
 # What the runs store per user (plugins' settings) goes here, not to the user's Application Support.
 mkdir -p "$work/appdata"
-pluginFolder="$(dirname "$app")/../Resources/plugins/HelloMac"
+# The program folder: the app bundle's Contents/Resources on macOS, the executable's own folder on Linux.
+system="$(uname)"
+if [ "$system" = Darwin ]; then
+	programFolder="$(dirname "$app")/../Resources"
+else
+	programFolder="$(dirname "$app")"
+fi
+pluginFolder="$programFolder/plugins/HelloMac"
 # The third argument: the folder of the catalog's built plugins (<Name>/<Name>.dll), all loaded together.
 catalog="${3:-}"
-pluginsRoot="$(dirname "$app")/../Resources/plugins"
+pluginsRoot="$programFolder/plugins"
 catalogInstalled=()
 launcher=()
 if [ -n "${NPPMAC_TEST_ARCH:-}" ]; then
@@ -152,7 +159,12 @@ run ime NPPMAC_TEST_TYPE='^fab' NPPMAC_TEST_IME='かな|仮名' NPPMAC_DUMP_TREE
 for i in $(seq 1 90); do echo "Line $i: the quick brown fox"; done > "$work/print.txt"
 files=("$work/print.txt")
 if run print NPPMAC_TEST_COMMAND=41010 NPPMAC_TEST_PRINT_PDF="$work/print.pdf"; then
-	pages="$(osascript -l JavaScript -e "ObjC.import('PDFKit'); var d = \$.PDFDocument.alloc.initWithURL(\$.NSURL.fileURLWithPath('$work/print.pdf')); d ? d.pageCount + ' ' + d.pageAtIndex(0).string.js.indexOf('Line 1: the quick brown fox') : 'none'" 2>&1)"
+	if [ "$system" = Darwin ]; then
+		pages="$(osascript -l JavaScript -e "ObjC.import('PDFKit'); var d = \$.PDFDocument.alloc.initWithURL(\$.NSURL.fileURLWithPath('$work/print.pdf')); d ? d.pageCount + ' ' + d.pageAtIndex(0).string.js.indexOf('Line 1: the quick brown fox') : 'none'" 2>&1)"
+	else
+		# Linux: the pages counted in the PDF's objects (its text is compressed).
+		pages="$(python3 -c 'import re, sys; print(len(re.findall(rb"/Type\s*/Page(?![s\w])", open(sys.argv[1], "rb").read())), 0)' "$work/print.pdf" 2>&1)"
+	fi
 	if [ "${pages%% *}" = "2" ] && [ "${pages##* }" != "-1" ]; then
 		echo "ok   print"
 	else
@@ -217,7 +229,9 @@ fi
 seq -f "line %g" 1 3000 > "$work/wheel.txt"
 files=("$work/wheel.txt")
 mkdir -p "$work/wheel-settings"
-if runSettings="$work/wheel-settings" run wheel NPPMAC_TEST_WHEEL=-0.1,-0.96,-3.788,-5.495,-6.246,-6.783,-6.715 NPPMAC_SNAPSHOT_DELAY=2.11 NPPMAC_DUMP_TREE=1; then
+if [ "$system" != Darwin ]; then
+	echo "skip wheel: the wheel test aid is the Mac's"
+elif runSettings="$work/wheel-settings" run wheel NPPMAC_TEST_WHEEL=-0.1,-0.96,-3.788,-5.495,-6.246,-6.783,-6.715 NPPMAC_SNAPSHOT_DELAY=2.11 NPPMAC_DUMP_TREE=1; then
 	first="$(grep -m1 'Scintilla .* visible native' "$work/wheel.log" | sed -E 's/.* firstLine=([0-9]+).*/\1/')"
 	if [ "${first:-0}" -ge 18 ] && [ "${first:-0}" -le 23 ] 2> /dev/null; then
 		echo "ok   wheel"
@@ -265,7 +279,7 @@ if [ -n "$plugin" ]; then
 	fi
 	files=()
 	run plugin NPPMAC_TEST_COMMAND=22000 NPPMAC_TEST_TYPE='^s' NPPMAC_TEST_TYPE_DELAY=3 NPPMAC_TEST_FILE_PANEL="$work/plugin.txt" \
-		&& expect_file plugin "$work/plugin.txt" 'Hello from a plugin on macOS'
+		&& expect_file plugin "$work/plugin.txt" "Hello from a plugin on $([ "$system" = Darwin ] && echo macOS || echo Linux)"
 	# Its third command (22002) inserts a string from its own resources and its folder's name: its
 	# module handle (DllMain), LoadString from its .res and GetModuleFileName at work.
 	files=()
@@ -362,7 +376,9 @@ files=()
 runSettings="$darkSettings" run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"
 
 # Files from Finder: opened by LaunchServices (open -g: in the background, as tests must stay),
-# when they launch the program and when it is already running.
+# when they launch the program and when it is already running. (Linux has none: second-copy below is
+# its way of opening a file in the running program.)
+if [ "$system" = Darwin ]; then
 bundle="$(cd "$(dirname "$app")/../.." && pwd)"
 openArch=()
 if [ -n "${NPPMAC_TEST_ARCH:-}" ]; then
@@ -413,6 +429,7 @@ else
 	wait
 	echo "FAIL finder-running: the test instance did not start"
 	failures=$((failures + 1))
+fi
 fi
 
 # Quitting through File > Exit (IDM_FILE_EXIT), as a user does: the program's static objects are

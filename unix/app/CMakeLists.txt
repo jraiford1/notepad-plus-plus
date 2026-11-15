@@ -326,7 +326,11 @@ endif()
 
 # --- Tests -------------------------------------------------------------------------------------------
 if(NPPMAC_PLATFORM STREQUAL "linux")
-	return() # Linux's smoke test comes with J4's last step
+	# The end-to-end smoke test, as on the Mac; Qt draws its windows off the screen (a test run).
+	add_test(NAME nppSmokeTest COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../ci/smoke-test.sh" "$<TARGET_FILE:NotepadPlusPlus>" "$<TARGET_FILE:HelloMac>"
+		"$<TARGET_FILE_DIR:HelloMac>/..")
+	set_tests_properties(nppSmokeTest PROPERTIES LABELS gui TIMEOUT 900)
+	return()
 endif()
 # The names Finder gives the files the app opens (W37): its Info.plist, and what macOS makes of it once
 # the app is registered.

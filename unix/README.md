@@ -66,20 +66,31 @@ ctest --test-dir unix/build
 
 The first configure downloads the Wine source release once (about 45 MB) into the build directory.
 
-### Linux (under way)
+### Linux
 
-A Linux build on Qt 6 is being added from the same tree. So far the engine, all of upstream's sources,
-Scintilla's and Lexilla's portable parts and the runtime's non-window parts build, and their tests pass;
-the converted upstream sources are byte for byte the Mac's. Drawing, windows, the editor and the app
-follow. On Ubuntu 26.04:
+The same tree builds Notepad++ for Linux, on Qt 6 Widgets (native Wayland). What is
+Linux's own is the platform layer: the window backend (`runtime/src/user/linux`), drawing under GDI
+(QPainter, `runtime/src/gdi/linux`), Scintilla's own Qt widget, the dialogs and services (Qt's file,
+colour, font and print dialogs, message boxes, the clipboard; printing sends the PDF to CUPS), and the
+desktop integration; everything above it is the Mac's code, and the converted upstream sources are byte
+for byte the Mac's. On Ubuntu 26.04:
 
 ```bash
 sudo apt install cmake ninja-build clang-22 clang-tools-22 libclang-22-dev libclang-cpp22-dev llvm-22-dev \
-	qt6-base-dev qt6-wayland bison flex
+	qt6-base-dev qt6-5compat-dev qt6-wayland bison flex libxml2-dev zip unzip
 cmake -S unix -B unix/build-linux -G Ninja -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22
 cmake --build unix/build-linux
 ctest --test-dir unix/build-linux
 ```
+
+The program folder is `unix/build-linux/app/Notepad++` (`notepad++` in it starts it). `cmake --install
+unix/build-linux` installs it (the folder as `lib/notepad-plus-plus`, `bin/notepad++`, a launcher entry for
+text and the icon), and `cpack` in the build folder makes a .deb of the same for `apt install`; builds are
+made and installed locally, never published. A second `notepad++` hands its files to the one running, as
+on Windows. The smoke test runs with Qt drawing off the screen, so it shows nothing. Plugins build for
+Linux as ELF modules with the same names and places (`plugins/<Name>/<Name>.dll`); the catalog's are
+built with `-DNPPMAC_BUILD_PLUGINS=ON` (the default on the Mac), and Plugins Admin installs through gup,
+which asks for an administrator (pkexec) where the plugins folder is root's, as in an installed copy.
 
 Code for one platform lives in folders named after it (`runtime/src/platform/macos`,
 `runtime/src/platform/linux`); Linux's native side is compiled without the Win32 headers, as the

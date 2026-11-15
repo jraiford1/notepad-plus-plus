@@ -1,4 +1,4 @@
-// This file is part of Notepad++ project (macOS build)
+// This file is part of Notepad++ project (macOS and Linux build)
 // Copyright (C)2026 Notepad++ macOS contributors
 
 // This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// A plugin written as for Windows, to show and test that plugins work on macOS: its sources are
+// A plugin written as for Windows, to show and test that plugins work on macOS and Linux: its sources are
 // migrated and built by nppmac_add_plugin (unix/plugins/CMakeLists.txt).
 
 #include <windows.h>
@@ -47,7 +47,11 @@ namespace
 
 	void insertGreeting()
 	{
+#ifdef __linux__
+		::SendMessage(currentScintilla(), SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>("Hello from a plugin on Linux"));
+#else
 		::SendMessage(currentScintilla(), SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>("Hello from a plugin on macOS"));
+#endif
 	}
 
 	// A string from the plugin's own resources, and the name of its folder: its module handle (from
@@ -69,7 +73,11 @@ namespace
 
 	void about()
 	{
+#ifdef __linux__
+		::MessageBox(g_nppData._nppHandle, L"HelloMac shows that Notepad++ plugins work on Linux.", L"HelloMac", MB_OK);
+#else
 		::MessageBox(g_nppData._nppHandle, L"HelloMac shows that Notepad++ plugins work on macOS.", L"HelloMac", MB_OK);
+#endif
 	}
 
 	void addCommand(Command command, const wchar_t* name, PFUNCPLUGINCMD function)
