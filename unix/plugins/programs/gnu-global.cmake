@@ -18,8 +18,8 @@
 # Universal Ctags' ctags, the plugin parsers of its ctags and pygments parsers, its gtags.conf) and in
 # share/gtags/script (the pygments parser's script): here they are built from their release sources,
 # with their own configure and make, for the app's architectures. Global's programs find what is beside
-# them (gnu-global-relocatable.patch), as on Windows, and gtags.conf is the package's with macOS's file
-# names.
+# them (gnu-global-relocatable.patch), as on Windows, and gtags.conf is the package's with macOS's and
+# Linux's file names.
 #
 # Included by nppmac_add_external_plugin (PROGRAMS gnu-global), in its scope: name is the plugin,
 # sourceDir its checkout, and fileNames the files of its package.
@@ -34,8 +34,14 @@ set(universalCtagsSha256 fa3bafbd0dab0373c0c1788c79451bad4eed2095ad292a8dd46cc1a
 # programs are then built in the user's cache folder, in a folder of this build's.
 set(programsDir "${CMAKE_CURRENT_BINARY_DIR}/${name}/programs")
 if(programsDir MATCHES " ")
-	execute_process(COMMAND getconf DARWIN_USER_CACHE_DIR OUTPUT_VARIABLE cacheDir OUTPUT_STRIP_TRAILING_WHITESPACE
-		COMMAND_ERROR_IS_FATAL ANY)
+	if(NPPMAC_PLATFORM STREQUAL "macos")
+		execute_process(COMMAND getconf DARWIN_USER_CACHE_DIR OUTPUT_VARIABLE cacheDir OUTPUT_STRIP_TRAILING_WHITESPACE
+			COMMAND_ERROR_IS_FATAL ANY)
+	elseif(DEFINED ENV{XDG_CACHE_HOME})
+		set(cacheDir "$ENV{XDG_CACHE_HOME}/")
+	else()
+		set(cacheDir "$ENV{HOME}/.cache/")
+	endif()
 	string(MD5 buildHash "${CMAKE_BINARY_DIR}")
 	string(SUBSTRING "${buildHash}" 0 12 buildHash)
 	set(programsDir "${cacheDir}nppmac-programs-${buildHash}/${name}")
@@ -50,9 +56,15 @@ if(CMAKE_OSX_DEPLOYMENT_TARGET)
 	list(APPEND programFlags "-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 list(JOIN programFlags " " programFlags)
-execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE sdkPath OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+# libxml2's headers: the macOS SDK's, or the system's (pkg-config; libxml2-dev) on Linux.
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE sdkPath OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+	set(libxmlCflags "-I${sdkPath}/usr/include/libxml2")
+else()
+	execute_process(COMMAND pkg-config --cflags libxml-2.0 OUTPUT_VARIABLE libxmlCflags OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+endif()
 
-# Universal Ctags with macOS's libxml2 (its XML parsers: Glade, Maven2, plists, RelaxNG, SVG and XSLT,
+# Universal Ctags with the system's libxml2 (its XML parsers: Glade, Maven2, plists, RelaxNG, SVG and XSLT,
 # which gtags.conf maps), without the libraries macOS lacks (JSON and YAML output, PCRE2 regexes),
 # which no parser gtags.conf maps needs. The archive's timestamps are kept, so that make does not
 # run the autotools again.
@@ -63,7 +75,7 @@ ExternalProject_Add(${name}UniversalCtags
 	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 	PREFIX "${programsDir}/universal-ctags"
 	CONFIGURE_COMMAND "${CMAKE_COMMAND}" -E env "CC=${CMAKE_C_COMPILER}" "CFLAGS=${programFlags}"
-		"LIBXML_CFLAGS=-I${sdkPath}/usr/include/libxml2" LIBXML_LIBS=-lxml2
+		"LIBXML_CFLAGS=${libxmlCflags}" LIBXML_LIBS=-lxml2
 		<SOURCE_DIR>/configure --disable-json --disable-yaml --disable-pcre2 --disable-seccomp --disable-readcmd
 		--disable-external-sort
 	INSTALL_COMMAND ""
