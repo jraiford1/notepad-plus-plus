@@ -89,7 +89,7 @@ text and the icon), and `cpack` in the build folder makes a .deb of the same for
 made and installed locally, never published. A second `notepad++` hands its files to the one running, as
 on Windows. The smoke test runs with Qt drawing off the screen, so it shows nothing. Plugins build for
 Linux as ELF modules with the same names and places (`plugins/<Name>/<Name>.dll`); the catalog's are
-built with `-DNPPMAC_BUILD_PLUGINS=ON` (the default on the Mac), and Plugins Admin installs through gup,
+built too (`-DNPPMAC_BUILD_PLUGINS=OFF` leaves them out), and Plugins Admin installs through gup,
 which asks for an administrator (pkexec) where the plugins folder is root's, as in an installed copy.
 
 Code for one platform lives in folders named after it (`runtime/src/platform/macos`,

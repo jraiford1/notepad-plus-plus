@@ -104,7 +104,7 @@ set(NPPMAC_APP_ICON "${NPP_ROOT}/PowerEditor/src/icons/npp.ico" CACHE FILEPATH "
 
 add_subdirectory(gup)
 add_subdirectory(app)
-add_subdirectory(plugins) # Linux: the catalog and the updater come with J4's later stages
+add_subdirectory(plugins)
 
 # Linux: a .deb of what is installed (cpack in the build folder), for this machine's package manager.
 # It is made and installed locally; no package is published.

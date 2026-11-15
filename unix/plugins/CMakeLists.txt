@@ -152,12 +152,7 @@ endfunction()
 # programs/gnu-global.cmake), and NPP_HEADERS for a project built against Notepad++'s own plugin headers
 # (from its repository) rather than copies of its own.
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
-# On Linux the catalog comes with its own stage of J4.
-if(NPPMAC_PLATFORM STREQUAL "macos")
-	option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
-else()
-	option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" OFF)
-endif()
+option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
 # A path in a plugin's checkout as the checkout spells it: Windows does not tell file names apart by
 # case, and the projects' lists and the checkouts often differ (Src/ for src/); Linux does. A part that
 # is not there is kept as it is.
