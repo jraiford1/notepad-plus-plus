@@ -9,6 +9,8 @@ macro(nppAddResources destination)
 	foreach(resourceFile ${ARGN})
 		if(NPPMAC_PLATFORM STREQUAL "macos")
 			set_source_files_properties("${resourceFile}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${destination}")
+		elseif("${destination}" STREQUAL "")
+			list(APPEND nppResourceCopies ".|${resourceFile}") # a list keeps no empty folder name
 		else()
 			list(APPEND nppResourceCopies "${destination}|${resourceFile}")
 		endif()
@@ -253,6 +255,8 @@ if(NPPMAC_PLATFORM STREQUAL "macos")
 	)
 else()
 	# The files beside the executable, by folder; and notepad++.exe, the program's file as upstream sees it.
+	# They are the app's sources too, so that those the build makes (translations, .res files) are made.
+	target_sources(NotepadPlusPlus PRIVATE ${nppResources})
 	set(nppCopyCommands "")
 	set(nppCopyDestinations "")
 	foreach(copy IN LISTS nppResourceCopies)

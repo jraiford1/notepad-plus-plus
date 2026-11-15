@@ -80,20 +80,16 @@ add_executable(nppRuntimeDirectoryChangesTest test/DirectoryChangesTest.cpp)
 target_link_libraries(nppRuntimeDirectoryChangesTest PRIVATE ${nppRuntimeWithStubs})
 add_test(NAME runtimeDirectoryChanges COMMAND nppRuntimeDirectoryChangesTest)
 
-if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's window step: these reach the window manager
 add_executable(nppRuntimeSystemInfoTest test/SystemInfoTest.cpp)
 # The user layer (DwmGetColorizationColor) brings in the Scintilla window class.
 target_link_libraries(nppRuntimeSystemInfoTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
 add_test(NAME runtimeSystemInfo COMMAND nppRuntimeSystemInfoTest)
-endif()
 
-if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's drawing step
 add_executable(nppRuntimeIconTest test/IconTest.cpp)
 target_include_directories(nppRuntimeIconTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(nppRuntimeIconTest PRIVATE "NPP_ROOT=\"${NPP_ROOT}\"")
 target_link_libraries(nppRuntimeIconTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
 add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)
-endif()
 
 # The canvas under GDI: the same pixels from Core Graphics and from Qt.
 add_executable(nppRuntimeCanvasTest test/CanvasTest.cpp)
@@ -105,9 +101,7 @@ add_executable(nppRuntimeProfileTest test/ProfileTest.cpp)
 target_link_libraries(nppRuntimeProfileTest PRIVATE ${nppRuntimeWithStubs})
 add_test(NAME runtimeProfile COMMAND nppRuntimeProfileTest)
 
-if(NPPMAC_PLATFORM STREQUAL "macos") # on Linux with J4's window step
 add_executable(nppRuntimeProcessTest test/ProcessTest.cpp)
 # ShellExecute's other paths are in the user layer, which brings in the Scintilla window class.
 target_link_libraries(nppRuntimeProcessTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
 add_test(NAME runtimeProcess COMMAND nppRuntimeProcessTest)
-endif()

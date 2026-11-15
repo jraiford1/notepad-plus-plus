@@ -416,7 +416,7 @@ namespace nppmac::ui
 				setRange(0, scrollRange);
 				connect(this, &QAbstractSlider::actionTriggered, this, [this](int action)
 				{
-					const bool vertical = orientation() == Qt::Vertical;
+					const bool vertical = this->orientation() == Qt::Vertical;
 					switch (action)
 					{
 						case QAbstractSlider::SliderSingleStepAdd:
