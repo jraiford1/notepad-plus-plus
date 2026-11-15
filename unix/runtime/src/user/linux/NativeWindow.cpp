@@ -1383,18 +1383,23 @@ namespace nppmac::ui
 			return;
 		}
 		if (timeoutMilliseconds == 0)
-		{
 			QCoreApplication::processEvents(QEventLoop::AllEvents);
-			return;
-		}
-		// Waits for an event (or the timeout's), then handles what has come.
-		QTimer timeout;
-		if (timeoutMilliseconds > 0)
+		else
 		{
-			timeout.setSingleShot(true);
-			timeout.start(timeoutMilliseconds);
+			// Waits for an event (or the timeout's), then handles what has come.
+			QTimer timeout;
+			if (timeoutMilliseconds > 0)
+			{
+				timeout.setSingleShot(true);
+				timeout.start(timeoutMilliseconds);
+			}
+			QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents);
 		}
-		QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents);
+		// Qt deletes what deleteLater left (menus refilled, a menu bar's right end replaced) when its own
+		// event loop comes back round; the program's loop is this one, so it is done here, by Qt's rules
+		// for what is safe to delete (nothing still being delivered an event). Menu commands are posted,
+		// so no menu is in use when its replacement comes.
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 	}
 
 	void wakeEventLoop()

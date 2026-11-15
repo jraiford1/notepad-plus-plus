@@ -37,6 +37,7 @@ namespace nppmac::ui
 		bool _radio = false;
 		bool _enabled = true;
 		bool _default = false;
+		bool _rightJustified = false; // on a menu bar: it and the items after it sit at its right end
 	};
 
 	struct MenuCallbacks
