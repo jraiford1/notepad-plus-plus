@@ -68,12 +68,11 @@ namespace
 		if (sourceWidth == width && source->_height == height)
 		{
 			for (int y = 0; y < height; ++y)
-				std::copy_n(source->rowPointer(y) + sourceX, width, image->rowPointer(y));
+				std::copy_n(source->readRow(y) + sourceX, width, image->writeRow(y));
 			return image;
 		}
-		const std::shared_ptr<nppmac::gdi::CanvasImage> whole = source->image();
-		const std::shared_ptr<nppmac::gdi::CanvasImage> part = whole ? whole->cropped({static_cast<double>(sourceX), 0, static_cast<double>(sourceWidth),
-			static_cast<double>(source->_height)}) : nullptr;
+		const std::shared_ptr<nppmac::gdi::CanvasImage> part = source->imagePart({static_cast<double>(sourceX), 0, static_cast<double>(sourceWidth),
+			static_cast<double>(source->_height)});
 		if (nppmac::gdi::Canvas* canvas = image->canvas(); canvas && part)
 		{
 			canvas->save();
@@ -105,7 +104,7 @@ namespace
 		}
 		for (int y = 0; y < image._height; ++y)
 		{
-			uint32_t* row = image.rowPointer(y);
+			uint32_t* row = image.writeRow(y);
 			for (int x = 0; x < image._width; ++x)
 			{
 				uint32_t& pixel = row[x];
@@ -119,7 +118,7 @@ namespace
 				}
 				else if (mask && y < mask->_height && maskX + x < mask->_width)
 				{
-					const bool transparent = (mask->rowPointer(y)[maskX + x] & 0xFFFFFF) != 0;
+					const bool transparent = (mask->readRow(y)[maskX + x] & 0xFFFFFF) != 0;
 					if (transparent)
 						pixel = 0;
 					else if (!hasAlpha)

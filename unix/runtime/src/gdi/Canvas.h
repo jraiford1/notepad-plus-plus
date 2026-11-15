@@ -177,8 +177,9 @@ namespace nppmac::gdi
 	};
 
 	// A canvas over a bitmap's pixels (kept by the bitmap). A bottom-up bitmap's rows run upward in memory;
-	// its canvas still has GDI's top-left origin.
-	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp);
+	// its canvas still has GDI's top-left origin. With a scale, the pixels are that many per unit, as a
+	// scaled screen's are: the canvas draws in units, at that resolution.
+	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp, double scale = 1);
 	// A canvas over a window's surface, the window backend's native drawing object (a CGContextRef on
 	// macOS, a QPainter* on Linux); kept alive by the canvas.
 	std::unique_ptr<Canvas> canvasOverSurface(void* surface);

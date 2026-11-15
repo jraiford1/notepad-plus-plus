@@ -62,8 +62,8 @@ namespace
 		{
 			for (int x = 0; x < expected._width; ++x)
 			{
-				const uint32_t a = bitmap->rowPointer(y)[x];
-				const uint32_t b = const_cast<nppmac::gdi::Bitmap&>(expected).rowPointer(y)[x];
+				const uint32_t a = bitmap->readRow(y)[x];
+				const uint32_t b = expected.readRow(y)[x];
 				for (int shift = 0; shift < 24; shift += 8)
 				{
 					if (std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF)) > 2)
@@ -139,7 +139,7 @@ int main()
 	HBITMAP bitmap = static_cast<HBITMAP>(LoadImageW(nullptr, nppmac::toUtf16(os2).c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE));
 	auto* loaded = nppmac::gdi::objectAs<nppmac::gdi::Bitmap>(bitmap, nppmac::gdi::ObjectType::bitmap);
 	CHECK(loaded && loaded->_width == 20 && loaded->_height == 20);
-	CHECK(loaded && (loaded->rowPointer(10)[10] & 0xFFFFFF) == 0xFF0000);
+	CHECK(loaded && (loaded->readRow(10)[10] & 0xFFFFFF) == 0xFF0000);
 	DeleteObject(bitmap);
 	unlink(os2.c_str());
 

@@ -90,6 +90,12 @@ target_compile_definitions(nppRuntimeIconTest PRIVATE "NPP_ROOT=\"${NPP_ROOT}\""
 target_link_libraries(nppRuntimeIconTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
 add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)
 
+# Double buffers at a scaled screen's resolution.
+add_executable(nppRuntimeBufferTest test/BufferTest.cpp)
+target_include_directories(nppRuntimeBufferTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(nppRuntimeBufferTest PRIVATE ${nppRuntimeWithStubs} nppScintilla nppLexilla)
+add_test(NAME runtimeBuffers COMMAND nppRuntimeBufferTest)
+
 # The canvas under GDI: the same pixels from Core Graphics and from Qt.
 add_executable(nppRuntimeCanvasTest test/CanvasTest.cpp)
 target_include_directories(nppRuntimeCanvasTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
