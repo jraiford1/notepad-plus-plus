@@ -19,6 +19,8 @@
 
 #include <windows.h>
 #include <dwmapi.h>
+
+#include "platform/Platform.h"
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -60,7 +62,8 @@ int main()
 	const std::u16string product = readString(currentVersion, u"ProductName");
 	const std::u16string version = readString(currentVersion, u"DisplayVersion");
 	const std::u16string build = readString(currentVersion, u"CurrentBuildNumber");
-	CHECK(product == u"macOS");
+	// The operating system's own name ("macOS", "Ubuntu").
+	CHECK(!product.empty() && product == nppmac::toUtf16(nppmac::platform::systemName()));
 	CHECK(!version.empty() && version.find(u'.') != std::u16string::npos);
 	CHECK(!build.empty());
 

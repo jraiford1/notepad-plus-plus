@@ -235,8 +235,7 @@ namespace nppmac::user
 				return;
 			Window* window = fromHandle(menu->_owner);
 			// The application name is the main window's class-independent product name.
-			ui::setMenuBar(reinterpret_cast<uintptr_t>(menu), callbacks(), menu->_owner, nppmac::applicationName());
-			(void)window;
+			ui::setMenuBar(reinterpret_cast<uintptr_t>(menu), callbacks(), menu->_owner, nppmac::applicationName(), window ? window->_view : nullptr);
 		}
 
 		// --- Menu templates -----------------------------------------------------------------------

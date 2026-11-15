@@ -103,6 +103,8 @@ set(NPPMAC_APP_ICON "${NPP_ROOT}/PowerEditor/src/icons/npp.ico" CACHE FILEPATH "
 
 if(NPPMAC_PLATFORM STREQUAL "macos")
 	add_subdirectory(gup)
-	add_subdirectory(app)
+endif()
+add_subdirectory(app)
+if(NPPMAC_PLATFORM STREQUAL "macos")
 	add_subdirectory(plugins)
-endif() # Linux: the app, its updater and the plugins come with J4's later steps.
+endif() # Linux: its updater and the plugins come with J4's later steps.

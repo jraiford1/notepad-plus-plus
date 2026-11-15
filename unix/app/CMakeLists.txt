@@ -1,10 +1,19 @@
-# The Notepad++ application bundle: upstream's objects, the runtime, Scintilla and Lexilla.
+# The Notepad++ application: upstream's objects, the runtime, Scintilla and Lexilla. On macOS an app bundle
+# whose Contents/Resources is the program directory; on Linux a program directory, Notepad++/, holding the
+# executable and the same files.
 
 # --- Application -----------------------------------------------------------------------------------
 set(nppResources "")
+set(nppResourceCopies "") # Linux: "destination|file", copied into the program directory after the build
 macro(nppAddResources destination)
 	foreach(resourceFile ${ARGN})
-		set_source_files_properties("${resourceFile}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${destination}")
+		if(NPPMAC_PLATFORM STREQUAL "macos")
+			set_source_files_properties("${resourceFile}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${destination}")
+		elseif("${destination}" STREQUAL "")
+			list(APPEND nppResourceCopies ".|${resourceFile}") # a list keeps no empty folder name
+		else()
+			list(APPEND nppResourceCopies "${destination}|${resourceFile}")
+		endif()
 		list(APPEND nppResources "${resourceFile}")
 	endforeach()
 endmacro()
@@ -15,7 +24,10 @@ file(GLOB nppAutoCompletion CONFIGURE_DEPENDS "${nppInstaller}/APIs/*.xml")
 file(GLOB nppFunctionList CONFIGURE_DEPENDS "${nppInstaller}/functionList/*.xml")
 file(GLOB nppThemes CONFIGURE_DEPENDS "${nppInstaller}/themes/*.xml")
 file(GLOB nppUserDefineLangs CONFIGURE_DEPENDS "${NPP_ROOT}/PowerEditor/bin/userDefineLangs/markdown._preinstalled*.udl.xml")
-file(GLOB scintillaResources CONFIGURE_DEPENDS "${NPP_ROOT}/scintilla/cocoa/res/*.png")
+set(scintillaResources "")
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	file(GLOB scintillaResources CONFIGURE_DEPENDS "${NPP_ROOT}/scintilla/cocoa/res/*.png")
+endif()
 
 # Laid out as upstream's packageAll.bat lays out the Windows zip; Contents/Resources is the
 # program directory Notepad++ sees (GetModuleFileNameW points there).
@@ -45,6 +57,7 @@ nppAddResources("functionList" ${nppFunctionList})
 nppAddResources("themes" ${nppThemes})
 nppAddResources("userDefineLangs" ${nppUserDefineLangs})
 
+if(NPPMAC_PLATFORM STREQUAL "macos") # the bundle's icon and the file types Finder offers it for
 # The app icon, made from NPPMAC_APP_ICON.
 set(appIcon "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.icns")
 add_custom_command(
@@ -152,15 +165,24 @@ endforeach()
 if(nppDeclaredLanguageCount LESS 50)
 	message(FATAL_ERROR "Only ${nppDeclaredLanguageCount} languages named from ScintillaEditView.cpp and langs.model.xml: has either changed form?")
 endif()
+endif() # macOS
 
-add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources} "${appIcon}")
-set_target_properties(NotepadPlusPlus PROPERTIES
-	OUTPUT_NAME "${NPPMAC_APP_NAME}"
-	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
-	MACOSX_BUNDLE_BUNDLE_NAME "${NPPMAC_APP_NAME}"
-	MACOSX_BUNDLE_GUI_IDENTIFIER "${NPPMAC_BUNDLE_ID}"
-	MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
-)
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	add_executable(NotepadPlusPlus MACOSX_BUNDLE main.cpp $<TARGET_OBJECTS:nppUpstream> ${nppResources} "${appIcon}")
+	set_target_properties(NotepadPlusPlus PROPERTIES
+		OUTPUT_NAME "${NPPMAC_APP_NAME}"
+		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+		MACOSX_BUNDLE_BUNDLE_NAME "${NPPMAC_APP_NAME}"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "${NPPMAC_BUNDLE_ID}"
+		MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
+	)
+	set(nppProgramDirectory "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources")
+else()
+	# The program directory: the executable, and beside it what Notepad++ reads from its own folder.
+	set(nppProgramDirectory "${CMAKE_CURRENT_BINARY_DIR}/Notepad++")
+	add_executable(NotepadPlusPlus main.cpp $<TARGET_OBJECTS:nppUpstream>)
+	set_target_properties(NotepadPlusPlus PROPERTIES OUTPUT_NAME "notepad++" RUNTIME_OUTPUT_DIRECTORY "${nppProgramDirectory}")
+endif()
 target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
 # The whole runtime goes in, not only what Notepad++ itself calls: plugins bind to the Win32 functions
@@ -175,7 +197,7 @@ target_link_libraries(NotepadPlusPlus PRIVATE
 # upstream's directory and with upstream's include list and headers, as on Windows; the .rc text
 # itself is the engine's copy, with its text rules applied (copied apart from the migrated headers).
 # The .res files go into Contents/Resources/res, where the runtime's resource loader reads them.
-find_program(NPPMAC_LLVM_RC llvm-rc HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
+find_program(NPPMAC_LLVM_RC llvm-rc HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin /usr/lib/llvm-22/bin REQUIRED)
 string(REGEX MATCH "SET\\(rcFiles([^)]*)\\)" nppRcMatch "${nppUpstreamCMake}")
 string(REGEX REPLACE "[ \t\r\n]+" ";" nppRcFiles "${CMAKE_MATCH_1}")
 list(FILTER nppRcFiles INCLUDE REGEX "\\.rc$")
@@ -213,23 +235,60 @@ foreach(rcFile IN LISTS nppRcFiles)
 		COMMENT "Compiling resources ${rcRelative}"
 		VERBATIM
 	)
-	set_source_files_properties("${resFile}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION "Resources/res")
+	set_source_files_properties("${resFile}" PROPERTIES GENERATED TRUE)
 	list(APPEND nppResFiles "${resFile}")
 endforeach()
 target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
+nppAddResources("res" ${nppResFiles})
 
-# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
-add_dependencies(NotepadPlusPlus nppGup)
-# Resources/notepad++.exe, the program's file as upstream sees it (GetModuleFileName), is the executable:
-# upstream reads its version from that file (Plugins Admin's compatibility checks), so it must exist.
-add_custom_command(TARGET NotepadPlusPlus POST_BUILD
-	COMMAND "${CMAKE_COMMAND}" -E create_symlink "../MacOS/$<TARGET_FILE_NAME:NotepadPlusPlus>" "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/notepad++.exe"
-	COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater"
-	COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources/updater/gup.exe"
-	VERBATIM
-)
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
+	add_dependencies(NotepadPlusPlus nppGup)
+	# Resources/notepad++.exe, the program's file as upstream sees it (GetModuleFileName), is the
+	# executable: upstream reads its version from that file (Plugins Admin's compatibility checks), so it
+	# must exist.
+	add_custom_command(TARGET NotepadPlusPlus POST_BUILD
+		COMMAND "${CMAKE_COMMAND}" -E create_symlink "../MacOS/$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/updater"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "${nppProgramDirectory}/updater/gup.exe"
+		VERBATIM
+	)
+else()
+	# The files beside the executable, by folder; and notepad++.exe, the program's file as upstream sees it.
+	# They are the app's sources too, so that those the build makes (translations, .res files) are made.
+	target_sources(NotepadPlusPlus PRIVATE ${nppResources})
+	set(nppCopyCommands "")
+	set(nppCopyDestinations "")
+	foreach(copy IN LISTS nppResourceCopies)
+		string(FIND "${copy}" "|" bar)
+		string(SUBSTRING "${copy}" 0 ${bar} destination)
+		list(APPEND nppCopyDestinations "${destination}")
+	endforeach()
+	list(REMOVE_DUPLICATES nppCopyDestinations)
+	foreach(destination IN LISTS nppCopyDestinations)
+		set(files "")
+		foreach(copy IN LISTS nppResourceCopies)
+			string(FIND "${copy}" "|" bar)
+			string(SUBSTRING "${copy}" 0 ${bar} copyDestination)
+			math(EXPR fileStart "${bar} + 1")
+			string(SUBSTRING "${copy}" ${fileStart} -1 file)
+			if(copyDestination STREQUAL destination)
+				list(APPEND files "${file}")
+			endif()
+		endforeach()
+		list(APPEND nppCopyCommands COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/${destination}"
+			COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${files} "${nppProgramDirectory}/${destination}")
+	endforeach()
+	add_custom_command(TARGET NotepadPlusPlus POST_BUILD ${nppCopyCommands}
+		COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
+		VERBATIM
+	)
+endif()
 
 # --- Tests -------------------------------------------------------------------------------------------
+if(NPPMAC_PLATFORM STREQUAL "linux")
+	return() # Linux's smoke test comes with J4's last step
+endif()
 # The names Finder gives the files the app opens (W37): its Info.plist, and what macOS makes of it once
 # the app is registered.
 add_test(NAME nppFileKinds COMMAND xcrun swift "${CMAKE_CURRENT_SOURCE_DIR}/../ci/file-kinds.swift"

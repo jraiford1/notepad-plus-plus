@@ -22,7 +22,8 @@
 #import <IOSurface/IOSurface.h>
 #import <QuartzCore/QuartzCore.h>
 
-#include "Backend.h"
+#include "../Backend.h"
+#include "KeyCodes.h"
 #include "platform/Platform.h"
 
 #include <algorithm>
@@ -792,11 +793,10 @@ namespace
 			KeyEvent key;
 			key._down = event.type == NSEventTypeKeyDown;
 			key._repeat = event.isARepeat;
-			key._keyCode = event.keyCode;
+			key._virtualKey = virtualKeyForMacKey(event.keyCode, toU16(event.charactersIgnoringModifiers ?: @""));
 			key._modifiers = modifiersFrom(event.modifierFlags);
 			key._characters = toU16(event.characters ?: @"");
-			key._charactersIgnoringModifiers = toU16(event.charactersIgnoringModifiers ?: @"");
-			key._nsEvent = (__bridge_retained void*)event;
+			key._nativeEvent = (__bridge_retained void*)event;
 			windowManagerKeyEvent(key);
 			return;
 		}
@@ -826,7 +826,7 @@ namespace
 				default:
 					break;
 			}
-			windowManagerModifiersChanged(modifiersFrom(flags), code, down);
+			windowManagerModifiersChanged(modifiersFrom(flags), virtualKeyForMacKey(code, {}), down);
 			[super sendEvent:event];
 			return;
 		}
@@ -1264,6 +1264,12 @@ namespace nppmac::ui
 		g_launched = true;
 	}
 
+	void finishLaunching()
+	{
+		[NSApp setActivationPolicy:std::getenv("NPPMAC_TEST_RUN") ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
+		[NSApp finishLaunching];
+	}
+
 	void createApplication()
 	{
 		// AppKit adds Dictation and Emoji items to any menu titled "Edit", again each time the program
@@ -1355,7 +1361,7 @@ namespace nppmac::ui
 		return native;
 	}
 
-	void* nsView(NativeView* native)
+	void* nativeView(NativeView* native)
 	{
 		return native ? (__bridge void*)native->_view : nullptr;
 	}

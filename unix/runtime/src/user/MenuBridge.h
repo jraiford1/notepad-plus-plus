@@ -14,8 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// The AppKit side of menus: the menu bar and popup menus as NSMenus whose contents are asked for
-// each time a menu opens, so they always show the program's current state. Plain C++ types only.
+// The native side of menus: the menu bar and popup menus (NSMenus on macOS, Qt menus on Linux) whose
+// contents are asked for each time a menu opens, so they always show the program's current state. Plain
+// C++ types only.
 
 #pragma once
 
@@ -50,9 +51,12 @@ namespace nppmac::ui
 		void (*_preferences)(void* context) = nullptr;
 	};
 
-	// Replaces the application's menu bar with the given menu's popups, after the standard
-	// application menu. context identifies the owner window in the callbacks.
-	void setMenuBar(uintptr_t menu, const MenuCallbacks& callbacks, void* context, const std::u16string& applicationName);
+	class NativeView;
+
+	// Replaces the menu bar with the given menu's popups: on macOS the application's, after the
+	// standard application menu; on Linux the owner window's own (its view: view). context identifies
+	// the owner window in the callbacks.
+	void setMenuBar(uintptr_t menu, const MenuCallbacks& callbacks, void* context, const std::u16string& applicationName, NativeView* view);
 	void clearMenuBar(void* context);
 
 	// Shows a popup menu at a screen point (Windows coordinates) and waits; returns the chosen id, or 0.
