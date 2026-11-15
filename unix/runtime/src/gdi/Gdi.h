@@ -140,8 +140,11 @@ namespace nppmac::gdi
 		// scaled bitmap), within the image; and the area those pixels cover, in units.
 		std::shared_ptr<CanvasImage> imagePart(const CanvasRect& area, CanvasRect* covered = nullptr) const;
 		// The image to draw on a canvas: the larger one where the canvas has more than one pixel per
-		// point (Retina), when there is one.
+		// point (Retina, a scaled Linux screen), when there is one; otherwise a small image (an icon)
+		// enlarged pixel for pixel to the next whole multiple, which the canvas then only reduces a
+		// little (2 to 5/3), so its edges stay sharp instead of being smoothed (soft) by stretching.
 		std::shared_ptr<CanvasImage> imageFor(const Canvas* canvas) const;
+		mutable std::vector<uint32_t> _enlargedPixels; // imageFor's enlarged image
 		// A row of unit pixels, to read, or to write.
 		const uint32_t* readRow(int y) const
 		{
