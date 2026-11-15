@@ -1507,9 +1507,9 @@ namespace nppmac::ui
 					return;
 				}
 				QProxyStyle::drawControl(element, option, painter, widget);
-				// Each menu title draws its piece of the line too, along its bottom row, unless it is open.
+				// Each menu title draws its piece of the line too, along its bottom rows, unless it is open.
 				if (element == CE_MenuBarItem && !((option->state & State_Selected) && (option->state & State_Sunken)))
-					painter->fillRect(QRect(option->rect.left(), option->rect.bottom(), option->rect.width(), 1), option->palette.window());
+					painter->fillRect(QRect(option->rect.left(), option->rect.bottom() - 1, option->rect.width(), 2), option->palette.window());
 			}
 
 			void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter, const QWidget* widget) const override
