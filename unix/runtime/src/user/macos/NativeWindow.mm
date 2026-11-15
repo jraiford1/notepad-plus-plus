@@ -1270,6 +1270,11 @@ namespace nppmac::ui
 		[NSApp finishLaunching];
 	}
 
+	void shutDownApplication()
+	{
+		// AppKit needs nothing done before the process ends.
+	}
+
 	void createApplication()
 	{
 		// AppKit adds Dictation and Emoji items to any menu titled "Edit", again each time the program

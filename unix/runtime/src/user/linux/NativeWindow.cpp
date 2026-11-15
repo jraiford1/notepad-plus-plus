@@ -337,6 +337,37 @@ namespace nppmac::ui
 			});
 		}
 
+		// NPPMAC_TEST_COMMAND=<id>[,<id>...] sends those menu commands, half a second apart, after
+		// NPPMAC_TEST_COMMAND_DELAY seconds (default 2); click:<id> clicks the button with that control id
+		// instead. As the Mac's.
+		void scheduleCommands()
+		{
+			const char* command = std::getenv("NPPMAC_TEST_COMMAND");
+			if (!command || !*command)
+				return;
+			const char* delayText = std::getenv("NPPMAC_TEST_COMMAND_DELAY");
+			double delay = delayText ? std::atof(delayText) : 2.0;
+			for (const char* next = command; *next;)
+			{
+				const bool click = std::strncmp(next, "click:", 6) == 0;
+				if (click)
+					next += 6;
+				char* end = nullptr;
+				const int id = static_cast<int>(std::strtol(next, &end, 10));
+				if (end == next)
+					break;
+				QTimer::singleShot(static_cast<int>(delay * 1000), qApp, [click, id]
+				{
+					if (click)
+						windowManagerTestClick(id);
+					else
+						windowManagerTestCommand(id);
+				});
+				delay += 0.5;
+				next = *end == ',' ? end + 1 : end;
+			}
+		}
+
 		// --- Event loop ----------------------------------------------------------------------------
 
 		// Without an application (the runtime's tests), waiting is a condition wakeEventLoop signals.
@@ -899,6 +930,17 @@ namespace nppmac::ui
 
 	// --- Application ---------------------------------------------------------------------------------
 
+	// The program is ending: the windows waiting to be deleted go, then the application, while Qt and its
+	// windowing are all still there. Left to the process's own clean-up, Qt deleted them after parts of
+	// itself had gone, and crashed.
+	void shutDownApplication()
+	{
+		if (!QCoreApplication::instance())
+			return;
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+		delete QCoreApplication::instance();
+	}
+
 	void createApplication()
 	{
 		// A test run's windows never reach the screen: Qt draws them off it.
@@ -922,6 +964,7 @@ namespace nppmac::ui
 			windowManagerApplicationActivated(state == Qt::ApplicationActive);
 		});
 		scheduleSnapshot();
+		scheduleCommands();
 	}
 
 	void finishLaunching()

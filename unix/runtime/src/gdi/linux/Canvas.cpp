@@ -539,8 +539,16 @@ namespace nppmac::gdi
 	std::unique_ptr<NativeFont> createFont(const FontRequest& request)
 	{
 		QFont font;
+		double size = request._size;
 		if (request._systemFace)
+		{
 			font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+			// Windows' UI faces come at Windows' own sizes (9 points, 12 units); the desktop's UI font is
+			// usually bigger (GNOME's: 11 points). They grow in proportion, so that the program's text is
+			// the size of the desktop's, and its dialogs, sized from their font, grow with it.
+			const double desktopSize = font.pointSizeF() > 0 ? font.pointSizeF() * 96.0 / 72.0 : (font.pixelSize() > 0 ? font.pixelSize() : 12.0);
+			size *= desktopSize / 12.0;
+		}
 		else
 		{
 			const QString face = toQString(substituteFace(request._face));
@@ -555,7 +563,6 @@ namespace nppmac::gdi
 				// An unknown name: the system's font, or its fixed-pitch one when that was asked for.
 				font = QFontDatabase::systemFont(request._fixedPitch ? QFontDatabase::FixedFont : QFontDatabase::GeneralFont);
 		}
-		double size = request._size;
 		setSize(font, size);
 		// A cell height (ascent + descent) asked for instead of the em size.
 		if (request._cellHeight)

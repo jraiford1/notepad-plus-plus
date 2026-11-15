@@ -115,6 +115,7 @@ namespace nppmac
 			g_wideArguments.push_back(toUtf16(argv[i]));
 		}
 		nppmac::ui::createApplication();
+		setShutdownHook(nppmac::ui::shutDownApplication);
 		// Files the system opens the program with (Open With, a double-click) arrive while it finishes
 		// launching; they are arguments, as for notepad++.exe.
 		nppmac::ui::finishLaunching();
