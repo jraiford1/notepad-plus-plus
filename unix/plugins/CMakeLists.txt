@@ -41,6 +41,7 @@ function(nppmac_add_plugin name)
 		BYPRODUCTS ${generatedSources}
 		COMMAND npp-migrate "${plugin_SOURCE_DIR}" "${generatedDir}" --report "${migrationReport}"
 			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt" --text-base "${name}" ${encodingOption}
+			--system ${NPPMAC_PLATFORM}
 		DEPENDS npp-migrate ${pluginFiles} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt"
 		COMMENT "Migrating plugin ${name}"
 		VERBATIM

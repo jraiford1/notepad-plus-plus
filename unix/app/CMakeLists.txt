@@ -44,7 +44,7 @@ endforeach()
 add_custom_command(
 	OUTPUT ${nppGeneratedLocalization}
 	COMMAND npp-migrate "${nppInstaller}/nativeLang" "${NPPMAC_GENERATED_DIR}/nativeLang"
-		--text-rules "${CMAKE_CURRENT_SOURCE_DIR}/../text-rules.txt" --text-base installer/nativeLang
+		--text-rules "${CMAKE_CURRENT_SOURCE_DIR}/../text-rules.txt" --text-base installer/nativeLang --system ${NPPMAC_PLATFORM}
 	# The engine writes only what changed; the outputs are touched so the step is not rerun.
 	COMMAND "${CMAKE_COMMAND}" -E touch ${nppGeneratedLocalization}
 	DEPENDS npp-migrate ${nppLocalization} "${CMAKE_CURRENT_SOURCE_DIR}/../text-rules.txt"

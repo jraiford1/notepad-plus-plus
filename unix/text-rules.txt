@@ -1,4 +1,5 @@
-# Text rules: where upstream's words name Windows the operating system, they name macOS here.
+# Text rules: where upstream's words name Windows the operating system, they name the system the build
+# is for here: {system} is macOS or Linux, and a rule for one of them says so (system: macos).
 # npp-migrate applies them to upstream's sources (src/: the menus and dialogs of the .rc files, and
 # the texts the C++ code falls back on) and to the translations (installer/nativeLang/), and stops
 # if a rule no longer changes anything, so a change upstream is noticed.
@@ -8,43 +9,55 @@
 # names ("Windows PowerShell"): those stay. Each rule names the item it changes, so a translation
 # that keeps the word "Windows" (most do) follows too.
 
-# Preferences > Dark Mode: "Follow Windows" follows the macOS appearance.
+# Preferences > Dark Mode: "Follow Windows" follows the system's appearance.
 files: src/WinControls/Preference/preference.rc
 line: IDC_RADIO_DARKMODE_FOLLOWWINDOWS
-replace: "Follow Windows" => "Follow macOS"
+replace: "Follow Windows" => "Follow {system}"
 
 files: installer/nativeLang/*.xml
 line: id="7133"
-replace: Windows => macOS
+replace: Windows => {system}
 
 # Edit menu and tab menu: the read-only attribute is the file's write permission here.
 files: src/Notepad_plus.rc
 line: IDM_EDIT_TOGGLESYSTEMREADONLY
-replace: Attribute in Windows => Attribute in macOS
+replace: Attribute in Windows => Attribute in {system}
 
 files: src/NppNotification.cpp
 line: IDM_EDIT_TOGGLESYSTEMREADONLY
-replace: Attribute in Windows => Attribute in macOS
+replace: Attribute in Windows => Attribute in {system}
 
 files: installer/nativeLang/*.xml
 line: 42033"
-replace: Windows => macOS
+replace: Windows => {system}
 
 # Logging out with unsaved documents.
 files: src/NppBigSwitch.cpp
 line: Windows session
-replace: Windows session => macOS session
+replace: Windows session => {system} session
 
 files: installer/nativeLang/*.xml
 line: <WindowsSessionExit
-regex: Windows(?!SessionExit) => macOS
+regex: Windows(?!SessionExit) => {system}
 
-# Preferences > Dark Mode, the toolbar's accent color: the macOS accent color, and where to change
+# Preferences > Dark Mode, the toolbar's accent color: the system's accent color, and where to change
 # it. The translations describe Windows' settings, so they give way to the English text.
 files: src/WinControls/Preference/preferenceDlg.cpp
 line: toolbar-accent-tip
+system: macos
 regex: L"This option[^"]*" => L"This option makes your toolbar icons follow the macOS accent color, the color of buttons, selections and other highlights. To change it, go to System Settings > Appearance and choose an accent color."
 
 files: installer/nativeLang/*.xml
 line: toolbar-accent-tip
+system: macos
 regex: value="[^"]*" => value="This option makes your toolbar icons follow the macOS accent color, the color of buttons, selections and other highlights. To change it, go to System Settings &gt; Appearance and choose an accent color."
+
+files: src/WinControls/Preference/preferenceDlg.cpp
+line: toolbar-accent-tip
+system: linux
+regex: L"This option[^"]*" => L"This option makes your toolbar icons follow the desktop's accent color, the color of buttons, selections and other highlights. To change it, choose an accent color in your desktop's appearance settings."
+
+files: installer/nativeLang/*.xml
+line: toolbar-accent-tip
+system: linux
+regex: value="[^"]*" => value="This option makes your toolbar icons follow the desktop's accent color, the color of buttons, selections and other highlights. To change it, choose an accent color in your desktop's appearance settings."
