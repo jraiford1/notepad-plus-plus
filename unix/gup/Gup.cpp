@@ -43,6 +43,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -334,6 +335,11 @@ int main(int argc, char* argv[])
 		arguments.erase(arguments.begin());
 	if (arguments.empty())
 		return usage();
+	// Notepad++ joins paths with '\', as on Windows: its plugins folder is "<program folder>\plugins". A '\'
+	// is a separator here too, as for the runtime's file functions; it was taken as part of a name, and the
+	// plugins went to a new folder named "...\plugins" beside the program's files.
+	for (std::string& argument : arguments)
+		std::replace(argument.begin(), argument.end(), '\\', '/');
 	const std::vector<std::string> allArguments = arguments;
 
 	Operation operation = Operation::remove;
