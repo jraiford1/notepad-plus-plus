@@ -194,6 +194,7 @@ namespace nppmac::user
 				description._radio = (item._type & MFT_RADIOCHECK) != 0;
 				description._enabled = !(item._state & MFS_DISABLED);
 				description._default = (item._state & MFS_DEFAULT) != 0;
+				description._rightJustified = (item._type & MFT_RIGHTJUSTIFY) != 0;
 				result.push_back(description);
 			}
 			return result;

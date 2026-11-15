@@ -54,7 +54,8 @@ namespace nppmac::ui
 			return text;
 		}
 
-		// Empties a menu or menu bar, its submenus deleted too (clear leaves them behind).
+		// Empties a menu or menu bar, its submenus deleted too (clear leaves them behind), and a menu bar's
+		// right end.
 		void clearMenu(QWidget* menu)
 		{
 			for (QMenu* submenu : menu->findChildren<QMenu*>(Qt::FindDirectChildrenOnly))
@@ -62,7 +63,15 @@ namespace nppmac::ui
 			if (auto* qmenu = qobject_cast<QMenu*>(menu))
 				qmenu->clear();
 			else if (auto* bar = qobject_cast<QMenuBar*>(menu))
+			{
 				bar->clear();
+				if (QWidget* corner = bar->cornerWidget(Qt::TopRightCorner))
+				{
+					bar->setCornerWidget(nullptr, Qt::TopRightCorner);
+					corner->hide();
+					corner->deleteLater();
+				}
+			}
 		}
 
 		// Fills a Qt menu with a Win32 menu's items; a submenu asks for its own when it opens. A chosen
@@ -133,19 +142,24 @@ namespace nppmac::ui
 			if (callbacks._chosen)
 				callbacks._chosen(id, context);
 		};
+		// From the first right-justified item on (Notepad++'s "+", "v" and "x"), the items sit at the bar's
+		// right end, as on Windows: a menu bar of their own in its corner.
+		QMenuBar* target = bar;
 		for (const MenuItemDescription& item : callbacks._items(menu))
 		{
 			if (item._separator)
 				continue;
+			if (item._rightJustified && target == bar)
+				target = new QMenuBar(bar);
 			if (!item._submenu)
 			{
-				QAction* action = bar->addAction(itemText(item));
+				QAction* action = target->addAction(itemText(item));
 				action->setEnabled(item._enabled);
 				const unsigned id = item._id;
 				QObject::connect(action, &QAction::triggered, action, [chosen, id] { chosen(id); });
 				continue;
 			}
-			QMenu* submenu = bar->addMenu(itemText(item));
+			QMenu* submenu = target->addMenu(itemText(item));
 			submenu->setEnabled(item._enabled);
 			const uintptr_t subHandle = item._submenu;
 			QObject::connect(submenu, &QMenu::aboutToShow, submenu, [submenu, subHandle, callbacks, context, chosen]
@@ -155,6 +169,12 @@ namespace nppmac::ui
 				fill(submenu, subHandle, callbacks, context, chosen);
 			});
 			fill(submenu, subHandle, callbacks, context, chosen);
+		}
+		// Placed once filled, so the bar lays it out at its full size.
+		if (target != bar)
+		{
+			bar->setCornerWidget(target, Qt::TopRightCorner);
+			target->show();
 		}
 	}
 
