@@ -126,8 +126,10 @@ Tracked as job J1 in the work tracker. Today:
 * Notepad++'s dark mode works, including "follow Windows", which follows the macOS appearance:
   the editor, panels, dialogs and the runtime's controls go dark, and so do the native menus and
   panels;
-* plugins load from `Notepad++.app/Contents/Resources/plugins/<Name>/<Name>.dll`, the place and name
-  they have next to `notepad++.exe` on Windows (see [Plugins](#plugins));
+* plugins load from `~/Documents/Notepad++/plugins/<Name>/<Name>.dll`: upstream's place next to
+  `notepad++.exe` (`Contents/Resources/plugins`) is inside the app, which should not change once
+  installed and is replaced whole by a new version, so the runtime gives that folder as this one (see
+  [Plugins](#plugins));
 * Finder opens files with it (Open With, a double-click once it is the default, a drop on the Dock
   icon), into the running window; a folder opens as a dropped one does. Finder offers it for text
   and for the extensions of the languages it knows (`langs.model.xml`), also those macOS has no type
@@ -211,7 +213,8 @@ makes Plugins Admin read that JSON list on macOS. Installing, updating, removing
 enabling work as on Windows: Notepad++ quits and its updater, `Resources/updater/gup.exe`
 ([gup/Gup.cpp](gup/Gup.cpp), WinGUp's command line on macOS), changes the plugin folders, checks each
 package against its SHA-256, and starts Notepad++ again. Plugins go where upstream puts them,
-`Resources/plugins/<Name>/`. Versions are the official list's; the plugin is built from the commit
+`Resources/plugins/<Name>/`, which on macOS is `~/Documents/Notepad++/plugins/<Name>/` (above), for
+the app and its updater alike; the list stays in the app. Versions are the official list's; the plugin is built from the commit
 the catalog pins, which may be newer.
 
 ## Debugging
@@ -229,6 +232,7 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_FILE_PANEL=<path>`, `NPPMAC_TEST_COLOR=RRGGBB` | answer the Open/Save panels and the color panel without showing them |
 | `NPPMAC_TEST_APPEARANCE=dark` (or `light`) | runs as if the system appearance were so |
 | `NPPMAC_TEST_APPDATA=<folder>` | stands for `~/Library/Application Support`, where Notepad++ keeps what it stores per user besides `-settingsDir` (plugins' settings) |
+| `NPPMAC_TEST_PLUGINS_FOLDER=<folder>` | stands for `~/Documents/Notepad++/plugins`, where the Mac app keeps its plugins (and Plugins Admin's gup installs them); without it a test run keeps them in the app, in `Contents/Resources/plugins` |
 | `NPPMAC_TEST_COMMAND=<id>[,<id>...]` | sends menu commands (`IDM_*` values), half a second apart, after `NPPMAC_TEST_COMMAND_DELAY` seconds (default 2); `click:<id>` clicks the button (check box, radio button) with that control id, in any window |
 | `NPPMAC_TEST_WHEEL=<lines>[,<lines>...]` | turns a mouse wheel over the middle of the front window, an event every 10 ms, after `NPPMAC_TEST_WHEEL_DELAY` seconds (default 2): each the given lines (negative: towards the end), as macOS makes a wheel's events; `pt:` before them makes them a trackpad's, in whole points (the event made has no parts of a point) |
 | `NPPMAC_DUMP_TREE=1` | with a snapshot, prints the window tree (with an editor's first line shown and line height, and a tab control's tabs), the native windows and the menu bar |

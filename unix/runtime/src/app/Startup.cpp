@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <execinfo.h>
+#include <filesystem>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -101,10 +102,36 @@ namespace nppmac
 		return g_applicationName;
 	}
 
+	namespace
+	{
+		// Notepad++ keeps its plugins in the program folder's plugins folder, as on Windows. On the Mac that is
+		// inside the app, which should not change once it is installed and is replaced whole by a new version
+		// (the plugins would go with it): they are kept in Documents/Notepad++/plugins instead, the owner's
+		// choice (W73). The plugin list the app carries (plugins/Config/nppPluginList.json) stays in the app. Test runs
+		// keep them in the app, unless NPPMAC_TEST_PLUGINS_FOLDER names a folder for them. Plugins Admin's
+		// updater (gup) does the same.
+		void redirectPlugins()
+		{
+#ifdef __APPLE__
+			const char* testFolder = std::getenv("NPPMAC_TEST_PLUGINS_FOLDER");
+			const bool inTestFolder = testFolder && *testFolder;
+			if (std::getenv("NPPMAC_TEST_RUN") && !inTestFolder)
+				return;
+			const std::string plugins = nppmac::platform::resourcesDirectory() + "/plugins";
+			const std::string folder = inTestFolder ? std::string{testFolder} : nppmac::platform::documentsDirectory() + "/Notepad++/plugins";
+			// Made now: Notepad++ makes the plugins folder, but not the folders it is in.
+			std::error_code error;
+			std::filesystem::create_directories(folder, error);
+			nppmac::redirectFolder(plugins, folder, plugins + "/Config/nppPluginList.json");
+#endif
+		}
+	}
+
 	void startup(int argc, char* argv[])
 	{
 		installTestCrashHandler();
 		nppmac::installChar16Facets();
+		redirectPlugins();
 		__argc = argc;
 		__argv = argv;
 

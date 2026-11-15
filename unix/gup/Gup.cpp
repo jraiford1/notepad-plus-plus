@@ -274,6 +274,25 @@ namespace
 #endif
 	}
 
+#ifdef __APPLE__
+	// On the Mac the plugins are not in the app (W73): what Notepad++ names <program folder>/plugins is
+	// Documents/Notepad++/plugins, as for Notepad++ itself (redirectPlugins, in the runtime's Startup.cpp),
+	// or NPPMAC_TEST_PLUGINS_FOLDER; test runs without it keep them in the app.
+	std::string pluginsFolder(const std::string& path, const fs::path& programFolder)
+	{
+		const char* testFolder = std::getenv("NPPMAC_TEST_PLUGINS_FOLDER");
+		const bool inTestFolder = testFolder && *testFolder;
+		const char* home = std::getenv("HOME");
+		if (!inTestFolder && (testRun() || !home || !*home))
+			return path;
+		const std::string plugins = (programFolder / "plugins").string();
+		if (!path.starts_with(plugins) || (path.size() > plugins.size() && path[plugins.size()] != '/'))
+			return path;
+		const std::string folder = inTestFolder ? std::string{testFolder} : std::string{home} + "/Documents/Notepad++/plugins";
+		return folder + path.substr(plugins.size());
+	}
+#endif
+
 	int usage()
 	{
 		std::fprintf(stderr, "usage: gup.exe -unzipTo [-clean] | -clean | -moveFolder <notepad++.exe> <folders and plugins>...\n");
@@ -376,6 +395,10 @@ int main(int argc, char* argv[])
 	const fs::path notepadPath = arguments[next++];
 	const fs::path programFolder = notepadPath.parent_path();
 	const fs::path bundle = bundleOf(notepadPath);
+#ifdef __APPLE__
+	for (size_t i = next; i < arguments.size(); ++i)
+		arguments[i] = pluginsFolder(arguments[i], programFolder);
+#endif
 	if (!elevated)
 		waitForNotepadToEnd(bundle);
 #ifndef __APPLE__

@@ -1195,12 +1195,41 @@ errno_t strcat_s(char* dest, size_t destSize, const char* src)
 
 namespace nppmac
 {
+	namespace
+	{
+		struct Redirect
+		{
+			std::string _from;
+			std::string _to;
+			std::string _except;
+		};
+
+		Redirect& redirect()
+		{
+			static auto* folder = new Redirect;
+			return *folder;
+		}
+
+		bool isIn(std::string_view path, std::string_view folder)
+		{
+			return path.starts_with(folder) && (path.size() == folder.size() || path[folder.size()] == '/');
+		}
+	}
+
+	void redirectFolder(std::string from, std::string to, std::string except)
+	{
+		redirect() = {std::move(from), std::move(to), std::move(except)};
+	}
+
 	std::string nativePath(std::string_view path)
 	{
 		if (path.starts_with("\\\\?\\"))
 			path.remove_prefix(4);
 		std::string result{path};
 		std::replace(result.begin(), result.end(), '\\', '/');
+		const Redirect& folder = redirect();
+		if (!folder._from.empty() && isIn(result, folder._from) && result != folder._except)
+			result = folder._to + result.substr(folder._from.size());
 		return result;
 	}
 

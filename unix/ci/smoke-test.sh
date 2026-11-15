@@ -391,6 +391,36 @@ if runSettings="$work/plugins-admin-settings" run plugins-admin NPPMAC_TEST_COMM
 	fi
 fi
 
+# On the Mac the plugins are kept out of the app, in Documents/Notepad++/plugins (W73; here the test's
+# stand-in for it): a plugin there loads (HelloMac's greeting), Plugins Admin still finds the plugin list
+# the app carries, and nothing is added to the app's own plugins folder.
+if [ "$system" = Darwin ] && [ -n "$plugin" ]; then
+	documentsPlugins="$work/Documents-plugins"
+	mkdir -p "$documentsPlugins/HelloMac"
+	cp "$plugin" "$documentsPlugins/HelloMac/HelloMac.dll"
+	files=()
+	mkdir -p "$work/plugins-outside-settings"
+	if runSettings="$work/plugins-outside-settings" run plugins-outside NPPMAC_TEST_PLUGINS_FOLDER="$documentsPlugins" NPPMAC_TEST_COMMAND=22000 \
+		NPPMAC_TEST_TYPE='^s' NPPMAC_TEST_TYPE_DELAY=3 NPPMAC_TEST_FILE_PANEL="$work/plugins-outside.txt"; then
+		expect_file plugins-outside "$work/plugins-outside.txt" "Hello from a plugin on macOS"
+	fi
+	files=()
+	mkdir -p "$work/plugins-admin-outside-settings"
+	if runSettings="$work/plugins-admin-outside-settings" run plugins-admin-outside NPPMAC_TEST_PLUGINS_FOLDER="$documentsPlugins" \
+		NPPMAC_TEST_COMMAND=48015 NPPMAC_DUMP_TREE=1; then
+		if grep -q 'text="Plugins Admin"' "$work/plugins-admin-outside.log" && ! grep -q 'NPPMAC alert' "$work/plugins-admin-outside.log" \
+			&& [ "$(ls "$pluginsRoot")" = Config ]; then
+			echo "ok   plugins-admin-outside"
+		else
+			echo "FAIL plugins-admin-outside: no Plugins Admin window, an alert, or files added to the app's plugins folder"
+			grep 'NPPMAC alert\|Plugins Admin' "$work/plugins-admin-outside.log" | head -5
+			ls "$pluginsRoot"
+			failures=$((failures + 1))
+		fi
+	fi
+	rm -rf "$documentsPlugins"
+fi
+
 # Dark mode, following the system.
 files=()
 runSettings="$darkSettings" run dark NPPMAC_TEST_APPEARANCE=dark && echo "ok   dark"

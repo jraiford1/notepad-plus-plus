@@ -68,6 +68,13 @@ expect disable '[ -f "$resources/plugins/disabled/Sample/Sample.dll" ] && [ ! -e
 "$gup" -clean "$resources/notepad++.exe" "$resources\\plugins\\disabled" "Sample"
 expect remove '[ ! -e "$resources/plugins/disabled/Sample" ]'
 
+# On the Mac the plugins are kept out of the app (W73): what Notepad++ names its plugins folder is
+# Documents/Notepad++/plugins, here the test's stand-in for it.
+if [ "$(uname)" = Darwin ]; then
+	NPPMAC_TEST_PLUGINS_FOLDER="$work/Documents-plugins" "$gup" -unzipTo "$resources/notepad++.exe" "$resources\\plugins" "Sample plugins-catalog/Sample.zip $sha"
+	expect install-outside-app '[ -f "$work/Documents-plugins/Sample/Sample.dll" ] && [ ! -e "$resources/plugins/Sample" ]'
+fi
+
 if [ $failures -ne 0 ]; then
 	echo "$failures failure(s)"
 	exit 1
