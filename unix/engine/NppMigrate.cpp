@@ -19,7 +19,7 @@
 //
 //     npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>]
 //                 [--text-rules <file> --text-base <path of sourceRoot under PowerEditor/>]
-//                 [--plugin-text-rules <file>] [--source-encoding <encoding>]
+//                 [--plugin-text-rules <file>] [--source-encoding <encoding>] [--system macos|linux]
 //     npp-migrate --rc-wide-strings <preprocessed .rc> <output .rc>
 //
 // The second form is for a plugin's resources: its .rc includes the plugin's migrated headers, whose
@@ -49,7 +49,11 @@
 //
 //     files: installer/nativeLang/*.xml
 //     line: id="7133"
-//     replace: Windows => macOS
+//     replace: Windows => {system}
+//
+// {system} in a replacement is the name of the system the build is for (--system macos or linux:
+// "macOS" or "Linux"). A rule for one system only says so before its replacement ("system: linux");
+// the other system's builds leave it out.
 //
 // Lines starting with '#' are comments. A rule that changes nothing in the files of this run stops
 // the migration, as a fixup does.
@@ -98,6 +102,7 @@ namespace
 		std::string _anchor;
 		std::string _from;
 		std::string _to;
+		std::string _system; // the one system it is for ("macos", "linux"), or every one
 		bool _regex = false;
 		bool _optional = false; // a plugin rule: '*' matches across folders, and it may change nothing
 		int _line = 0;
@@ -478,7 +483,13 @@ namespace
 		return first == std::string::npos ? std::string{} : text.substr(first, last - first + 1);
 	}
 
-	bool readTextRules(const fs::path& path, std::vector<TextRule>& rules, bool optional = false)
+	// The system's name as a text says it.
+	std::string systemName(const std::string& system)
+	{
+		return system == "linux" ? "Linux" : "macOS";
+	}
+
+	bool readTextRules(const fs::path& path, std::vector<TextRule>& rules, const std::string& system, bool optional = false)
 	{
 		std::ifstream in{path};
 		if (!in)
@@ -502,7 +513,7 @@ namespace
 				continue;
 			const size_t colon = text.find(':');
 			if (colon == std::string::npos)
-				return complain("expected files:, line:, replace: or regex:");
+				return complain("expected files:, line:, system:, replace: or regex:");
 			const std::string key = text.substr(0, colon);
 			const std::string value = trimmed(text.substr(colon + 1));
 			if (key == "files")
@@ -515,6 +526,12 @@ namespace
 			{
 				rule._anchor = value;
 			}
+			else if (key == "system")
+			{
+				if (value != "macos" && value != "linux")
+					return complain("system: is macos or linux");
+				rule._system = value;
+			}
 			else if (key == "replace" || key == "regex")
 			{
 				const size_t arrow = value.find(" => ");
@@ -522,13 +539,16 @@ namespace
 					return complain("a rule is files:, line:, then replace: or regex: <from> => <to>");
 				rule._from = value.substr(0, arrow);
 				rule._to = value.substr(arrow + 4);
+				for (size_t at = rule._to.find("{system}"); at != std::string::npos; at = rule._to.find("{system}", at))
+					rule._to.replace(at, 8, systemName(system));
 				rule._regex = key == "regex";
 				rule._optional = optional;
-				rules.push_back(rule);
+				if (rule._system.empty() || rule._system == system)
+					rules.push_back(rule);
 			}
 			else
 			{
-				return complain("expected files:, line:, replace: or regex:");
+				return complain("expected files:, line:, system:, replace: or regex:");
 			}
 		}
 		return true;
@@ -631,7 +651,7 @@ int main(int argc, char* argv[])
 	}
 	if (argc < 3 || argc % 2 == 0)
 	{
-		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>] [--source-encoding <encoding>]\n";
+		std::cerr << "usage: npp-migrate <sourceRoot> <outputRoot> [--report <file.tsv>] [--fixups <file>] [--text-rules <file> --text-base <path>] [--plugin-text-rules <file>] [--source-encoding <encoding>] [--system macos|linux]\n";
 		return exitUsage;
 	}
 
@@ -643,6 +663,7 @@ int main(int argc, char* argv[])
 	fs::path pluginTextRulesPath;
 	std::string textBase;
 	std::string sourceEncoding;
+	std::string system = "macos";
 	for (int i = 3; i + 1 < argc; i += 2)
 	{
 		const std::string option{argv[i]};
@@ -658,6 +679,8 @@ int main(int argc, char* argv[])
 			pluginTextRulesPath = argv[i + 1];
 		else if (option == "--source-encoding")
 			sourceEncoding = argv[i + 1];
+		else if (option == "--system")
+			system = argv[i + 1];
 		else
 		{
 			std::cerr << "unknown option: " << option << "\n";
@@ -669,13 +692,18 @@ int main(int argc, char* argv[])
 	if (!fixupPath.empty() && !readFixups(fixupPath, fixups))
 		return exitFixupError;
 	std::vector<TextRule> textRules;
-	if (!textRulesPath.empty() && (textBase.empty() || !readTextRules(textRulesPath, textRules)))
+	if (system != "macos" && system != "linux")
+	{
+		std::cerr << "npp-migrate: --system is macos or linux\n";
+		return exitUsage;
+	}
+	if (!textRulesPath.empty() && (textBase.empty() || !readTextRules(textRulesPath, textRules, system)))
 	{
 		if (textBase.empty())
 			std::cerr << "npp-migrate: --text-rules needs --text-base\n";
 		return exitFixupError;
 	}
-	if (!pluginTextRulesPath.empty() && !readTextRules(pluginTextRulesPath, textRules, true))
+	if (!pluginTextRulesPath.empty() && !readTextRules(pluginTextRulesPath, textRules, system, true))
 		return exitFixupError;
 
 	// Sort so that the report, like the output, does not depend on directory iteration order.
