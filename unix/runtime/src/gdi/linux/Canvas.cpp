@@ -193,11 +193,11 @@ namespace nppmac::gdi
 		class Painter : public Canvas
 		{
 		public:
-			// A painter already painting gets Core Graphics's starting state now; one that is not (a
-			// derived canvas's own) when it starts.
-			explicit Painter(QPainter* painter) : _painter{painter}
+			// A painter already painting gets Core Graphics's starting state now. A derived canvas's own
+			// painter does not exist yet while this is made: it is given that state once it starts.
+			explicit Painter(QPainter* painter, bool painting = true) : _painter{painter}
 			{
-				if (_painter->isActive())
+				if (painting)
 					initialize();
 			}
 
@@ -449,7 +449,7 @@ namespace nppmac::gdi
 		{
 		public:
 			PixelPainter(uint32_t* pixels, int width, int height, bool bottomUp)
-				: Painter{&_ownPainter},
+				: Painter{&_ownPainter, false},
 				  _image{reinterpret_cast<uchar*>(pixels), width, height, static_cast<qsizetype>(width) * 4, QImage::Format_ARGB32_Premultiplied}
 			{
 				_image.setDotsPerMeterX(dotsPerMeter);
