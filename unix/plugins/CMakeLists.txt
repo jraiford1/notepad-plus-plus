@@ -14,10 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Plugins on macOS. A plugin's sources are the Windows ones: they go through the migration engine,
-# as Notepad++'s do (wchar_t becomes char16_t, so the plugin interface matches the app's), compile
-# against the runtime's headers, and link as a Mach-O bundle whose Win32 calls bind to the runtime in
-# the app. The file keeps upstream's name and place: plugins/<Name>/<Name>.dll.
+# Plugins on macOS and Linux. A plugin's sources are the Windows ones: they go through the migration
+# engine, as Notepad++'s do (wchar_t becomes char16_t, so the plugin interface matches the app's),
+# compile against the runtime's headers, and link as a Mach-O bundle or an ELF module whose Win32 calls
+# bind to the runtime in the app. The file keeps upstream's name and place: plugins/<Name>/<Name>.dll.
 #
 #     nppmac_add_plugin(<Name> SOURCE_DIR <dir> SOURCES <file>...)
 
@@ -71,7 +71,13 @@ function(nppmac_add_plugin name)
 	# Visual C++'s C compiler warns where clang's stops: pointers to functions or data whose types differ
 	# only in what is the same here (WPARAM and LPARAM signedness...).
 	target_compile_options(${name} PRIVATE "$<$<COMPILE_LANGUAGE:C>:-Wno-error=incompatible-function-pointer-types;-Wno-error=incompatible-pointer-types;-Wno-error=int-conversion>")
-	target_link_options(${name} PRIVATE "SHELL:-bundle_loader \"$<TARGET_FILE:NotepadPlusPlus>\"")
+	if(NPPMAC_PLATFORM STREQUAL "macos")
+		target_link_options(${name} PRIVATE "SHELL:-bundle_loader \"$<TARGET_FILE:NotepadPlusPlus>\"")
+	else()
+		# The app's symbols are found when the plugin is loaded (the app exports them); the plugin's own
+		# references stay its own, as two-level names keep them on the Mac (on ELF the app's would win).
+		target_link_options(${name} PRIVATE -Wl,-Bsymbolic)
+	endif()
 	add_dependencies(${name} NotepadPlusPlus)
 
 	# The plugin's resources (dialogs, icons, strings): its .rc files compiled into <name>.res beside
@@ -103,7 +109,7 @@ function(nppmac_add_plugin name)
 			add_custom_command(
 				OUTPUT "${partFile}"
 				COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${name}/res"
-				COMMAND "${NPPMAC_RC_CLANG}" --driver-mode=gcc -target arm64-pc-windows-msvc-coff -E -xc ${rcDefines}
+				COMMAND "${NPPMAC_RC_CLANG}" --driver-mode=gcc -target ${nppRcTarget} -E -xc ${rcDefines}
 					-I "${rcDirectory}" ${rcIncludeFlags} ${nppPluginRcFlags} -o "${preprocessedFile}" "${rcText}"
 				COMMAND npp-migrate --rc-wide-strings "${preprocessedFile}" "${wideFile}"
 				COMMAND "${NPPMAC_LLVM_RC}" /no-preprocess -c 65001 -I "${rcDirectory}" ${rcIncludeFlags} -fo "${partFile}" "${wideText}"
@@ -146,7 +152,12 @@ endfunction()
 # programs/gnu-global.cmake), and NPP_HEADERS for a project built against Notepad++'s own plugin headers
 # (from its repository) rather than copies of its own.
 set(NPPMAC_PLUGIN_SOURCES "" CACHE PATH "Folder of local plugin checkouts, one per plugin name (instead of fetching them)")
-option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
+# On Linux the catalog comes with its own stage of J4.
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" ON)
+else()
+	option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" OFF)
+endif()
 function(nppmac_add_external_plugin name)
 	cmake_parse_arguments(plugin "NPP_HEADERS" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR;PROGRAMS" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES;CONCATENATE;FETCH;CONFIGURE;CONFIGURE_VARIABLES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
@@ -310,12 +321,25 @@ endfunction()
 get_filename_component(nppLlvmBin "${NPPMAC_LLVM_RC}" DIRECTORY)
 find_program(NPPMAC_RC_CLANG clang HINTS "${nppLlvmBin}" NO_DEFAULT_PATH REQUIRED)
 set(nppPluginRcFlags -I "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/include")
+# The Windows target the .rc files are preprocessed for, the machine's own.
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	set(nppRcTarget arm64-pc-windows-msvc-coff)
+else()
+	set(nppRcTarget x86_64-pc-windows-msvc-coff)
+endif()
 foreach(wineDir IN LISTS NPPMAC_WINE_INCLUDE_DIRS)
 	list(APPEND nppPluginRcFlags -I "${wineDir}")
 endforeach()
 
 # A demonstration plugin, used by the tests.
 nppmac_add_plugin(HelloMac NPP_HEADERS SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/HelloMac" SOURCES HelloMac.cpp RC_FILES HelloMac.rc)
+
+# The program folder, where the app's plugins go.
+if(NPPMAC_PLATFORM STREQUAL "macos")
+	set(nppProgramFolder "$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources")
+else()
+	set(nppProgramFolder "$<TARGET_FILE_DIR:NotepadPlusPlus>")
+endif()
 
 if(NPPMAC_BUILD_PLUGINS)
 	include(catalog.cmake)
@@ -329,14 +353,14 @@ if(NPPMAC_BUILD_PLUGINS)
 		string(REPLACE ";" "|" catalogNames "${catalogPlugins}")
 		add_custom_target(nppPluginCatalog ALL
 			COMMAND "${CMAKE_COMMAND}" "-DNAMES=${catalogNames}" "-DPLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-				"-DINFO=${CMAKE_CURRENT_SOURCE_DIR}/catalog-info.json" "-DRESOURCES=$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources"
+				"-DINFO=${CMAKE_CURRENT_SOURCE_DIR}/catalog-info.json" "-DRESOURCES=${nppProgramFolder}"
 				-P "${CMAKE_CURRENT_SOURCE_DIR}/MakePluginList.cmake"
 			COMMENT "Packing the plugins for Plugins Admin"
 			VERBATIM
 		)
 		# Plugins being ported may not build: only the catalog's committed plugins are waited for.
 		add_dependencies(nppPluginCatalog NotepadPlusPlus ${committedPlugins})
-		add_test(NAME pluginList COMMAND "${CMAKE_COMMAND}" "-DRESOURCES=$<TARGET_BUNDLE_CONTENT_DIR:NotepadPlusPlus>/Resources"
+		add_test(NAME pluginList COMMAND "${CMAKE_COMMAND}" "-DRESOURCES=${nppProgramFolder}"
 			-P "${CMAKE_CURRENT_SOURCE_DIR}/CheckPluginList.cmake")
 	endif()
 endif()

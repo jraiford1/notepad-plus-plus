@@ -181,7 +181,8 @@ else()
 	# The program directory: the executable, and beside it what Notepad++ reads from its own folder.
 	set(nppProgramDirectory "${CMAKE_CURRENT_BINARY_DIR}/Notepad++")
 	add_executable(NotepadPlusPlus main.cpp $<TARGET_OBJECTS:nppUpstream>)
-	set_target_properties(NotepadPlusPlus PROPERTIES OUTPUT_NAME "notepad++" RUNTIME_OUTPUT_DIRECTORY "${nppProgramDirectory}")
+	set_target_properties(NotepadPlusPlus PROPERTIES OUTPUT_NAME "notepad++" RUNTIME_OUTPUT_DIRECTORY "${nppProgramDirectory}"
+		ENABLE_EXPORTS ON) # plugins bind to the Win32 functions in it
 endif()
 target_compile_definitions(NotepadPlusPlus PRIVATE "NPPMAC_APP_NAME=\"${NPPMAC_APP_NAME}\"")
 target_include_directories(NotepadPlusPlus PRIVATE "${NPPMAC_GENERATED_SRC}")
