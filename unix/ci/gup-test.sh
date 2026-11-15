@@ -1,5 +1,5 @@
 #!/bin/bash
-# This file is part of Notepad++ project (macOS build)
+# This file is part of Notepad++ project (macOS and Linux build)
 # Copyright (C)2026 Notepad++ macOS contributors
 #
 # This program is free software: you can redistribute it and/or modify
@@ -33,8 +33,17 @@ resources="$work/Test.app/Contents/Resources"
 mkdir -p "$resources/plugins-catalog" "$resources/plugins"
 touch "$resources/notepad++.exe"
 cp "$plugin" "$work/Sample.dll"
-(cd "$work" && zip -q "$resources/plugins-catalog/Sample.zip" Sample.dll)
-sha="$(shasum -a 256 "$resources/plugins-catalog/Sample.zip" | cut -d' ' -f1)"
+# zip and shasum where there are (macOS), Python's zipfile and sha256sum where not (Linux).
+if command -v zip > /dev/null; then
+	(cd "$work" && zip -q "$resources/plugins-catalog/Sample.zip" Sample.dll)
+else
+	(cd "$work" && python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1], "w").write("Sample.dll")' "$resources/plugins-catalog/Sample.zip")
+fi
+if command -v sha256sum > /dev/null; then
+	sha="$(sha256sum "$resources/plugins-catalog/Sample.zip" | cut -d' ' -f1)"
+else
+	sha="$(shasum -a 256 "$resources/plugins-catalog/Sample.zip" | cut -d' ' -f1)"
+fi
 failures=0
 expect()
 {
