@@ -1148,11 +1148,9 @@ namespace nppmac::ui
 			QApplication::setWindowIcon(icon);
 		// Quitting is the program's (PostQuitMessage), not the last window's closing.
 		application->setQuitOnLastWindowClosed(false);
+		// Light, as a Windows program's menus are until it asks for dark (setApplicationAppearance).
+		QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
 		application->installEventFilter(new KeyFilter);
-		QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, application, [](Qt::ColorScheme)
-		{
-			windowManagerAppearanceChanged();
-		});
 		QObject::connect(application, &QGuiApplication::applicationStateChanged, application, [](Qt::ApplicationState state)
 		{
 			windowManagerApplicationActivated(state == Qt::ApplicationActive);
@@ -1440,9 +1438,13 @@ namespace nppmac::ui
 		surface->layoutScrollBars();
 	}
 
-	void setApplicationAppearance(Appearance)
+	void setApplicationAppearance(Appearance appearance)
 	{
-		// Qt follows the desktop's light or dark style for its own parts; Notepad++ draws its own.
+		// Qt's own parts (the menu bar and menus, its dialogs, scroll bars) take the program's choice, as
+		// Windows' menus do: dark when it asks for dark (ForceDark), light otherwise, whatever the
+		// desktop's style. The desktop's own preference is read from the settings portal (Platform.cpp).
+		if (haveApplication())
+			QGuiApplication::styleHints()->setColorScheme(appearance == Appearance::dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
 	}
 
 	void setWindowAppearance(NativeView*, Appearance)
