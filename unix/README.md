@@ -226,6 +226,7 @@ Environment variables read by the runtime:
 | `NPPMAC_TEST_RUN=1` | a test run: it can never become the active program (no Dock icon, no keyboard: it takes only the test aids' keys), its windows are never on screen (snapshots draw them), alerts are printed (`NPPMAC alert: …`) and answered with their default, and a crash prints a backtrace and exits, without the macOS crash report dialog |
 | `NPPMAC_TEST_SWITCH_BACK=<seconds>` | acts as if the user switched to another program and back then (`WM_ACTIVATEAPP`) |
 | `NPPMAC_SNAPSHOT=<file.png>` | renders the front window to a PNG after `NPPMAC_SNAPSHOT_DELAY` seconds (default 5); `NPPMAC_SNAPSHOT_EXIT=1` then quits |
+| `NPPMAC_SNAPSHOT_WINDOW=<title>` | makes the snapshot of the window of that title instead (a dialog beside the main window, such as Plugins Admin) |
 | `NPPMAC_TEST_TYPE=<text>` | types the text through AppKit, a key every 50 ms, after `NPPMAC_TEST_TYPE_DELAY` seconds (default 2); `^s` is ⌘S, ESC is Escape |
 | `NPPMAC_TEST_IME=<composing>[\|<committed>]` | after the typing, plays an input method on the focus window: composes the first text, a second later commits the second |
 | `NPPMAC_TEST_PRINT_PDF=<path>` | printing takes the default printer's settings without the print panel and writes the job's PDF there instead of printing it |

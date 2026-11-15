@@ -266,7 +266,21 @@ namespace nppmac::controls
 					paint(hwnd, *control, reinterpret_cast<HDC>(wParam));
 					return 0;
 				case WM_ERASEBKGND:
+				{
+					// A text static's own painting fills it with its parent's color; one whose painting a
+					// subclass replaced draws only that (Notepad++'s links, URLCtrl, draw just their line of
+					// text), and on Windows the parent's background shows around it. Its erasing fills it with
+					// that color, so it does not show what its window had before (a white bar under the link).
+					const UINT type = typeOf(hwnd);
+					if (type <= SS_SIMPLE || type == SS_LEFTNOWORDWRAP)
+					{
+						RECT client{};
+						GetClientRect(hwnd, &client);
+						HDC hdc = reinterpret_cast<HDC>(wParam);
+						FillRect(hdc, &client, controlColors(hwnd, hdc, WM_CTLCOLORSTATIC));
+					}
 					return 1;
+				}
 				case WM_LBUTTONDOWN:
 				case WM_LBUTTONDBLCLK:
 					if (GetWindowLongW(hwnd, GWL_STYLE) & SS_NOTIFY)

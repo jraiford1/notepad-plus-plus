@@ -1343,9 +1343,17 @@ namespace nppmac::controls
 					return TRUE;
 				}
 				case LVM_GETSUBITEMRECT:
+				case LVM_GETITEMINDEXRECT:
 				{
+					// The same, the item given by its index in an LVITEMINDEX for the latter: the subitem in
+					// the rectangle's top, the part in its left. Notepad++'s dark mode fills each column of a
+					// selected row through LVM_GETITEMINDEXRECT; unanswered, the rectangle it filled reached
+					// from the list's top to that row, over the first column of the rows above.
 					auto* rect = reinterpret_cast<RECT*>(lParam);
-					const int index = static_cast<int>(wParam);
+					if (!rect)
+						return FALSE;
+					const int index = message == LVM_GETITEMINDEXRECT
+						? (wParam ? reinterpret_cast<const LVITEMINDEX*>(wParam)->iItem : -1) : static_cast<int>(wParam);
 					if (!validIndex(hwnd, *list, index))
 						return FALSE;
 					*rect = rect->top == 0 && rect->left == LVIR_BOUNDS ? rowRect(hwnd, *list, index) : cellRect(hwnd, *list, index, rect->top);
