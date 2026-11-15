@@ -49,6 +49,7 @@
 #include <QtGui/QStyleHints>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QProxyStyle>
+#include <QtWidgets/QStyleOption>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QStyle>
 
