@@ -240,6 +240,26 @@ elif runSettings="$work/wheel-settings" run wheel NPPMAC_TEST_WHEEL=-0.1,-0.96,-
 		failures=$((failures + 1))
 	fi
 fi
+
+# Scrolling slowly moves the text: 40 events of a trackpad's, of 1 point each, have scrolled it 40
+# points (Scintilla's view rounded each position to a whole line, so it never moved). The toolbar is not
+# painted again for each of them (Notepad++ sets a button's state on each; painting it all flickered).
+if [ "$system" != Darwin ]; then
+	echo "skip wheel-slow: the wheel test aid is the Mac's"
+elif runSettings="$work/wheel-settings" run wheel-slow NPPMAC_TEST_WHEEL="pt:$(printf -- '-1,%.0s' $(seq 1 40))" NPPMAC_SNAPSHOT_DELAY=2.8 \
+	NPPMAC_TRACE_WHEEL="$work/wheel-slow.trace" NPPMAC_TRACE_PAINT=1; then
+	moved="$(grep ' moved to ' "$work/wheel-slow.trace" | tail -1 | awk '{print $4}')"
+	toolbar="$(grep -c 'WM_PAINT ToolbarWindow32' "$work/wheel-slow.log")"
+	if [ "$moved" != 40.0 ]; then
+		echo "FAIL wheel-slow: 40 scroll events of 1 point moved the editor to ${moved:-nowhere}, not 40 points"
+		failures=$((failures + 1))
+	elif [ "$toolbar" -gt 10 ]; then
+		echo "FAIL wheel-slow: the toolbar was painted $toolbar times while the editor scrolled 40 times"
+		failures=$((failures + 1))
+	else
+		echo "ok   wheel-slow"
+	fi
+fi
 files=()
 
 # More tabs than fit in one row: as on Windows, the row scrolls by whole tabs, with arrows at its right
