@@ -51,4 +51,6 @@ namespace nppmac::ui
 	// The menu bar of a top level's window, made when first asked for; and its removal.
 	QMenuBar* menuBarFor(NativeView* view);
 	void removeMenuBar(NativeView* view);
+	// Gives a menu bar Windows' flat look (no line along its bottom).
+	void styleMenuBar(QMenuBar* bar);
 }

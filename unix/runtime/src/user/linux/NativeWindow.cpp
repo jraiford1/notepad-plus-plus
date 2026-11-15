@@ -48,6 +48,7 @@
 #include <QtGui/QScreen>
 #include <QtGui/QStyleHints>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QProxyStyle>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QStyle>
 
@@ -1490,6 +1491,39 @@ namespace nppmac::ui
 
 	// --- Menu bars (MenuBridge.cpp) ----------------------------------------------------------------------
 
+	namespace
+	{
+		// Windows' menu bar is flat. Fusion draws a line along a menu bar's bottom, which at a fractional
+		// scale lands across pixel rows and breaks into double lines under the menu titles.
+		class FlatMenuBarStyle : public QProxyStyle
+		{
+		public:
+			void drawControl(ControlElement element, const QStyleOption* option, QPainter* painter, const QWidget* widget) const override
+			{
+				if (element == CE_MenuBarEmptyArea)
+				{
+					painter->fillRect(option->rect, option->palette.window());
+					return;
+				}
+				QProxyStyle::drawControl(element, option, painter, widget);
+			}
+
+			void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter, const QWidget* widget) const override
+			{
+				if (element == PE_PanelMenuBar)
+					return;
+				QProxyStyle::drawPrimitive(element, option, painter, widget);
+			}
+		};
+	}
+
+	void styleMenuBar(QMenuBar* bar)
+	{
+		// One for every menu bar, kept for the program's life (a widget does not own its style).
+		static auto* style = new FlatMenuBarStyle;
+		bar->setStyle(style);
+	}
+
 	QMenuBar* menuBarFor(NativeView* view)
 	{
 		if (!view || !view->_window || !view->_layout)
@@ -1498,6 +1532,7 @@ namespace nppmac::ui
 		{
 			auto* bar = new QMenuBar(view->_window);
 			bar->setNativeMenuBar(false); // in the window, as Windows has it
+			styleMenuBar(bar);
 			view->_layout->insertWidget(0, bar);
 			view->_menuBar = bar;
 		}
