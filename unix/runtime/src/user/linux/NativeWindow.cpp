@@ -287,6 +287,15 @@ namespace nppmac::ui
 		public:
 			bool eventFilter(QObject* object, QEvent* event) override
 			{
+				// Keys for the program's windows are the program's first, as on Windows (its accelerators,
+				// then Alt and a letter for the menu bar): Qt's own shortcuts are not tried for them.
+				if (event->type() == QEvent::ShortcutOverride)
+				{
+					if (QApplication::activePopupWidget() || !isRuntimeWindow(object))
+						return false;
+					event->accept();
+					return true;
+				}
 				if (event->type() != QEvent::KeyPress && event->type() != QEvent::KeyRelease)
 					return false;
 				// A key handed to a native control, an open menu's keys, and the keys of windows that are
@@ -338,11 +347,19 @@ namespace nppmac::ui
 		// titles without their shortcuts, the right end's items after the bar's own.
 		void dumpMenus(const QMenuBar* bar)
 		{
+			// Without the mnemonic markers ("&File" is File, "&&" a '&'), as the Mac's titles are.
 			const auto title = [](const QAction* action)
 			{
-				QString text = action->text();
-				text = text.left(text.indexOf(u'\t') < 0 ? text.size() : text.indexOf(u'\t'));
-				return text.replace(QStringLiteral("&&"), QStringLiteral("&")).toStdString();
+				const QString text = action->text();
+				const qsizetype tab = text.indexOf(u'\t');
+				QString plain;
+				for (qsizetype i = 0; i < (tab < 0 ? text.size() : tab); ++i)
+				{
+					if (text[i] == u'&' && i + 1 < text.size())
+						++i;
+					plain += text[i];
+				}
+				return plain.toStdString();
 			};
 			std::vector<const QWidget*> bars{bar};
 			if (const QWidget* corner = bar->cornerWidget(Qt::TopRightCorner))
@@ -434,6 +451,9 @@ namespace nppmac::ui
 		// else the program's first window.
 		QWidget* keyboardWidget()
 		{
+			// An open menu has the keyboard, as Qt routes the user's keys.
+			if (QWidget* popup = QApplication::activePopupWidget())
+				return popup;
 			if (QWidget* focus = QApplication::focusWidget())
 				return focus;
 			if (QWidget* active = QApplication::activeWindow())
@@ -449,8 +469,9 @@ namespace nppmac::ui
 		// NPPMAC_TEST_TYPE=<text> types the text after NPPMAC_TEST_TYPE_DELAY seconds (default 2), one key
 		// every 50 ms, as key events going through the application like the user's, each to the window with
 		// the keyboard at its moment (a key that opens a dialog is followed by keys for the dialog); '\n'
-		// is Return, ESC is Escape, and '^' makes the next character a Ctrl shortcut ("^s" is Ctrl+S, where
-		// the Mac's is Command+S). NPPMAC_TEST_IME=<composing>[|<committed>] then plays an input method on
+		// is Return, ESC is Escape, '^' makes the next character a Ctrl shortcut ("^s" is Ctrl+S, where
+		// the Mac's is Command+S) and '~' an Alt one ("~f" opens the File menu; Linux's only). An open
+		// menu has the keyboard. NPPMAC_TEST_IME=<composing>[|<committed>] then plays an input method on
 		// that window: it composes the first text and, a second later, commits the second. As the Mac's.
 		void scheduleTyping()
 		{
@@ -463,9 +484,9 @@ namespace nppmac::ui
 			for (qsizetype i = 0; i < characters.size(); ++i)
 			{
 				Qt::KeyboardModifiers modifiers = Qt::NoModifier;
-				if (characters[i] == u'^' && i + 1 < characters.size())
+				if ((characters[i] == u'^' || characters[i] == u'~') && i + 1 < characters.size())
 				{
-					modifiers = Qt::ControlModifier;
+					modifiers = characters[i] == u'^' ? Qt::ControlModifier : Qt::AltModifier;
 					++i;
 				}
 				const QChar character = characters[i];

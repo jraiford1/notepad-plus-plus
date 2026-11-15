@@ -283,8 +283,11 @@ namespace
 				}
 				return 0;
 			}
-			case WM_CHAR:
 			case WM_SYSCHAR:
+				// Alt and a character: the window's menu, as Scintilla's Windows layer leaves it to
+				// DefWindowProc.
+				return DefWindowProcW(hwnd, message, wParam, lParam);
+			case WM_CHAR:
 			{
 				if (data->_swallowCharacters)
 					return 0;

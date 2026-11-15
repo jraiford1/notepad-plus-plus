@@ -29,6 +29,7 @@ namespace nppmac::ui
 	struct MenuItemDescription
 	{
 		std::u16string _title;       // without '&' markers
+		std::u16string _markedTitle; // as Windows has it: '&' before the mnemonic, "&&" for a '&' 
 		std::u16string _shortcut;    // the text after a tab ("Ctrl+O"), shown on the right
 		unsigned _id = 0;
 		uintptr_t _submenu = 0;      // an HMENU, or 0
@@ -62,4 +63,7 @@ namespace nppmac::ui
 
 	// Shows a popup menu at a screen point (Windows coordinates) and waits; returns the chosen id, or 0.
 	unsigned trackPopupMenu(uintptr_t menu, int screenX, int screenY, const MenuCallbacks& callbacks, void* context);
+	// Opens the menu of the window's menu bar whose mnemonic is the character (WM_SYSCOMMAND SC_KEYMENU,
+	// as Alt and the letter make it on Windows). Nothing where the menu bar is the system's (the Mac's).
+	void activateMenuBar(NativeView* view, char16_t mnemonic);
 }
