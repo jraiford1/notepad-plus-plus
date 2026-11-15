@@ -41,7 +41,7 @@ function(nppmac_add_plugin name)
 		BYPRODUCTS ${generatedSources}
 		COMMAND npp-migrate "${plugin_SOURCE_DIR}" "${generatedDir}" --report "${migrationReport}"
 			--plugin-text-rules "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt" --text-base "${name}" ${encodingOption}
-			--system ${NPPMAC_PLATFORM}
+			--system ${NPPMAC_PLATFORM} ${nppPluginHeaderDirs}
 		DEPENDS npp-migrate ${pluginFiles} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin-text-rules.txt"
 		COMMENT "Migrating plugin ${name}"
 		VERBATIM
@@ -158,6 +158,40 @@ if(NPPMAC_PLATFORM STREQUAL "macos")
 else()
 	option(NPPMAC_BUILD_PLUGINS "Build the plugins of the plugin catalog" OFF)
 endif()
+# A path in a plugin's checkout as the checkout spells it: Windows does not tell file names apart by
+# case, and the projects' lists and the checkouts often differ (Src/ for src/); Linux does. A part that
+# is not there is kept as it is.
+function(nppmac_actual_case root relative outVariable)
+	string(REPLACE "\\" "/" relative "${relative}")
+	string(REPLACE "/" ";" parts "${relative}")
+	set(current "${root}")
+	set(result "")
+	foreach(part IN LISTS parts)
+		if(part STREQUAL "" OR part STREQUAL ".")
+			continue()
+		endif()
+		set(found "${part}")
+		if(NOT part STREQUAL ".." AND NOT EXISTS "${current}/${part}" AND IS_DIRECTORY "${current}")
+			file(GLOB entries RELATIVE "${current}" "${current}/*")
+			string(TOLOWER "${part}" lowerPart)
+			foreach(entry IN LISTS entries)
+				string(TOLOWER "${entry}" lowerEntry)
+				if(lowerEntry STREQUAL lowerPart)
+					set(found "${entry}")
+					break()
+				endif()
+			endforeach()
+		endif()
+		set(current "${current}/${found}")
+		list(APPEND result "${found}")
+	endforeach()
+	list(JOIN result "/" joined)
+	if(joined STREQUAL "")
+		set(joined "${relative}") # "." (the checkout itself) stays as it is
+	endif()
+	set(${outVariable} "${joined}" PARENT_SCOPE)
+endfunction()
+
 function(nppmac_add_external_plugin name)
 	cmake_parse_arguments(plugin "NPP_HEADERS" "GIT;COMMIT;VERSION;DISPLAY_NAME;ENCODING;CHARACTER_SET;CXX_STANDARD;PACKAGE_DIR;PROGRAMS" "SOURCES;RC_FILES;INCLUDES;FORCED_INCLUDES;DEFINES;RC_DEFINES;FILES;CONCATENATE;FETCH;CONFIGURE;CONFIGURE_VARIABLES" ${ARGN})
 	if(NPPMAC_PLUGIN_SOURCES AND EXISTS "${NPPMAC_PLUGIN_SOURCES}/${name}")
@@ -181,6 +215,17 @@ function(nppmac_add_external_plugin name)
 				file(WRITE "${sourceDir}/.nppmac-commit" "${plugin_COMMIT}")
 			endif()
 		endif()
+	endif()
+	# Its paths as its checkout spells them (Linux tells names apart by case; the Mac does not).
+	if(NOT NPPMAC_PLATFORM STREQUAL "macos")
+		foreach(listName IN ITEMS SOURCES RC_FILES INCLUDES FORCED_INCLUDES FILES CONCATENATE PACKAGE_DIR)
+			set(resolved "")
+			foreach(path IN LISTS plugin_${listName})
+				nppmac_actual_case("${sourceDir}" "${path}" actual)
+				list(APPEND resolved "${actual}")
+			endforeach()
+			set(plugin_${listName} "${resolved}")
+		endforeach()
 	endif()
 	# Its libraries, cloned into its checkout at their pinned commits, as submodules would be.
 	set(fetches ${plugin_FETCH})
@@ -273,6 +318,14 @@ function(nppmac_add_external_plugin name)
 	if(NOT "NOMINMAX" IN_LIST plugin_DEFINES)
 		target_compile_options(${name} PRIVATE -UNOMINMAX)
 	endif()
+	# On Linux the whole C++ standard library is read before the plugin's code (nppmac/PluginPrelude.h).
+	# C gets glibc's GNU functions as C++ does: the runtime's forced include reads the system headers
+	# before a source can ask for them (SQLite's mremap).
+	if(NOT NPPMAC_PLATFORM STREQUAL "macos")
+		target_compile_options(${name} PRIVATE
+			"$<$<COMPILE_LANGUAGE:CXX>:-include;${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../runtime/include/nppmac/PluginPrelude.h>")
+		target_compile_definitions(${name} PRIVATE "$<$<COMPILE_LANGUAGE:C>:_GNU_SOURCE>")
+	endif()
 	# The files beside the DLL, listed in <Name>.files for packing (MakePluginList.cmake) and the tests.
 	set(fileNames "")
 	foreach(dataFile IN LISTS plugin_FILES)
@@ -315,6 +368,13 @@ function(nppmac_add_external_plugin name)
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_VERSION "${plugin_VERSION}")
 	set_property(GLOBAL PROPERTY NPPMAC_PLUGIN_${name}_DISPLAY_NAME "${plugin_DISPLAY_NAME}")
 endfunction()
+
+# The headers plugins are built with, where the engine looks up the names they include (Windows.h is
+# windows.h there).
+set(nppPluginHeaderDirs --header-dir "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/include")
+foreach(wineDir IN LISTS NPPMAC_WINE_INCLUDE_DIRS)
+	list(APPEND nppPluginHeaderDirs --header-dir "${wineDir}")
+endforeach()
 
 # The include paths llvm-rc needs for a plugin's .rc: the runtime's and Wine's headers. Its preprocessor
 # is the clang beside it.

@@ -70,6 +70,8 @@
 #include <fstream>
 #include <iconv.h>
 #include <iostream>
+#include <map>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -285,6 +287,150 @@ namespace
 		}
 		result.append(last, content.cend());
 		content = std::move(result);
+		return changes;
+	}
+
+	// --- File names' case ------------------------------------------------------------------------
+
+	// Windows does not tell file names apart by case, and Windows code names its headers and resource
+	// files any way ("Windows.h", "Resource.h", "res\\Icon.ICO"); Linux does tell them apart. A file name
+	// that is there only with other capitals is written as it is spelled there: beside the file that
+	// names it, in the folders of the headers it is built with (--header-dir), or elsewhere in its own
+	// tree. Where the file system does not tell them apart (the Mac's), every name is there as written.
+	struct FileNames
+	{
+		fs::path _root;
+		std::vector<fs::path> _headerDirs;
+		std::vector<std::pair<std::string, std::string>> _tree; // every file under the root: lower case, actual
+		std::map<fs::path, std::vector<std::string>> _listings;
+
+		const std::vector<std::string>& listing(const fs::path& folder)
+		{
+			auto [it, added] = _listings.try_emplace(folder);
+			if (added)
+			{
+				std::error_code error;
+				for (fs::directory_iterator entry{folder, error}, end; !error && entry != end; entry.increment(error))
+					it->second.push_back(entry->path().filename().string());
+			}
+			return it->second;
+		}
+
+		// The name, relative to the folder, as the files there spell it; nothing when it is not there.
+		std::optional<std::string> spelled(const fs::path& folder, const std::string& name)
+		{
+			fs::path current = folder;
+			std::string result;
+			std::string part;
+			std::istringstream parts{name};
+			while (std::getline(parts, part, '/'))
+			{
+				std::string found = part;
+				std::error_code error;
+				if (!part.empty() && part != "." && part != ".." && !fs::exists(current / part, error))
+				{
+					found.clear();
+					const std::string lower = lowercase(part);
+					for (const std::string& entry : listing(current))
+					{
+						if (lowercase(entry) == lower)
+						{
+							found = entry;
+							break;
+						}
+					}
+					if (found.empty())
+						return std::nullopt;
+				}
+				current /= found;
+				result += (result.empty() ? "" : "/") + found;
+			}
+			std::error_code error;
+			if (!fs::exists(current, error))
+				return std::nullopt;
+			return result;
+		}
+
+		std::string lowercase(std::string text) const
+		{
+			std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return text;
+		}
+
+		// The name as spelled where the file naming it (folder: its own, under the root) would find it. A
+		// system include (<...>) is looked for in the header folders only: the tree's own String.h is not
+		// <string.h>.
+		std::optional<std::string> resolve(const fs::path& folder, const std::string& name, bool system = false)
+		{
+			if (!system)
+			{
+				if (auto found = spelled(_root / folder, name))
+					return found;
+			}
+			for (const fs::path& headerDir : _headerDirs)
+			{
+				if (auto found = spelled(headerDir, name))
+					return found;
+			}
+			if (system)
+				return std::nullopt;
+			// Elsewhere in the tree (its include folders): the one spelling every match has.
+			if (_tree.empty())
+			{
+				std::error_code error;
+				for (fs::recursive_directory_iterator entry{_root, error}, end; !error && entry != end; entry.increment(error))
+				{
+					if (entry->is_regular_file(error))
+					{
+						const std::string relative = fs::relative(entry->path(), _root, error).generic_string();
+						_tree.emplace_back(lowercase(relative), relative);
+					}
+				}
+			}
+			const std::string lower = lowercase(name);
+			std::optional<std::string> result;
+			for (const auto& [lowerPath, actual] : _tree)
+			{
+				if (lowerPath.size() < lower.size() || lowerPath.compare(lowerPath.size() - lower.size(), lower.size(), lower) != 0
+					|| (lowerPath.size() > lower.size() && lowerPath[lowerPath.size() - lower.size() - 1] != '/'))
+					continue;
+				const std::string suffix = actual.substr(actual.size() - lower.size());
+				if (result && *result != suffix)
+					return std::nullopt;
+				result = suffix;
+			}
+			return result;
+		}
+	};
+
+	// #include names in code and resource scripts, and the files a resource script names.
+	size_t fixFileNameCase(std::string& content, const fs::path& folder, bool resourceScript, FileNames& names)
+	{
+		static const std::regex include{R"(^([ \t]*#[ \t]*include[ \t]*(?:/\*[^*\r\n]*\*/[ \t]*)*[<"])([^>"\r\n]+)([>"]))", std::regex::multiline};
+		static const std::regex resourceFile{R"name("([^"\r\n]*\.[A-Za-z0-9]{1,8})")name"};
+		size_t changes = 0;
+		const auto fix = [&](const std::regex& pattern, int group)
+		{
+			std::string result;
+			auto last = content.cbegin();
+			for (std::sregex_iterator it{content.cbegin(), content.cend(), pattern}, end; it != end; ++it)
+			{
+				const std::string name = (*it)[group].str();
+				const bool system = group == 2 && (*it)[1].str().back() == '<';
+				const std::optional<std::string> spelled = names.resolve(folder, name, system);
+				if (!spelled || *spelled == name)
+					continue;
+				result.append(last, (*it)[group].first);
+				result += *spelled;
+				last = (*it)[group].second;
+				++changes;
+			}
+			result.append(last, content.cend());
+			content = std::move(result);
+		};
+		fix(include, 2);
+		if (resourceScript)
+			fix(resourceFile, 1);
 		return changes;
 	}
 
@@ -664,6 +810,7 @@ int main(int argc, char* argv[])
 	std::string textBase;
 	std::string sourceEncoding;
 	std::string system = "macos";
+	std::vector<fs::path> headerDirs;
 	for (int i = 3; i + 1 < argc; i += 2)
 	{
 		const std::string option{argv[i]};
@@ -681,6 +828,8 @@ int main(int argc, char* argv[])
 			sourceEncoding = argv[i + 1];
 		else if (option == "--system")
 			system = argv[i + 1];
+		else if (option == "--header-dir")
+			headerDirs.emplace_back(argv[i + 1]);
 		else
 		{
 			std::cerr << "unknown option: " << option << "\n";
@@ -735,6 +884,8 @@ int main(int argc, char* argv[])
 	size_t utf16Files = 0;
 	size_t reencodedFiles = 0;
 	size_t resourcePaths = 0;
+	size_t nameCases = 0;
+	FileNames names{sourceRoot, headerDirs, {}, {}};
 	for (const fs::path& file : files)
 	{
 		const fs::path relative = fs::relative(file, sourceRoot);
@@ -751,6 +902,11 @@ int main(int argc, char* argv[])
 			++reencodedFiles;
 		if (isResourceScript(file))
 			resourcePaths += fixResourcePaths(content) + joinResourceStringLines(content);
+		// A resource script's template, which the build configures into one (name.rc.template), too.
+		const std::string fileName = file.filename().string();
+		const bool resourceTemplate = fileName.size() > 12 && fileName.compare(fileName.size() - 12, 12, ".rc.template") == 0;
+		if (isCodeFile(file) || isResourceScript(file) || resourceTemplate)
+			nameCases += fixFileNameCase(content, relative.parent_path(), isResourceScript(file) || resourceTemplate, names);
 		applyTextRules(textRules, textBase + "/" + relative.generic_string(), content);
 		if (isCodeFile(file))
 		{
@@ -815,7 +971,7 @@ int main(int argc, char* argv[])
 
 	std::cout << "npp-migrate: " << files.size() << " files, " << migratedFiles << " migrated, "
 		<< changedFiles << " changed, " << totalRewrites << " rewrites, " << appliedFixups << " fixups, "
-		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource script fixes" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{})
+		<< textChanges << " text changes" << (resourcePaths ? ", " + std::to_string(resourcePaths) + " resource script fixes" : std::string{}) << (nameCases ? ", " + std::to_string(nameCases) + " file names respelled" : std::string{}) << (utf16Files ? ", " + std::to_string(utf16Files) + " UTF-16 files converted" : std::string{})
 		<< (reencodedFiles ? ", " + std::to_string(reencodedFiles) + " files converted from " + sourceEncoding : std::string{}) << "\n";
 	return exitOk;
 }

@@ -203,14 +203,14 @@ line: extern int luaSafeLoadFileSandbox_impl(lua_State * L);
 replace: extern int luaSafeLoadFileSandbox_impl(lua_State * L); => using ::luaSafeLoadFileSandbox_impl;
 
 # NppTextFX's LZO takes _WIN64, which Wine's headers define on every 64-bit target, for Windows and its
-# type model (a 32-bit long); macOS is a case of its own further on.
+# type model (a 32-bit long); macOS and Linux are cases of their own further on.
 files: NppTextFX/MINILZO/*
 line: #elif defined(__WIN64__) || defined(_WIN64) || defined(WIN64)
-replace: #elif defined(__WIN64__) || defined(_WIN64) || defined(WIN64) => #elif (defined(__WIN64__) || defined(_WIN64) || defined(WIN64)) && !defined(__APPLE__)
+replace: #elif defined(__WIN64__) || defined(_WIN64) || defined(WIN64) => #elif (defined(__WIN64__) || defined(_WIN64) || defined(WIN64)) && !defined(__APPLE__) && !defined(__linux__)
 
 files: NppTextFX/MINILZO/*
 line: #elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__)
-replace: #elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__) => #elif (defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__)) && !defined(__APPLE__)
+replace: #elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__) => #elif (defined(__WIN32__) || defined(_WIN32) || defined(WIN32) || defined(__WINDOWS_386__)) && !defined(__APPLE__) && !defined(__linux__)
 
 # NppTextFX changes the case of one character by passing it as the string pointer (user32's form),
 # through unsigned, which is smaller than a pointer here: through uintptr_t.
@@ -425,3 +425,14 @@ replace: if (_buf[i] == _T('/')) => if (_buf[i] == _T('\\'))
 files: NppGTags/src/GTags.cpp
 line: moduleFileName.AutoFit();
 replace: moduleFileName.AutoFit(); => moduleFileName.NormalizePathSlashes();
+
+# SimplifyJson's Node holds pairs of a string and a Node: GNU's libstdc++ (Linux) instantiates the pair
+# while making Node's implicit default constructor, which the pair's own checks then need (a loop libc++
+# does not make). Node gets a default constructor declared in it and defined once it is complete.
+files: SimplifyJson/src/JsonUtils.cpp
+line: std::vector<Node> items;
+replace: std::vector<Node> items; => std::vector<Node> items; Node();
+
+files: SimplifyJson/src/JsonUtils.cpp
+line: class Document {
+replace: class Document { => inline Node::Node() = default; class Document {
