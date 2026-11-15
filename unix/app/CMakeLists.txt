@@ -243,15 +243,11 @@ target_sources(NotepadPlusPlus PRIVATE ${nppResFiles})
 nppAddResources("res" ${nppResFiles})
 
 if(NPPMAC_PLATFORM STREQUAL "macos")
-	# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
-	add_dependencies(NotepadPlusPlus nppGup)
 	# Resources/notepad++.exe, the program's file as upstream sees it (GetModuleFileName), is the
 	# executable: upstream reads its version from that file (Plugins Admin's compatibility checks), so it
 	# must exist.
 	add_custom_command(TARGET NotepadPlusPlus POST_BUILD
 		COMMAND "${CMAKE_COMMAND}" -E create_symlink "../MacOS/$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
-		COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/updater"
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "${nppProgramDirectory}/updater/gup.exe"
 		VERBATIM
 	)
 else()
@@ -298,12 +294,8 @@ else()
 	set_source_files_properties("${nppIconStamp}" PROPERTIES GENERATED TRUE)
 	target_sources(NotepadPlusPlus PRIVATE "${nppIconStamp}")
 
-	# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
-	add_dependencies(NotepadPlusPlus nppGup)
 	add_custom_command(TARGET NotepadPlusPlus POST_BUILD ${nppCopyCommands}
 		COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
-		COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/updater"
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "${nppProgramDirectory}/updater/gup.exe"
 		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${nppIconFolder}" "${nppProgramDirectory}/appicon"
 		COMMAND "${CMAKE_COMMAND}" -E rm -f "${nppProgramDirectory}/appicon/made.stamp"
 		VERBATIM
@@ -323,6 +315,16 @@ else()
 	")
 	install(FILES linux/notepad-plus-plus.desktop DESTINATION share/applications)
 endif()
+
+# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder. Copied at
+# every build, if it changed: as a step after Notepad++'s own link, it was copied only when Notepad++ was
+# linked again, so a change to gup alone did not reach the app (W71).
+add_custom_target(nppGupInProgramFolder ALL
+	COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/updater"
+	COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "${nppProgramDirectory}/updater/gup.exe"
+	VERBATIM
+)
+add_dependencies(nppGupInProgramFolder NotepadPlusPlus nppGup)
 
 # --- Tests -------------------------------------------------------------------------------------------
 if(NPPMAC_PLATFORM STREQUAL "linux")
