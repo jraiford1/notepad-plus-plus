@@ -30,5 +30,7 @@ int main(int argc, char* argv[])
 	// The Mac application menu's About and Settings run Notepad++'s own commands.
 	nppmac::setApplicationName(u"" NPPMAC_APP_NAME);
 	nppmac::setApplicationMenuCommands(IDM_ABOUT, IDM_SETTING_PREFERENCE);
-	return wWinMain(GetModuleHandleW(nullptr), nullptr, nppmac::commandLineArguments(), SW_SHOWDEFAULT);
+	const int result = wWinMain(GetModuleHandleW(nullptr), nullptr, nppmac::commandLineArguments(), SW_SHOWDEFAULT);
+	nppmac::shutdown();
+	return result;
 }

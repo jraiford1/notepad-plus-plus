@@ -74,7 +74,10 @@ namespace nppmac::scintilla
 	{
 		// The window manager deletes the widget with its view; nothing more reports to the window.
 		if (auto* widget = static_cast<ScintillaEditBase*>(view))
-			QObject::disconnect(widget, nullptr, nullptr, nullptr);
+		{
+			QObject::disconnect(widget, &ScintillaEditBase::notify, nullptr, nullptr);
+			QObject::disconnect(widget, &ScintillaEditBase::command, nullptr, nullptr);
+		}
 	}
 
 	intptr_t message(void* view, unsigned message, uintptr_t wParam, intptr_t lParam)

@@ -32,6 +32,10 @@ namespace nppmac
 	// Sets up the CRT command line (__argc, __argv, __wargv, GetCommandLineW) and AppKit.
 	void startup(int argc, char* argv[]);
 
+	// The program is ending (wWinMain returned, or ExitProcess): the window system's side lets go first,
+	// through the hook startup set (a program without windows, such as a test, has none).
+	void shutdown();
+	void setShutdownHook(void (*hook)());
 	// The command line after the program name, as WinMain's pCmdLine receives it.
 	char16_t* commandLineArguments();
 

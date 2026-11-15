@@ -19,6 +19,7 @@
 #include "Immortal.h"
 #include "Handles.h"
 #include "Internal.h"
+#include "nppmac/Startup.h"
 
 #include <algorithm>
 #include <atomic>
@@ -633,6 +634,7 @@ DWORD WINAPI SleepEx(DWORD milliseconds, BOOL alertable)
 
 void WINAPI ExitProcess(UINT exitCode)
 {
+	nppmac::shutdown();
 	std::exit(static_cast<int>(exitCode));
 }
 

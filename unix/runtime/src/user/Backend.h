@@ -150,6 +150,9 @@ namespace nppmac::ui
 	// no menu bar, the keyboard left with whoever uses the computer, its windows never on screen), and
 	// the files the system launched it with arrive (takeLaunchFiles).
 	void finishLaunching();
+	// The program is ending (wWinMain returned, or ExitProcess): the toolkit lets its windows go while it
+	// still can, before the process's own clean-up (Linux: Qt's application is deleted; macOS: nothing).
+	void shutDownApplication();
 
 	// A native view (child) or window (top level), owned by the window manager's Window.
 	class NativeView;
