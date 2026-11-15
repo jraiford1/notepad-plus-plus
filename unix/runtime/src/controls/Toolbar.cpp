@@ -305,6 +305,24 @@ namespace nppmac::controls
 			}
 		}
 
+		// A button's state was set. As Windows' toolbar does, it is repainted only if the state changed, and
+		// then only the button, unless it was shown or hidden, which moves the buttons after it. (Notepad++
+		// sets some buttons' states on each scroll of the editor; painting the whole toolbar each time
+		// made it flicker.)
+		void stateSet(HWND hwnd, const Toolbar& bar, size_t index, BYTE before)
+		{
+			const BYTE after = bar._buttons[index]._state;
+			if (after == before)
+				return;
+			if ((after ^ before) & (TBSTATE_HIDDEN | TBSTATE_WRAP))
+			{
+				InvalidateRect(hwnd, nullptr, TRUE);
+				return;
+			}
+			const RECT rect = itemRect(bar, index);
+			InvalidateRect(hwnd, &rect, TRUE);
+		}
+
 		void setHot(HWND hwnd, Toolbar& bar, int index)
 		{
 			if (bar._hot == index)
@@ -610,13 +628,14 @@ namespace nppmac::controls
 					if (index < 0)
 						return FALSE;
 					BYTE& state = bar->_buttons[static_cast<size_t>(index)]._state;
+					const BYTE before = state;
 					const BYTE flag = message == TB_ENABLEBUTTON ? TBSTATE_ENABLED : (message == TB_CHECKBUTTON ? TBSTATE_CHECKED
 						: (message == TB_HIDEBUTTON ? TBSTATE_HIDDEN : TBSTATE_PRESSED));
 					if (LOWORD(lParam))
 						state |= flag;
 					else
 						state &= static_cast<BYTE>(~flag);
-					InvalidateRect(hwnd, nullptr, TRUE);
+					stateSet(hwnd, *bar, static_cast<size_t>(index), before);
 					return TRUE;
 				}
 				case TB_ISBUTTONENABLED:
@@ -642,8 +661,10 @@ namespace nppmac::controls
 					const int index = indexOf(*bar, static_cast<int>(wParam));
 					if (index < 0)
 						return FALSE;
-					bar->_buttons[static_cast<size_t>(index)]._state = static_cast<BYTE>(LOWORD(lParam));
-					InvalidateRect(hwnd, nullptr, TRUE);
+					BYTE& state = bar->_buttons[static_cast<size_t>(index)]._state;
+					const BYTE before = state;
+					state = static_cast<BYTE>(LOWORD(lParam));
+					stateSet(hwnd, *bar, static_cast<size_t>(index), before);
 					return TRUE;
 				}
 				case TB_GETITEMRECT:
