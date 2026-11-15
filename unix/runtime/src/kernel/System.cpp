@@ -1388,19 +1388,67 @@ HRESULT WINAPI GetApplicationRestartSettings(HANDLE, PWSTR, PDWORD, PDWORD)
 
 // --- Security: the user is never an elevated administrator ----------------------------------------
 
-BOOL WINAPI OpenProcessToken(HANDLE, DWORD, PHANDLE token)
+namespace
 {
-	*token = nullptr;
-	SetLastError(ERROR_NOT_SUPPORTED);
-	return FALSE;
+	// A process's token: what it tells is the same for every process of the user's.
+	struct Token : nppmac::kernel::KernelObject
+	{
+	};
 }
 
-BOOL WINAPI GetTokenInformation(HANDLE, TOKEN_INFORMATION_CLASS, LPVOID, DWORD, PDWORD returnLength)
+BOOL WINAPI OpenProcessToken(HANDLE process, DWORD, PHANDLE token)
+{
+	*token = nullptr;
+	if (process != GetCurrentProcess() && !lookup<Process>(process))
+		return FALSE;
+	*token = createHandle(std::make_shared<Token>());
+	return TRUE;
+}
+
+// A token's integrity level is medium, as an ordinary user's on Windows (Notepad++ accepts files from
+// another copy at medium or above); it is not elevated. Nothing else is told.
+BOOL WINAPI GetTokenInformation(HANDLE token, TOKEN_INFORMATION_CLASS kind, LPVOID buffer, DWORD size, PDWORD returnLength)
 {
 	if (returnLength)
 		*returnLength = 0;
-	SetLastError(ERROR_NOT_SUPPORTED);
-	return FALSE;
+	if (!lookup<Token>(token))
+		return FALSE;
+	const auto answer = [&](const void* value, DWORD length)
+	{
+		if (returnLength)
+			*returnLength = length;
+		if (!buffer || size < length)
+		{
+			SetLastError(ERROR_INSUFFICIENT_BUFFER);
+			return FALSE;
+		}
+		std::memcpy(buffer, value, length);
+		return TRUE;
+	};
+	switch (kind)
+	{
+		case TokenIntegrityLevel:
+		{
+			static DWORD sid[4]{}; // read through GetSidSubAuthority, which answers medium
+			TOKEN_MANDATORY_LABEL label{};
+			label.Label.Sid = sid;
+			label.Label.Attributes = SE_GROUP_INTEGRITY;
+			return answer(&label, sizeof(label));
+		}
+		case TokenElevation:
+		{
+			TOKEN_ELEVATION elevation{};
+			return answer(&elevation, sizeof(elevation));
+		}
+		case TokenElevationType:
+		{
+			const TOKEN_ELEVATION_TYPE type = TokenElevationTypeDefault;
+			return answer(&type, sizeof(type));
+		}
+		default:
+			SetLastError(ERROR_NOT_SUPPORTED);
+			return FALSE;
+	}
 }
 
 BOOL WINAPI AllocateAndInitializeSid(PSID_IDENTIFIER_AUTHORITY, BYTE, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, PSID* sid)

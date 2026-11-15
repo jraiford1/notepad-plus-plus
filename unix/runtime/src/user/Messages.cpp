@@ -77,6 +77,7 @@ namespace nppmac::user
 			LPARAM _lParam = 0;
 			LRESULT _result = 0;
 			bool _done = false;
+			const std::function<LRESULT()>* _call = nullptr; // callOnGuiThread's, instead of a message
 		};
 
 		nppmac::Immortal<std::mutex> g_queueMutexStorage;
@@ -204,8 +205,11 @@ namespace nppmac::user
 					send = crossThreadSends().front();
 					crossThreadSends().pop_front();
 				}
-				Window* window = fromHandle(send->_hwnd);
-				const LRESULT result = window ? callWindowProc(window, send->_message, send->_wParam, send->_lParam) : 0;
+				LRESULT result = 0;
+				if (send->_call)
+					result = (*send->_call)();
+				else if (Window* window = fromHandle(send->_hwnd))
+					result = callWindowProc(window, send->_message, send->_wParam, send->_lParam);
 				{
 					std::lock_guard lock{g_queueMutex};
 					send->_result = result;
@@ -662,6 +666,33 @@ namespace nppmac::user
 			return lParam;
 		}
 	}
+
+	bool onGuiThread()
+	{
+		return isGuiThread();
+	}
+
+	LRESULT callOnGuiThread(const std::function<LRESULT()>& call)
+	{
+		if (isGuiThread())
+			return call();
+		CrossThreadSend send;
+		send._call = &call;
+		{
+			std::lock_guard lock{g_queueMutex};
+			crossThreadSends().push_back(&send);
+		}
+		nppmac::ui::wakeEventLoop();
+		std::unique_lock lock{g_queueMutex};
+		g_sendDone.wait(lock, [&send] { return send._done; });
+		return send._result;
+	}
+
+	void processSentMessages()
+	{
+		if (isGuiThread())
+			processCrossThreadSends();
+	}
 }
 
 namespace nppmac::ui
@@ -727,6 +758,8 @@ using namespace nppmac::user;
 
 LRESULT WINAPI SendMessageW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	if (isRemoteWindow(hwnd))
+		return sendToRemoteWindow(hwnd, message, wParam, lParam, -1, nullptr);
 	if (hwnd == HWND_BROADCAST)
 	{
 		for (Window* window : topLevelWindows())
@@ -754,8 +787,18 @@ LRESULT WINAPI SendMessageW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 	return send._result;
 }
 
-LRESULT WINAPI SendMessageTimeoutW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT, UINT, PDWORD_PTR result)
+LRESULT WINAPI SendMessageTimeoutW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT, UINT timeout, PDWORD_PTR result)
 {
+	if (isRemoteWindow(hwnd))
+	{
+		bool delivered = false;
+		const LRESULT value = sendToRemoteWindow(hwnd, message, wParam, lParam, static_cast<int>(std::min<UINT>(timeout, 60000)), &delivered);
+		if (result)
+			*result = delivered ? static_cast<DWORD_PTR>(value) : 0;
+		if (!delivered)
+			SetLastError(ERROR_TIMEOUT);
+		return delivered ? TRUE : FALSE;
+	}
 	const LRESULT value = SendMessageW(hwnd, message, wParam, lParam);
 	if (result)
 		*result = static_cast<DWORD_PTR>(value);
@@ -1934,4 +1977,18 @@ BOOL WINAPI GetCursorInfo(PCURSORINFO info)
 	info->hCursor = GetCursor();
 	GetCursorPos(&info->ptScreenPos);
 	return TRUE;
+}
+
+// Windows filters what a less trusted process may send a window (UIPI); every copy of the program here
+// is the same user's, so nothing is filtered.
+BOOL WINAPI ChangeWindowMessageFilter(UINT, DWORD)
+{
+	return TRUE;
+}
+
+BOOL WINAPI ChangeWindowMessageFilterEx(HWND hwnd, UINT, DWORD, PCHANGEFILTERSTRUCT status)
+{
+	if (status && status->cbSize >= sizeof(CHANGEFILTERSTRUCT))
+		status->ExtStatus = MSGFLTINFO_NONE;
+	return IsWindow(hwnd);
 }

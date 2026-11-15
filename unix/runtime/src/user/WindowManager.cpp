@@ -996,6 +996,8 @@ BOOL WINAPI GetGUIThreadInfo(DWORD, PGUITHREADINFO info)
 
 BOOL WINAPI IsWindow(HWND hwnd)
 {
+	if (isRemoteWindow(hwnd))
+		return askRemoteWindow(hwnd, RemoteQuery::isWindow) ? TRUE : FALSE;
 	return fromHandle(hwnd) ? TRUE : FALSE;
 }
 
@@ -1186,7 +1188,10 @@ HWND WINAPI FindWindowExW(HWND parentHandle, HWND childAfter, LPCWSTR className,
 
 HWND WINAPI FindWindowW(LPCWSTR className, LPCWSTR windowName)
 {
-	return FindWindowExW(nullptr, nullptr, className, windowName);
+	if (HWND window = FindWindowExW(nullptr, nullptr, className, windowName))
+		return window;
+	// Another copy's (Notepad++ looks for the running copy's main window).
+	return findRemoteWindow(className, windowName);
 }
 
 HWND WINAPI GetDlgItem(HWND dialog, int id)
@@ -1210,6 +1215,14 @@ int WINAPI GetDlgCtrlID(HWND hwnd)
 
 DWORD WINAPI GetWindowThreadProcessId(HWND hwnd, LPDWORD processId)
 {
+	if (isRemoteWindow(hwnd))
+	{
+		// Another copy's: its process, whose main thread stands for its GUI thread.
+		const DWORD process = remoteWindowProcess(hwnd);
+		if (processId)
+			*processId = process;
+		return process;
+	}
 	if (processId)
 		*processId = GetCurrentProcessId();
 	return fromHandle(hwnd) ? GetCurrentThreadId() : 0;
@@ -1432,6 +1445,8 @@ int WINAPI GetWindowTextLengthW(HWND hwnd)
 
 BOOL WINAPI ShowWindow(HWND hwnd, int command)
 {
+	if (isRemoteWindow(hwnd))
+		return askRemoteWindow(hwnd, RemoteQuery::show, static_cast<WPARAM>(command)) ? TRUE : FALSE;
 	Window* window = fromHandle(hwnd);
 	if (!window)
 		return FALSE;
@@ -1572,12 +1587,16 @@ BOOL WINAPI EnableWindow(HWND hwnd, BOOL enable)
 
 BOOL WINAPI IsIconic(HWND hwnd)
 {
+	if (isRemoteWindow(hwnd))
+		return askRemoteWindow(hwnd, RemoteQuery::isIconic) ? TRUE : FALSE;
 	Window* window = fromHandle(hwnd);
 	return window && window->isTopLevel() && window->_view && nppmac::ui::isMinimized(window->_view) ? TRUE : FALSE;
 }
 
 BOOL WINAPI IsZoomed(HWND hwnd)
 {
+	if (isRemoteWindow(hwnd))
+		return askRemoteWindow(hwnd, RemoteQuery::isZoomed) ? TRUE : FALSE;
 	Window* window = fromHandle(hwnd);
 	return window && window->isTopLevel() && window->_view && nppmac::ui::isMaximized(window->_view) ? TRUE : FALSE;
 }
@@ -1930,6 +1949,8 @@ HWND WINAPI GetForegroundWindow()
 
 BOOL WINAPI SetForegroundWindow(HWND hwnd)
 {
+	if (isRemoteWindow(hwnd))
+		return askRemoteWindow(hwnd, RemoteQuery::activate) ? TRUE : FALSE;
 	Window* window = fromHandle(GetAncestor(hwnd, GA_ROOT));
 	if (!window)
 		return FALSE;

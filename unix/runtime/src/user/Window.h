@@ -152,6 +152,38 @@ namespace nppmac::user
 	Window* fromHandle(HWND hwnd);
 	std::vector<Window*> topLevelWindows();
 
+	// --- Threads ------------------------------------------------------------------------------------
+
+	bool onGuiThread();
+	// Runs a call on the GUI thread (now, when this is it) and returns its result, as a message sent from
+	// another thread is: the GUI thread runs it while it waits for or retrieves messages.
+	LRESULT callOnGuiThread(const std::function<LRESULT()>& call);
+	// Runs the messages other threads have sent the GUI thread meanwhile (it waits for another copy).
+	void processSentMessages();
+
+	// --- Other copies of the program (RemoteWindows.cpp) -----------------------------------------------
+
+	// Each copy serves its top-level windows to the others, through the instance folder
+	// (kernel/Instances.h): FindWindow finds another copy's, and the few calls Notepad++ makes on one
+	// reach it (SendMessage with numbers or WM_COPYDATA, showing, activating, asking its state). A
+	// handle for another copy's window stands for it in this one.
+	void startWindowServer();
+	HWND findRemoteWindow(const char16_t* className, const char16_t* windowName);
+	bool isRemoteWindow(HWND hwnd);
+	DWORD remoteWindowProcess(HWND hwnd);
+	// Sends a message to another copy's window and returns its result; false in delivered when it did not
+	// reach it in time (timeoutMilliseconds; negative: as long as it takes, within reason).
+	LRESULT sendToRemoteWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, int timeoutMilliseconds, bool* delivered);
+	enum class RemoteQuery
+	{
+		isWindow,
+		isIconic,
+		isZoomed,
+		show,     // ShowWindow, the argument its command
+		activate, // SetForegroundWindow
+	};
+	LRESULT askRemoteWindow(HWND hwnd, RemoteQuery query, WPARAM argument = 0);
+
 	// --- Drag and drop ----------------------------------------------------------------------------
 
 	// Gives the files of an HDROP to a drop target (RegisterDragDrop), as OLE does when they are let

@@ -27,6 +27,7 @@
 #include "nppmac/Startup.h"
 #include "platform/Platform.h"
 #include "user/Backend.h"
+#include "user/Window.h"
 
 namespace
 {
@@ -116,6 +117,8 @@ namespace nppmac
 		}
 		nppmac::ui::createApplication();
 		setShutdownHook(nppmac::ui::shutDownApplication);
+		// Other copies find this one's windows (a second Notepad++ hands its files to the first).
+		nppmac::user::startWindowServer();
 		// Files the system opens the program with (Open With, a double-click) arrive while it finishes
 		// launching; they are arguments, as for notepad++.exe.
 		nppmac::ui::finishLaunching();
