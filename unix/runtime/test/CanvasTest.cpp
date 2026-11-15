@@ -19,7 +19,9 @@
 
 #include "gdi/Canvas.h"
 
+#include <cmath>
 #include <cstdio>
+#include <memory>
 #include <vector>
 
 namespace
@@ -222,9 +224,34 @@ namespace
 	}
 }
 
+namespace
+{
+	// An icon only a little smaller than its box on the screen is drawn at its own pixels, centered, on whole
+	// device pixels (W72): a 16-pixel pin in an 11-point box at 5/3 (18.3 pixels). One twice as small is not.
+	void testSharpIcons()
+	{
+		constexpr double scale = 5.0 / 3.0;
+		Pixels surface(40, 40);
+		auto canvas = canvasOverPixels(surface._data.data(), 40, 40, false, scale);
+		const std::vector<uint32_t> iconPixels(16 * 16, 0xFFFF0000);
+		const std::shared_ptr<CanvasImage> icon = imageFromPixels(iconPixels.data(), 16, 16);
+		const CanvasRect box{7, 5, 11, 11};
+		const CanvasRect sharp = sharpDestination(*canvas, *icon, box);
+		const auto whole = [](double value) { return std::fabs(value - std::round(value)) < 1e-6; };
+		CHECK(std::fabs(sharp._width * scale - 16) < 1e-6);
+		CHECK(std::fabs(sharp._height * scale - 16) < 1e-6);
+		CHECK(whole(sharp._x * scale) && whole(sharp._y * scale));
+		CHECK(sharp._x >= box._x && sharp._x + sharp._width <= box._x + box._width + 1e-6);
+		const CanvasRect large{0, 0, 20, 20};
+		const CanvasRect unchanged = sharpDestination(*canvas, *icon, large);
+		CHECK(unchanged._x == large._x && unchanged._width == large._width);
+	}
+}
+
 int main()
 {
 	testFill();
+	testSharpIcons();
 	testBottomUp();
 	testClipAndTranslate();
 	testDifference();

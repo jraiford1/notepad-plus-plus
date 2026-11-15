@@ -169,6 +169,9 @@ namespace nppmac::gdi
 
 		// Device pixels per unit: 2 on a Retina surface.
 		virtual double deviceScale() const = 0;
+		// The rectangle with its corners moved to the nearest whole device pixels (where an image drawn pixel
+		// for pixel must be, on a screen with a fractional scale too).
+		virtual CanvasRect pixelAligned(const CanvasRect& rect) const = 0;
 		// What the whole surface shows now, at its device scale (BitBlt from a window).
 		virtual std::shared_ptr<CanvasImage> snapshot() const = 0;
 		// The platform's own drawing object: a CGContextRef on macOS, a QPainter* on Linux (Scintilla
@@ -180,6 +183,26 @@ namespace nppmac::gdi
 	// its canvas still has GDI's top-left origin. With a scale, the pixels are that many per unit, as a
 	// scaled screen's are: the canvas draws in units, at that resolution.
 	std::unique_ptr<Canvas> canvasOverPixels(uint32_t* pixels, int width, int height, bool bottomUp, double scale = 1);
+
+	// Where an icon's image goes in a destination: when that is at most a quarter larger on the screen than the
+	// image's own pixels, the image at its own pixels, centered, on whole device pixels; stretched that little
+	// it only blurs (a 16-pixel pin in an 11-point box is 18 pixels at 5/3, W72). Otherwise the destination.
+	inline CanvasRect sharpDestination(const Canvas& canvas, const CanvasImage& image, const CanvasRect& destination)
+	{
+		const double scale = canvas.deviceScale();
+		const int pixelWidth = image.width();
+		const int pixelHeight = image.height();
+		const double width = destination._width * scale;
+		const double height = destination._height * scale;
+		constexpr double mostStretched = 1.25;
+		if (scale <= 0 || pixelWidth <= 0 || pixelHeight <= 0 || width < pixelWidth || height < pixelHeight
+			|| width > pixelWidth * mostStretched || height > pixelHeight * mostStretched)
+			return destination;
+		const double unitsWide = pixelWidth / scale;
+		const double unitsHigh = pixelHeight / scale;
+		return canvas.pixelAligned({destination._x + (destination._width - unitsWide) / 2, destination._y + (destination._height - unitsHigh) / 2,
+			unitsWide, unitsHigh});
+	}
 	// A canvas over a window's surface, the window backend's native drawing object (a CGContextRef on
 	// macOS, a QPainter* on Linux); kept alive by the canvas.
 	std::unique_ptr<Canvas> canvasOverSurface(void* surface);

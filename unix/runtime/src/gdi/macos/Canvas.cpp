@@ -407,6 +407,14 @@ namespace nppmac::gdi
 				return std::fabs(CGContextConvertSizeToDeviceSpace(_context, CGSizeMake(1, 1)).width);
 			}
 
+			CanvasRect pixelAligned(const CanvasRect& rect) const override
+			{
+				CGRect device = CGContextConvertRectToDeviceSpace(_context, CGRectMake(rect._x, rect._y, rect._width, rect._height));
+				device = CGRectMake(std::round(device.origin.x), std::round(device.origin.y), std::round(device.size.width), std::round(device.size.height));
+				const CGRect user = CGContextConvertRectToUserSpace(_context, device);
+				return {user.origin.x, user.origin.y, user.size.width, user.size.height};
+			}
+
 			std::shared_ptr<CanvasImage> snapshot() const override
 			{
 				CGImageRef image = CGBitmapContextCreateImage(_context);

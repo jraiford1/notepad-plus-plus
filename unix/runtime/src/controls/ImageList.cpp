@@ -346,7 +346,8 @@ BOOL WINAPI ImageList_DrawEx(HIMAGELIST handle, int index, HDC hdc, int x, int y
 			canvas->setInterpolation(nppmac::gdi::Interpolation::high);
 			if (style & (ILD_BLEND25 | ILD_BLEND50))
 				canvas->setAlpha(0.5);
-			canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+			canvas->drawImage(*image, nppmac::gdi::sharpDestination(*canvas, *image,
+				{static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)}));
 			canvas->restore();
 		}
 		dc->end();

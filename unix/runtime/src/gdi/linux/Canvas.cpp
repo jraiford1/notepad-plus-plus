@@ -390,6 +390,19 @@ namespace nppmac::gdi
 				return std::fabs(_painter->deviceTransform().m11());
 			}
 
+			CanvasRect pixelAligned(const CanvasRect& rect) const override
+			{
+				const QTransform transform = _painter->deviceTransform();
+				bool invertible = false;
+				const QTransform back = transform.inverted(&invertible);
+				if (!invertible)
+					return rect;
+				const QRectF device = transform.mapRect(toQRect(rect));
+				const QRectF aligned(std::round(device.x()), std::round(device.y()), std::round(device.width()), std::round(device.height()));
+				const QRectF user = back.mapRect(aligned);
+				return {user.x(), user.y(), user.width(), user.height()};
+			}
+
 			std::shared_ptr<CanvasImage> snapshot() const override
 			{
 				auto* image = dynamic_cast<QImage*>(_painter->device());

@@ -1021,7 +1021,8 @@ BOOL WINAPI DrawIconEx(HDC hdc, int x, int y, HICON handle, int width, int heigh
 		if (const std::shared_ptr<CanvasImage> image = icon->_color->imageFor(canvas))
 		{
 			canvas->setInterpolation(Interpolation::high);
-			canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+			canvas->drawImage(*image, sharpDestination(*canvas, *image,
+				{static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)}));
 		}
 		dc->end();
 	}
