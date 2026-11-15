@@ -67,3 +67,23 @@ file: WinControls/Preference/preferenceDlg.cpp
 			_wVector.push_back(DlgInfo(&_fileAssocDlg, L"File Association", L"FileAssoc"));
 #endif
 >>>>
+
+# Upstream finds a path's folder by its last '\'; the paths Notepad++ sees here have '/', so a missing
+# file's folder came out empty ("Folder "" doesn't exist" instead of "Create it?").
+file: MISC/Common/Common.cpp
+<<<<
+    wstring::size_type lastBackslash = path.find_last_of(L'\\');
+====
+    wstring::size_type lastBackslash = path.find_last_of(L"\\/");
+>>>>
+
+# A wildcard on the command line ("/tmp/*.txt") is split into its folder and pattern at the last '\'
+# only; here the last '/' does it.
+file: NppIO.cpp
+<<<<
+                const wchar_t * substring = wcsrchr(targetFileName.c_str(), wchar_t('\\'));
+====
+                const wchar_t * substring = wcsrchr(targetFileName.c_str(), wchar_t('\\'));
+                if (const wchar_t* slash = wcsrchr(targetFileName.c_str(), wchar_t('/')); slash && (!substring || slash > substring))
+                    substring = slash;
+>>>>

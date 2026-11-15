@@ -23,6 +23,7 @@
 #include "platform/Platform.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <chrono>
 #include <condition_variable>
 #include <cerrno>
@@ -1165,6 +1166,21 @@ HANDLE WINAPI FindFirstFileExW(LPCWSTR fileName, FINDEX_INFO_LEVELS, LPVOID find
 				find->_names.push_back(name);
 		}
 		::closedir(dir);
+		// In NTFS's order, names compared without case, as Windows lists a folder; Linux and APFS list
+		// theirs in no particular order.
+		std::vector<std::pair<std::u16string, std::string>> sorted;
+		sorted.reserve(find->_names.size() - 2);
+		for (size_t i = 2; i < find->_names.size(); ++i)
+		{
+			std::u16string key = nppmac::toUtf16(find->_names[i]);
+			for (char16_t& ch : key)
+				ch = static_cast<char16_t>(std::towupper(ch));
+			sorted.emplace_back(std::move(key), std::move(find->_names[i]));
+		}
+		std::sort(sorted.begin(), sorted.end());
+		find->_names.resize(2);
+		for (auto& [key, name] : sorted)
+			find->_names.push_back(std::move(name));
 		if (find->_directory == "/")
 			find->_names.erase(find->_names.begin(), find->_names.begin() + 2);
 	}
