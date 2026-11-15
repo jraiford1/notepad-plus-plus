@@ -466,6 +466,34 @@ if runSettings="$darkSettings" run restart NPPMAC_TEST_APPEARANCE=dark NPPMAC_DU
 	fi
 fi
 
+# A second copy hands its file to the running one and ends at once, as a second notepad++.exe does; the
+# first shows the file. Their own instance folder keeps them from any other copy.
+mkdir -p "$work/instances" "$work/copies-settings"
+printf 'first\n' > "$work/first.txt"
+printf 'second\n' > "$work/second.txt"
+files=("$work/first.txt")
+runSettings="$work/copies-settings" run first-copy NPPMAC_INSTANCE_DIR="$work/instances" NPPMAC_SNAPSHOT_DELAY=9 NPPMAC_DUMP_TREE=1 &
+firstCopy=$!
+sleep 4
+started=$(date +%s)
+env NPPMAC_TEST_RUN=1 NPPMAC_TEST_APPDATA="$work/appdata" NPPMAC_QUIET_STUBS=1 NPPMAC_INSTANCE_DIR="$work/instances" \
+	perl -e 'alarm 20; exec @ARGV' ${launcher[@]+"${launcher[@]}"} "$app" -settingsDir="$work/copies-settings" "$work/second.txt" > "$work/second-copy.log" 2>&1
+secondStatus=$?
+secondTime=$(( $(date +%s) - started ))
+if ! wait $firstCopy; then
+	failures=$((failures + 1))
+elif [ $secondStatus -ne 0 ] || [ $secondTime -gt 5 ]; then
+	echo "FAIL second-copy: it ran on (exit status $secondStatus after ${secondTime}s)"
+	failures=$((failures + 1))
+elif ! grep -q 'Notepad++ id=.* text=".*/second.txt - Notepad++"' "$work/first-copy.log"; then
+	echo "FAIL second-copy: the running copy did not open its file"
+	grep -m1 'Notepad++ id=' "$work/first-copy.log"
+	failures=$((failures + 1))
+else
+	echo "ok   second-copy"
+fi
+files=()
+
 if [ $failures -ne 0 ]; then
 	echo "$failures failure(s)"
 	exit 1

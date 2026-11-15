@@ -18,6 +18,7 @@
 
 #include "Immortal.h"
 #include "Handles.h"
+#include "Instances.h"
 #include "Internal.h"
 #include "nppmac/Startup.h"
 
@@ -423,7 +424,11 @@ BOOL WINAPI PulseEvent(HANDLE handle)
 HANDLE WINAPI CreateMutexW(LPSECURITY_ATTRIBUTES, BOOL initialOwner, LPCWSTR name)
 {
 	HANDLE handle = createNamed<Mutex>(name, [] { return std::make_shared<Mutex>(); });
-	const DWORD error = GetLastError();
+	DWORD error = GetLastError();
+	// Another copy of the program with the name has it too, as Windows' named mutexes are shared
+	// ("nppInstance": Notepad++ then hands its files to the running copy).
+	if (handle && name && *name && error != ERROR_ALREADY_EXISTS && !nppmac::kernel::claimName(name))
+		error = ERROR_ALREADY_EXISTS;
 	if (handle && initialOwner && error != ERROR_ALREADY_EXISTS)
 		WaitForSingleObject(handle, 0);
 	SetLastError(error);
