@@ -14,19 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// GDI on Core Graphics and Core Text: the objects behind HDC, HPEN, HBRUSH, HFONT, HBITMAP and HRGN.
-// One GDI unit is one point; drawing happens in CGContexts that are already scaled for the display.
-//
-// Core Graphics and Core Text must be included before <windows.h> (Wine's headers define
-// "interface", which breaks IOKit's headers otherwise).
+// GDI: the objects behind HDC, HPEN, HBRUSH, HFONT, HBITMAP and HRGN, drawing on the platform's canvas
+// (Canvas.h: Core Graphics and Core Text on macOS, Qt on Linux). One GDI unit is one point; canvases are
+// already scaled for the display.
 
 #pragma once
 
-#include <CoreGraphics/CoreGraphics.h>
-#include <CoreText/CoreText.h>
-
 #include <windows.h>
 
+#include "Canvas.h"
 #include "platform/Platform.h"
 
 #include <memory>
@@ -86,10 +82,9 @@ namespace nppmac::gdi
 	struct Font : GdiObject
 	{
 		Font() : GdiObject{ObjectType::font} {}
-		~Font() override;
 		LOGFONTW _log{};
-		CTFontRef _ctFont = nullptr; // created on first use
-		CTFontRef ctFont();
+		std::unique_ptr<NativeFont> _native; // created on first use
+		const NativeFont& native();
 	};
 
 	// The largest bitmap the runtime makes: 2^28 pixels (1 GB, 16384 x 16384). Windows fails a bitmap it
@@ -107,7 +102,6 @@ namespace nppmac::gdi
 	struct Bitmap : GdiObject
 	{
 		Bitmap() : GdiObject{ObjectType::bitmap} {}
-		~Bitmap() override;
 		int _width = 0;
 		int _height = 0;
 		int _bitsPerPixel = 32;   // what GetObject reports (1 for monochrome bitmaps)
@@ -115,17 +109,17 @@ namespace nppmac::gdi
 		bool _hasAlpha = false;   // the bits carry real alpha (AlphaBlend with AC_SRC_ALPHA)
 		std::vector<uint32_t> _ownedPixels;
 		uint32_t* _pixels = nullptr; // _ownedPixels.data(), or the DIB section's bits
-		CGContextRef _context = nullptr;
+		std::unique_ptr<Canvas> _canvas;
 		// The same image with twice the pixels, for Retina screens: an icon file's larger image. The
 		// program sees only this bitmap's size; drawing on a Retina surface uses the larger image.
 		std::shared_ptr<Bitmap> _hiRes;
 
-		// A context drawing into the pixels with a top-left origin.
-		CGContextRef context();
-		CGImageRef createImage() const;
-		// The image to draw on a context: the larger one where the context has more than one pixel per
+		// A canvas drawing into the pixels with a top-left origin.
+		Canvas* canvas();
+		std::shared_ptr<CanvasImage> image() const;
+		// The image to draw on a canvas: the larger one where the canvas has more than one pixel per
 		// point (Retina), when there is one.
-		CGImageRef createImageFor(CGContextRef context) const;
+		std::shared_ptr<CanvasImage> imageFor(const Canvas* canvas) const;
 		uint32_t* rowPointer(int y) {
 			return _pixels + static_cast<size_t>(_bottomUp ? _height - 1 - y : y) * static_cast<size_t>(_width);
 		}
@@ -163,15 +157,15 @@ namespace nppmac::gdi
 	{
 		platform::PrintSetup _setup;
 		std::string _path;   // the PDF
-		std::string _name;
-		CGContextRef _pdf = nullptr;
-		bool _inPage = false;
+		std::u16string _name;
+		std::unique_ptr<PdfDocument> _pdf;
+		Canvas* _page = nullptr; // the page being drawn, between StartPage and EndPage
 
 		~PrintDocument();
 	};
 
 	// Printer device units are 1/96 inch, as the screen's are here, so text measures the same on
-	// paper as on screen; Core Graphics works in points.
+	// paper as on screen; a PDF page's canvas works in points.
 	constexpr double printerUnitsPerPoint = 96.0 / 72.0;
 
 	struct DCState
@@ -200,19 +194,19 @@ namespace nppmac::gdi
 		DCKind _kind = DCKind::info;
 		user::Window* _window = nullptr;
 		HBITMAP _bitmap = nullptr;    // memory DCs: the selected bitmap
-		CGContextRef _context = nullptr;
+		Canvas* _canvas = nullptr;   // the selected bitmap's, the window surface's or the printed page's
+		std::unique_ptr<Canvas> _surface; // window DCs: their surface's canvas, kept until released
 		int _width = 0;              // device size
 		int _height = 0;
 		DCState _state;
 		std::vector<DCState> _saved;
-		bool _gstateSaved = false;   // a CGContextSaveGState wraps the current clip and transform
 		RECT _paintClip{};           // BeginPaint's update rectangle, intersected with every clip
 		bool _hasPaintClip = false;
 		std::shared_ptr<PrintDocument> _print; // printer DCs
 
-		// Prepares the context for drawing: clip and logical-to-device offset applied. The caller
+		// Prepares the canvas for drawing: clip and logical-to-device offset applied. The caller
 		// must call end() afterwards.
-		CGContextRef begin();
+		Canvas* begin();
 		void end();
 	};
 
@@ -237,10 +231,11 @@ namespace nppmac::gdi
 
 	// --- Colors and conversions ---------------------------------------------------------------------
 
-	CGColorRef createColor(COLORREF color, CGFloat alpha = 1.0);
-	void setFillColor(CGContextRef context, COLORREF color);
-	void setStrokeColor(CGContextRef context, COLORREF color);
-	CGRect toCGRect(const RECT& rect);
+	inline CanvasRect toCanvasRect(const RECT& rect)
+	{
+		return {static_cast<double>(rect.left), static_cast<double>(rect.top), static_cast<double>(rect.right - rect.left),
+			static_cast<double>(rect.bottom - rect.top)};
+	}
 
 	// Fills a rectangle (device context coordinates) with a brush, honouring the DC's clip.
 	void fillRect(DC* dc, const RECT& rect, HBRUSH brush);
@@ -249,8 +244,8 @@ namespace nppmac::gdi
 
 	// --- Text -------------------------------------------------------------------------------------
 
-	CTFontRef fontFor(DC* dc);
+	const NativeFont& fontFor(DC* dc);
 	// Width of a run of text in the DC's font.
-	double textWidth(CTFontRef font, std::u16string_view text);
-	void drawText(DC* dc, CGContextRef context, std::u16string_view text, double x, double baseline, COLORREF color);
+	double textWidth(const NativeFont& font, std::u16string_view text);
+	void drawText(DC* dc, Canvas* canvas, std::u16string_view text, double x, double baseline, COLORREF color);
 }

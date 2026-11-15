@@ -144,66 +144,25 @@ namespace nppmac::gdi
 		return liveObjects().count(object) ? object : nullptr;
 	}
 
-	// --- Font -------------------------------------------------------------------------------------
-
-	Font::~Font()
-	{
-		if (_ctFont)
-			CFRelease(_ctFont);
-	}
-
 	// --- Bitmap -----------------------------------------------------------------------------------
 
-	Bitmap::~Bitmap()
+	Canvas* Bitmap::canvas()
 	{
-		if (_context)
-			CGContextRelease(_context);
+		if (!_canvas)
+			_canvas = canvasOverPixels(_pixels, _width, _height, _bottomUp);
+		return _canvas.get();
 	}
 
-	CGContextRef Bitmap::context()
+	std::shared_ptr<CanvasImage> Bitmap::imageFor(const Canvas* canvas) const
 	{
-		if (_context)
-			return _context;
-		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-		// A bottom-up DIB is drawn through a context whose rows run upward in memory.
-		_context = CGBitmapContextCreate(_pixels, static_cast<size_t>(_width), static_cast<size_t>(_height), 8,
-			static_cast<size_t>(_width) * 4, colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little));
-		CGColorSpaceRelease(colorSpace);
-		if (_context && !_bottomUp)
-		{
-			// CGBitmapContext memory is top-down with a bottom-left origin: flip to a top-left origin.
-			CGContextTranslateCTM(_context, 0, _height);
-			CGContextScaleCTM(_context, 1, -1);
-		}
-		else if (_context)
-		{
-			// Rows run upward in memory, so the bottom-left origin of Core Graphics already matches
-			// the rows; drawing still needs a top-left origin in GDI coordinates.
-			CGContextTranslateCTM(_context, 0, 0);
-		}
-		return _context;
+		if (_hiRes && canvas && canvas->deviceScale() >= 1.5)
+			return _hiRes->image();
+		return image();
 	}
 
-	CGImageRef Bitmap::createImageFor(CGContextRef context) const
+	std::shared_ptr<CanvasImage> Bitmap::image() const
 	{
-		if (_hiRes && context)
-		{
-			const CGSize pixel = CGContextConvertSizeToDeviceSpace(context, CGSizeMake(1, 1));
-			if (std::fabs(pixel.width) >= 1.5)
-				return _hiRes->createImage();
-		}
-		return createImage();
-	}
-
-	CGImageRef Bitmap::createImage() const
-	{
-		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-		CGDataProviderRef provider = CGDataProviderCreateWithData(nullptr, _pixels, static_cast<size_t>(_width) * static_cast<size_t>(_height) * 4, nullptr);
-		CGImageRef image = CGImageCreate(static_cast<size_t>(_width), static_cast<size_t>(_height), 8, 32, static_cast<size_t>(_width) * 4,
-			colorSpace, static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little), provider, nullptr, false, kCGRenderingIntentDefault);
-		CGDataProviderRelease(provider);
-		CGColorSpaceRelease(colorSpace);
-		return image;
+		return imageFromPixels(_pixels, _width, _height);
 	}
 
 	// --- Region -----------------------------------------------------------------------------------
@@ -227,30 +186,6 @@ namespace nppmac::gdi
 	}
 
 	// --- Colors -----------------------------------------------------------------------------------
-
-	CGColorRef createColor(COLORREF color, CGFloat alpha)
-	{
-		const CGFloat components[] = {GetRValue(color) / 255.0, GetGValue(color) / 255.0, GetBValue(color) / 255.0, alpha};
-		CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-		CGColorRef result = CGColorCreate(colorSpace, components);
-		CGColorSpaceRelease(colorSpace);
-		return result;
-	}
-
-	void setFillColor(CGContextRef context, COLORREF color)
-	{
-		CGContextSetRGBFillColor(context, GetRValue(color) / 255.0, GetGValue(color) / 255.0, GetBValue(color) / 255.0, 1.0);
-	}
-
-	void setStrokeColor(CGContextRef context, COLORREF color)
-	{
-		CGContextSetRGBStrokeColor(context, GetRValue(color) / 255.0, GetGValue(color) / 255.0, GetBValue(color) / 255.0, 1.0);
-	}
-
-	CGRect toCGRect(const RECT& rect)
-	{
-		return CGRectMake(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-	}
 
 	COLORREF brushColor(DC* dc, HBRUSH handle)
 	{

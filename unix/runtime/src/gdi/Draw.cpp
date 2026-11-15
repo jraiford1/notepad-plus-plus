@@ -45,40 +45,31 @@ namespace nppmac::gdi
 			return brush && brush->_style != BS_NULL;
 		}
 
-		void applyPen(DC* dc, CGContextRef context)
+		void applyPen(DC* dc, Canvas* canvas)
 		{
 			Pen* pen = currentPen(dc);
-			setStrokeColor(context, penColor(dc, pen));
-			CGContextSetLineWidth(context, pen ? pen->_width : 1);
-			CGContextSetLineCap(context, kCGLineCapSquare);
+			canvas->setStrokeColor(penColor(dc, pen));
+			canvas->setLineWidth(pen ? pen->_width : 1);
+			canvas->setLineCap(LineCap::square);
 			if (pen && (pen->_style == PS_DOT || pen->_style == PS_DASH || pen->_style == PS_DASHDOT || pen->_style == PS_DASHDOTDOT))
 			{
-				static const CGFloat dot[] = {1, 1};
-				static const CGFloat dash[] = {6, 2};
-				static const CGFloat dashDot[] = {6, 2, 1, 2};
+				static const double dot[] = {1, 1};
+				static const double dash[] = {6, 2};
+				static const double dashDot[] = {6, 2, 1, 2};
 				if (pen->_style == PS_DOT)
-					CGContextSetLineDash(context, 0, dot, 2);
+					canvas->setLineDash(dot);
 				else if (pen->_style == PS_DASH)
-					CGContextSetLineDash(context, 0, dash, 2);
+					canvas->setLineDash(dash);
 				else
-					CGContextSetLineDash(context, 0, dashDot, 4);
-				CGContextSetLineCap(context, kCGLineCapButt);
+					canvas->setLineDash(dashDot);
+				canvas->setLineCap(LineCap::butt);
 			}
 			// R2_NOT and R2_XORPEN invert what is under the line (splitter and drag feedback).
 			if (dc->_state._rop2 == R2_NOT || dc->_state._rop2 == R2_XORPEN || dc->_state._rop2 == R2_NOTXORPEN)
 			{
-				CGContextSetBlendMode(context, kCGBlendModeDifference);
-				setStrokeColor(context, RGB(255, 255, 255));
+				canvas->setBlendMode(BlendMode::difference);
+				canvas->setStrokeColor(RGB(255, 255, 255));
 			}
-		}
-
-		void drawImage(CGContextRef context, CGImageRef image, const CGRect& destination)
-		{
-			CGContextSaveGState(context);
-			CGContextTranslateCTM(context, destination.origin.x, destination.origin.y + destination.size.height);
-			CGContextScaleCTM(context, 1, -1);
-			CGContextDrawImage(context, CGRectMake(0, 0, destination.size.width, destination.size.height), image);
-			CGContextRestoreGState(context);
 		}
 
 		Bitmap* selectedBitmap(DC* dc)
@@ -179,27 +170,26 @@ namespace nppmac::gdi
 		auto* brush = objectAs<Brush>(brushHandle, ObjectType::brush);
 		if (brush && brush->_style == BS_NULL)
 			return;
-		CGContextRef context = dc->begin();
-		if (!context)
+		Canvas* canvas = dc->begin();
+		if (!canvas)
 			return;
 		if (brush && brush->_style == BS_PATTERN && brush->_pattern)
 		{
 			// Tile the pattern bitmap.
-			CGImageRef image = brush->_pattern->createImage();
-			CGContextClipToRect(context, toCGRect(rect));
+			const std::shared_ptr<CanvasImage> image = brush->_pattern->image();
+			canvas->clipToRect(toCanvasRect(rect));
 			const int w = brush->_pattern->_width;
 			const int h = brush->_pattern->_height;
-			for (int y = rect.top - ((rect.top % h) + h) % h; y < rect.bottom; y += h)
+			for (int y = rect.top - ((rect.top % h) + h) % h; image && y < rect.bottom; y += h)
 			{
 				for (int x = rect.left - ((rect.left % w) + w) % w; x < rect.right; x += w)
-					drawImage(context, image, CGRectMake(x, y, w, h));
+					canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(w), static_cast<double>(h)});
 			}
-			CGImageRelease(image);
 		}
 		else
 		{
-			setFillColor(context, brushColor(dc, brushHandle));
-			CGContextFillRect(context, toCGRect(rect));
+			canvas->setFillColor(brushColor(dc, brushHandle));
+			canvas->fillRect(toCanvasRect(rect));
 		}
 		dc->end();
 	}
@@ -235,12 +225,12 @@ BOOL WINAPI InvertRect(HDC hdc, const RECT* rect)
 	DC* dc = toDC(hdc);
 	if (!dc || !rect)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
-	CGContextSetBlendMode(context, kCGBlendModeDifference);
-	setFillColor(context, RGB(255, 255, 255));
-	CGContextFillRect(context, toCGRect(*rect));
+	canvas->setBlendMode(BlendMode::difference);
+	canvas->setFillColor(RGB(255, 255, 255));
+	canvas->fillRect(toCanvasRect(*rect));
 	dc->end();
 	return TRUE;
 }
@@ -250,16 +240,16 @@ BOOL WINAPI DrawFocusRect(HDC hdc, const RECT* rect)
 	DC* dc = toDC(hdc);
 	if (!dc || !rect)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
 	// A dotted frame, inverted, as on Windows.
-	static const CGFloat dot[] = {1, 1};
-	CGContextSetBlendMode(context, kCGBlendModeDifference);
-	setStrokeColor(context, RGB(255, 255, 255));
-	CGContextSetLineWidth(context, 1);
-	CGContextSetLineDash(context, 0, dot, 2);
-	CGContextStrokeRect(context, CGRectMake(rect->left + 0.5, rect->top + 0.5, rect->right - rect->left - 1, rect->bottom - rect->top - 1));
+	static const double dot[] = {1, 1};
+	canvas->setBlendMode(BlendMode::difference);
+	canvas->setStrokeColor(RGB(255, 255, 255));
+	canvas->setLineWidth(1);
+	canvas->setLineDash(dot);
+	canvas->strokeRect({rect->left + 0.5, rect->top + 0.5, rect->right - rect->left - 1.0, rect->bottom - rect->top - 1.0});
 	dc->end();
 	return TRUE;
 }
@@ -350,32 +340,25 @@ BOOL WINAPI LineTo(HDC hdc, int x, int y)
 	dc->_state._position = {x, y};
 	if (!hasPen(dc))
 		return TRUE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
-	applyPen(dc, context);
+	applyPen(dc, canvas);
 	Pen* pen = currentPen(dc);
 	if (pen && pen->_width <= 1)
 	{
 		// The end point is not drawn: shorten the line by one pixel along its direction.
 		const int dx = (x > from.x) - (x < from.x);
 		const int dy = (y > from.y) - (y < from.y);
-		CGContextSetLineCap(context, kCGLineCapButt);
-		CGContextBeginPath(context);
-		const CGFloat startX = dx > 0 ? from.x : (dx < 0 ? from.x + 1 : from.x + 0.5);
-		const CGFloat startY = dy > 0 ? from.y : (dy < 0 ? from.y + 1 : from.y + 0.5);
-		const CGFloat endX = dx > 0 ? x : (dx < 0 ? x + 1 : x + 0.5);
-		const CGFloat endY = dy > 0 ? y : (dy < 0 ? y + 1 : y + 0.5);
-		CGContextMoveToPoint(context, startX, startY);
-		CGContextAddLineToPoint(context, endX, endY);
+		canvas->setLineCap(LineCap::butt);
+		const double startX = dx > 0 ? from.x : (dx < 0 ? from.x + 1 : from.x + 0.5);
+		const double startY = dy > 0 ? from.y : (dy < 0 ? from.y + 1 : from.y + 0.5);
+		const double endX = dx > 0 ? x : (dx < 0 ? x + 1 : x + 0.5);
+		const double endY = dy > 0 ? y : (dy < 0 ? y + 1 : y + 0.5);
+		canvas->strokeLine({startX, startY}, {endX, endY});
 	}
 	else
-	{
-		CGContextBeginPath(context);
-		CGContextMoveToPoint(context, from.x, from.y);
-		CGContextAddLineToPoint(context, x, y);
-	}
-	CGContextStrokePath(context);
+		canvas->strokeLine({static_cast<double>(from.x), static_cast<double>(from.y)}, {static_cast<double>(x), static_cast<double>(y)});
 	dc->end();
 	return TRUE;
 }
@@ -405,32 +388,24 @@ BOOL WINAPI Polygon(HDC hdc, const POINT* points, int count)
 	DC* dc = toDC(hdc);
 	if (!dc || count < 2)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
-	CGContextBeginPath(context);
-	CGContextMoveToPoint(context, points[0].x + 0.5, points[0].y + 0.5);
-	for (int i = 1; i < count; ++i)
-		CGContextAddLineToPoint(context, points[i].x + 0.5, points[i].y + 0.5);
-	CGContextClosePath(context);
-	CGContextSetShouldAntialias(context, true);
+	std::vector<CanvasPoint> corners;
+	for (int i = 0; i < count; ++i)
+		corners.push_back({points[i].x + 0.5, points[i].y + 0.5});
+	canvas->setAntialias(true);
 	if (hasBrush(dc))
 	{
-		setFillColor(context, brushColor(dc, dc->_state._brush));
+		canvas->setFillColor(brushColor(dc, dc->_state._brush));
 		if (hasPen(dc))
-		{
-			applyPen(dc, context);
-			CGContextDrawPath(context, kCGPathFillStroke);
-		}
-		else
-		{
-			CGContextFillPath(context);
-		}
+			applyPen(dc, canvas);
+		canvas->drawPolygon(corners, true, hasPen(dc));
 	}
 	else if (hasPen(dc))
 	{
-		applyPen(dc, context);
-		CGContextStrokePath(context);
+		applyPen(dc, canvas);
+		canvas->drawPolygon(corners, false, true);
 	}
 	dc->end();
 	return TRUE;
@@ -448,12 +423,12 @@ BOOL WINAPI Rectangle(HDC hdc, int left, int top, int right, int bottom)
 	}
 	if (hasPen(dc))
 	{
-		CGContextRef context = dc->begin();
-		if (!context)
+		Canvas* canvas = dc->begin();
+		if (!canvas)
 			return FALSE;
-		applyPen(dc, context);
+		applyPen(dc, canvas);
 		const int width = currentPen(dc)->_width;
-		CGContextStrokeRect(context, CGRectMake(left + width / 2.0, top + width / 2.0, right - left - width, bottom - top - width));
+		canvas->strokeRect({left + width / 2.0, top + width / 2.0, static_cast<double>(right - left - width), static_cast<double>(bottom - top - width)});
 		dc->end();
 	}
 	return TRUE;
@@ -464,26 +439,23 @@ BOOL WINAPI RoundRect(HDC hdc, int left, int top, int right, int bottom, int ell
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
-	CGContextSetShouldAntialias(context, true);
-	const CGRect rect = CGRectMake(left + 0.5, top + 0.5, right - left - 1, bottom - top - 1);
-	CGPathRef path = CGPathCreateWithRoundedRect(rect, std::min<CGFloat>(ellipseWidth / 2.0, rect.size.width / 2),
-		std::min<CGFloat>(ellipseHeight / 2.0, rect.size.height / 2), nullptr);
+	canvas->setAntialias(true);
+	const CanvasRect rect{left + 0.5, top + 0.5, right - left - 1.0, bottom - top - 1.0};
+	const double radiusX = std::min(ellipseWidth / 2.0, rect._width / 2);
+	const double radiusY = std::min(ellipseHeight / 2.0, rect._height / 2);
 	if (hasBrush(dc))
 	{
-		setFillColor(context, brushColor(dc, dc->_state._brush));
-		CGContextAddPath(context, path);
-		CGContextFillPath(context);
+		canvas->setFillColor(brushColor(dc, dc->_state._brush));
+		canvas->drawRoundedRect(rect, radiusX, radiusY, true, false);
 	}
 	if (hasPen(dc))
 	{
-		applyPen(dc, context);
-		CGContextAddPath(context, path);
-		CGContextStrokePath(context);
+		applyPen(dc, canvas);
+		canvas->drawRoundedRect(rect, radiusX, radiusY, false, true);
 	}
-	CGPathRelease(path);
 	dc->end();
 	return TRUE;
 }
@@ -493,20 +465,20 @@ BOOL WINAPI Ellipse(HDC hdc, int left, int top, int right, int bottom)
 	DC* dc = toDC(hdc);
 	if (!dc)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
-	CGContextSetShouldAntialias(context, true);
-	const CGRect rect = CGRectMake(left + 0.5, top + 0.5, right - left - 1, bottom - top - 1);
+	canvas->setAntialias(true);
+	const CanvasRect rect{left + 0.5, top + 0.5, right - left - 1.0, bottom - top - 1.0};
 	if (hasBrush(dc))
 	{
-		setFillColor(context, brushColor(dc, dc->_state._brush));
-		CGContextFillEllipseInRect(context, rect);
+		canvas->setFillColor(brushColor(dc, dc->_state._brush));
+		canvas->drawEllipse(rect, true, false);
 	}
 	if (hasPen(dc))
 	{
-		applyPen(dc, context);
-		CGContextStrokeEllipseInRect(context, rect);
+		applyPen(dc, canvas);
+		canvas->drawEllipse(rect, false, true);
 	}
 	dc->end();
 	return TRUE;
@@ -572,12 +544,12 @@ BOOL WINAPI PatBlt(HDC hdc, int x, int y, int width, int height, DWORD rop)
 		case DSTINVERT:
 		case PATINVERT:
 		{
-			CGContextRef context = dc->begin();
-			if (!context)
+			Canvas* canvas = dc->begin();
+			if (!canvas)
 				return FALSE;
-			CGContextSetBlendMode(context, kCGBlendModeDifference);
-			setFillColor(context, rop == DSTINVERT ? RGB(255, 255, 255) : brushColor(dc, dc->_state._brush));
-			CGContextFillRect(context, toCGRect(rect));
+			canvas->setBlendMode(BlendMode::difference);
+			canvas->setFillColor(rop == DSTINVERT ? RGB(255, 255, 255) : brushColor(dc, dc->_state._brush));
+			canvas->fillRect(toCanvasRect(rect));
 			dc->end();
 			return TRUE;
 		}
@@ -599,53 +571,48 @@ BOOL WINAPI StretchBlt(HDC destinationHandle, int x, int y, int width, int heigh
 	if (width == sourceWidth && height == sourceHeight && rasterBitmaps(destination, x, y, width, height, source, sourceX, sourceY, rop))
 		return TRUE;
 
-	// Through Core Graphics: the source as an image (its bitmap, or the window surface).
-	CGImageRef image = nullptr;
+	// Through the canvas: the source as an image (its bitmap, or the window surface).
+	std::shared_ptr<CanvasImage> image;
 	if (Bitmap* bitmap = selectedBitmap(source))
 	{
-		CGImageRef whole = bitmap->createImage();
+		const std::shared_ptr<CanvasImage> whole = bitmap->image();
 		const POINT offset{source->_state._viewportOrigin.x - source->_state._windowOrigin.x, source->_state._viewportOrigin.y - source->_state._windowOrigin.y};
-		image = CGImageCreateWithImageInRect(whole, CGRectMake(sourceX + offset.x, sourceY + offset.y, sourceWidth, sourceHeight));
-		CGImageRelease(whole);
-	}
-	else if (source->_context)
-	{
-		CGImageRef whole = CGBitmapContextCreateImage(source->_context);
 		if (whole)
+			image = whole->cropped({static_cast<double>(sourceX + offset.x), static_cast<double>(sourceY + offset.y), static_cast<double>(sourceWidth),
+				static_cast<double>(sourceHeight)});
+	}
+	else if (source->_canvas)
+	{
+		if (const std::shared_ptr<CanvasImage> whole = source->_canvas->snapshot())
 		{
 			// Surfaces are scaled for the display.
-			const double scale = static_cast<double>(CGImageGetWidth(whole)) / std::max(1, source->_width);
-			image = CGImageCreateWithImageInRect(whole, CGRectMake(sourceX * scale, sourceY * scale, sourceWidth * scale, sourceHeight * scale));
-			CGImageRelease(whole);
+			const double scale = static_cast<double>(whole->width()) / std::max(1, source->_width);
+			image = whole->cropped({sourceX * scale, sourceY * scale, sourceWidth * scale, sourceHeight * scale});
 		}
 	}
 	if (!image)
 		return FALSE;
 
-	CGContextRef context = destination->begin();
-	if (!context)
-	{
-		CGImageRelease(image);
+	Canvas* canvas = destination->begin();
+	if (!canvas)
 		return FALSE;
-	}
 	switch (rop)
 	{
 		case SRCPAINT:
-			CGContextSetBlendMode(context, kCGBlendModeLighten);
+			canvas->setBlendMode(BlendMode::lighten);
 			break;
 		case SRCAND:
-			CGContextSetBlendMode(context, kCGBlendModeMultiply);
+			canvas->setBlendMode(BlendMode::multiply);
 			break;
 		case SRCINVERT:
-			CGContextSetBlendMode(context, kCGBlendModeDifference);
+			canvas->setBlendMode(BlendMode::difference);
 			break;
 		default:
-			CGContextSetBlendMode(context, kCGBlendModeCopy);
+			canvas->setBlendMode(BlendMode::copy);
 	}
-	CGContextSetInterpolationQuality(context, destination->_state._stretchMode == HALFTONE ? kCGInterpolationHigh : kCGInterpolationNone);
-	drawImage(context, image, CGRectMake(x, y, width, height));
+	canvas->setInterpolation(destination->_state._stretchMode == HALFTONE ? Interpolation::high : Interpolation::none);
+	canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
 	destination->end();
-	CGImageRelease(image);
 	return TRUE;
 }
 
@@ -662,21 +629,19 @@ BOOL WINAPI AlphaBlend(HDC destinationHandle, int x, int y, int width, int heigh
 	Bitmap* bitmap = source ? selectedBitmap(source) : nullptr;
 	if (!destination || !bitmap)
 		return FALSE;
-	CGImageRef whole = bitmap->createImage();
-	CGImageRef image = CGImageCreateWithImageInRect(whole, CGRectMake(sourceX, sourceY, sourceWidth, sourceHeight));
-	CGImageRelease(whole);
-	CGContextRef context = destination->begin();
-	if (context && image)
+	const std::shared_ptr<CanvasImage> whole = bitmap->image();
+	const std::shared_ptr<CanvasImage> image = whole ? whole->cropped({static_cast<double>(sourceX), static_cast<double>(sourceY),
+		static_cast<double>(sourceWidth), static_cast<double>(sourceHeight)}) : nullptr;
+	Canvas* canvas = destination->begin();
+	if (canvas && image)
 	{
-		CGContextSetAlpha(context, blend.SourceConstantAlpha / 255.0);
-		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-		drawImage(context, image, CGRectMake(x, y, width, height));
+		canvas->setAlpha(blend.SourceConstantAlpha / 255.0);
+		canvas->setInterpolation(Interpolation::high);
+		canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
 	}
-	if (context)
+	if (canvas)
 		destination->end();
-	if (image)
-		CGImageRelease(image);
-	return context ? TRUE : FALSE;
+	return canvas ? TRUE : FALSE;
 }
 
 BOOL WINAPI TransparentBlt(HDC destinationHandle, int x, int y, int width, int height, HDC sourceHandle, int sourceX, int sourceY,
@@ -715,25 +680,23 @@ BOOL WINAPI GradientFill(HDC hdc, PTRIVERTEX vertices, ULONG, PVOID mesh, ULONG 
 	DC* dc = toDC(hdc);
 	if (!dc || mode == GRADIENT_FILL_TRIANGLE)
 		return FALSE;
-	CGContextRef context = dc->begin();
-	if (!context)
+	Canvas* canvas = dc->begin();
+	if (!canvas)
 		return FALSE;
 	auto* rects = static_cast<GRADIENT_RECT*>(mesh);
-	CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 	for (ULONG i = 0; i < count; ++i)
 	{
 		const TRIVERTEX& a = vertices[rects[i].UpperLeft];
 		const TRIVERTEX& b = vertices[rects[i].LowerRight];
-		const CGFloat components[] = {a.Red / 65535.0, a.Green / 65535.0, a.Blue / 65535.0, 1, b.Red / 65535.0, b.Green / 65535.0, b.Blue / 65535.0, 1};
-		CGGradientRef gradient = CGGradientCreateWithColorComponents(colorSpace, components, nullptr, 2);
-		CGContextSaveGState(context);
-		CGContextClipToRect(context, CGRectMake(a.x, a.y, b.x - a.x, b.y - a.y));
-		const CGPoint end = mode == GRADIENT_FILL_RECT_H ? CGPointMake(b.x, a.y) : CGPointMake(a.x, b.y);
-		CGContextDrawLinearGradient(context, gradient, CGPointMake(a.x, a.y), end, 0);
-		CGContextRestoreGState(context);
-		CGGradientRelease(gradient);
+		const CanvasRGB from{a.Red / 65535.0, a.Green / 65535.0, a.Blue / 65535.0};
+		const CanvasRGB to{b.Red / 65535.0, b.Green / 65535.0, b.Blue / 65535.0};
+		canvas->save();
+		canvas->clipToRect({static_cast<double>(a.x), static_cast<double>(a.y), static_cast<double>(b.x - a.x), static_cast<double>(b.y - a.y)});
+		const CanvasPoint end = mode == GRADIENT_FILL_RECT_H ? CanvasPoint{static_cast<double>(b.x), static_cast<double>(a.y)}
+		                                                     : CanvasPoint{static_cast<double>(a.x), static_cast<double>(b.y)};
+		canvas->fillLinearGradient({static_cast<double>(a.x), static_cast<double>(a.y)}, from, end, to);
+		canvas->restore();
 	}
-	CGColorSpaceRelease(colorSpace);
 	dc->end();
 	return TRUE;
 }
@@ -1041,13 +1004,14 @@ BOOL WINAPI DrawIconEx(HDC hdc, int x, int y, HICON handle, int width, int heigh
 		height = icon->_color->_height;
 	if (background)
 		fillRect(dc, {x, y, x + width, y + height}, background);
-	CGContextRef context = dc->begin();
-	if (context)
+	Canvas* canvas = dc->begin();
+	if (canvas)
 	{
-		CGImageRef image = icon->_color->createImageFor(context);
-		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-		drawImage(context, image, CGRectMake(x, y, width, height));
-		CGImageRelease(image);
+		if (const std::shared_ptr<CanvasImage> image = icon->_color->imageFor(canvas))
+		{
+			canvas->setInterpolation(Interpolation::high);
+			canvas->drawImage(*image, {static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height)});
+		}
 		dc->end();
 	}
 	return TRUE;

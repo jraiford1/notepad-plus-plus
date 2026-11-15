@@ -41,13 +41,10 @@ else()
 	target_link_libraries(nppRuntimeNative PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus)
 endif()
 if(NPPMAC_PLATFORM STREQUAL "linux")
-	# Not on Linux yet: AppKit's side (.mm), and the files that draw with Core Graphics and Core Text or
-	# decode images with ImageIO, until J4's drawing and window steps give them a Linux side.
+	# Not on Linux: AppKit's side (.mm); and, until J4's editor step gives it Scintilla's Qt layer, the
+	# Scintilla window class.
 	list(FILTER nppRuntimeSources EXCLUDE REGEX "\\.mm$")
-	list(FILTER nppRuntimeSources EXCLUDE REGEX "/gdi/(DC|Draw|Objects|Printing|Text)\\.cpp$|/user/Resources\\.cpp$|/scintilla/ScintillaClass\\.cpp$")
-	# And what draws through GDI's internal header (Core Graphics types): the controls, dialogs, menus
-	# and metrics.
-	list(FILTER nppRuntimeSources EXCLUDE REGEX "/controls/|/shell/CommonDialogs\\.cpp$|/user/(Dialogs|Menus|Metrics)\\.cpp$")
+	list(FILTER nppRuntimeSources EXCLUDE REGEX "/scintilla/ScintillaClass\\.cpp$")
 endif()
 add_library(nppRuntime STATIC ${nppRuntimeSources})
 if(NPPMAC_PLATFORM STREQUAL "linux")
@@ -90,6 +87,12 @@ target_compile_definitions(nppRuntimeIconTest PRIVATE "NPP_ROOT=\"${NPP_ROOT}\""
 target_link_libraries(nppRuntimeIconTest PRIVATE nppRuntime nppRuntimeStubs nppScintilla nppLexilla)
 add_test(NAME runtimeIcons COMMAND nppRuntimeIconTest)
 endif()
+
+# The canvas under GDI: the same pixels from Core Graphics and from Qt.
+add_executable(nppRuntimeCanvasTest test/CanvasTest.cpp)
+target_include_directories(nppRuntimeCanvasTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(nppRuntimeCanvasTest PRIVATE nppRuntime)
+add_test(NAME runtimeCanvas COMMAND nppRuntimeCanvasTest)
 
 add_executable(nppRuntimeProfileTest test/ProfileTest.cpp)
 target_link_libraries(nppRuntimeProfileTest PRIVATE nppRuntime nppRuntimeStubs)
