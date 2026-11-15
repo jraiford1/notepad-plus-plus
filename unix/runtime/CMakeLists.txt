@@ -41,9 +41,7 @@ else()
 	target_link_libraries(nppRuntimeNative PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus)
 endif()
 if(NPPMAC_PLATFORM STREQUAL "linux")
-	# Not on Linux: AppKit's side (.mm); and, until J4's editor step gives it Scintilla's Qt layer, the
-	# Scintilla window class.
-	list(FILTER nppRuntimeSources EXCLUDE REGEX "\\.mm$")
+	# Not on Linux until J4's editor step gives it Scintilla's Qt layer: the Scintilla window class.
 	list(FILTER nppRuntimeSources EXCLUDE REGEX "/scintilla/ScintillaClass\\.cpp$")
 endif()
 add_library(nppRuntime STATIC ${nppRuntimeSources})

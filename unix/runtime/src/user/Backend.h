@@ -224,8 +224,8 @@ namespace nppmac::ui
 
 	// For built-in classes backed by a native control (Scintilla, buttons, edits...): the window
 	// manager hands over an NSView created elsewhere (as an opaque pointer) to place in the hierarchy.
-	NativeView* adoptView(ViewOwner* owner, NativeView* parent, void* nsView, const Rect& frame);
-	void* nsView(NativeView* view);
+	NativeView* adoptView(ViewOwner* owner, NativeView* parent, void* native, const Rect& frame);
+	void* nativeView(NativeView* view);
 
 	// Screen geometry, in Windows screen coordinates (origin at the top left of the main screen).
 	Rect mainScreenRect();
@@ -236,9 +236,9 @@ namespace nppmac::ui
 	// Drag and drop of files onto windows.
 	void setAcceptsFiles(NativeView* view, bool accepts);
 
-	// A system-wide hot key: pressing the key (a macOS virtual key code) with exactly these modifiers
-	// calls the function, on the main thread. A token for unregistering, or 0 when the combination
-	// is taken.
+	// A system-wide hot key: pressing the key (a Windows virtual key, which the backend finds its own
+	// key for) with exactly these modifiers calls the function, on the main thread. A token for
+	// unregistering, or 0 when there is no such key or the combination is taken.
 	enum HotKeyModifier : unsigned
 	{
 		hotKeyCommand = 1,
@@ -246,7 +246,7 @@ namespace nppmac::ui
 		hotKeyControl = 4,
 		hotKeyShift = 8,
 	};
-	unsigned registerHotKey(unsigned short keyCode, unsigned modifiers, std::function<void()> pressed);
+	unsigned registerHotKey(unsigned char virtualKey, unsigned modifiers, std::function<void()> pressed);
 	void unregisterHotKey(unsigned token);
 
 	// Mouse capture: while set, mouse events outside the view still go to it.
@@ -286,11 +286,10 @@ namespace nppmac::ui
 	{
 		bool _down = true;
 		bool _repeat = false;
-		unsigned short _keyCode = 0;   // macOS virtual key code
+		unsigned char _virtualKey = 0; // Windows' virtual key for it, the backend's translation (0: none)
 		unsigned _modifiers = 0;       // Modifier flags
 		std::u16string _characters;    // text the key produces (with modifiers)
-		std::u16string _charactersIgnoringModifiers;
-		void* _nsEvent = nullptr;      // retained; released with releaseNativeEvent
+		void* _nativeEvent = nullptr;  // retained; released with releaseNativeEvent
 	};
 
 	// Implemented by the window manager.
@@ -319,7 +318,7 @@ namespace nppmac::ui
 	NativeView* windowManagerSnapshotView();
 	// The system's light or dark appearance changed: WM_SETTINGCHANGE "ImmersiveColorSet", as on Windows.
 	void windowManagerAppearanceChanged();
-	void windowManagerModifiersChanged(unsigned modifiers, unsigned short keyCode, bool down);
+	void windowManagerModifiersChanged(unsigned modifiers, unsigned char virtualKey, bool down);
 	// Text committed by an input method or a character picker, outside key events.
 	void windowManagerInsertText(const std::u16string& text);
 

@@ -16,7 +16,7 @@
 
 #import <Cocoa/Cocoa.h>
 
-#include "MenuBridge.h"
+#include "../MenuBridge.h"
 
 using nppmac::ui::MenuCallbacks;
 using nppmac::ui::MenuItemDescription;

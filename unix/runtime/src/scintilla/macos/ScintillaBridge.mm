@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "ScintillaView.h"
-#include "ScintillaBridge.h"
+#include "../ScintillaBridge.h"
 
 namespace
 {

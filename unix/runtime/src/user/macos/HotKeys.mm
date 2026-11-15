@@ -19,7 +19,8 @@
 
 #import <Carbon/Carbon.h>
 
-#include "Backend.h"
+#include "../Backend.h"
+#include "KeyCodes.h"
 
 #include <cstdlib>
 #include <map>
@@ -56,8 +57,11 @@ namespace
 
 namespace nppmac::ui
 {
-	unsigned registerHotKey(unsigned short keyCode, unsigned modifiers, std::function<void()> pressed)
+	unsigned registerHotKey(unsigned char virtualKey, unsigned modifiers, std::function<void()> pressed)
 	{
+		const int keyCode = macKeyForVirtualKey(virtualKey);
+		if (keyCode < 0)
+			return 0;
 		static UInt32 nextToken = 1;
 		const UInt32 token = nextToken++;
 		// A test run never takes keys from the user's other programs: the key is not registered.
@@ -83,7 +87,7 @@ namespace nppmac::ui
 		if (modifiers & hotKeyShift)
 			carbonModifiers |= shiftKey;
 		EventHotKeyRef ref = nullptr;
-		if (RegisterEventHotKey(keyCode, carbonModifiers, EventHotKeyID{'NPPh', token}, GetApplicationEventTarget(), 0, &ref) != noErr)
+		if (RegisterEventHotKey(static_cast<UInt32>(keyCode), carbonModifiers, EventHotKeyID{'NPPh', token}, GetApplicationEventTarget(), 0, &ref) != noErr)
 			return 0;
 		hotKeys()[token] = HotKey{ref, std::move(pressed)};
 		return token;
