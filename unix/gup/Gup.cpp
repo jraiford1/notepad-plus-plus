@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// The macOS stand-in for WinGUp, Notepad++'s updater, as far as Plugins Admin uses it: Notepad++ runs
-// it as it quits (updater/gup.exe), with WinGUp's command line:
+// The macOS and Linux stand-in for WinGUp, Notepad++'s updater, as far as Plugins Admin uses it:
+// Notepad++ runs it as it quits (updater/gup.exe), with WinGUp's command line:
 //
 //     gup.exe -unzipTo [-clean] "<notepad++.exe>" "<plugins folder>" "<folder> <package> <sha-256>"...
 //     gup.exe -clean "<notepad++.exe>" "<plugins folder>" "<folder>"...
@@ -24,9 +24,20 @@
 // It waits for Notepad++ to end, removes, installs (each package checked against its SHA-256 before it
 // is unzipped) or moves the plugin folders, then starts Notepad++ again. A package is a URL, or a path
 // relative to the program folder (the plugins the app carries, in plugins-catalog/).
+//
+// On Linux a plugins folder that is not the user's (a system-wide install's, as Program Files is on
+// Windows, where WinGUp runs as an administrator) is changed by gup run again through pkexec, the
+// desktop's administrator prompt, with -elevated before the rest: it only changes the folders. Notepad++
+// starts again as the user.
 
+#ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
 #include <libproc.h>
+#else
+#include <climits>
+#include <dirent.h>
+#endif
+#include <cerrno>
 #include <spawn.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -63,7 +74,7 @@ namespace
 			argv.push_back(const_cast<char*>(argument.c_str()));
 		argv.push_back(nullptr);
 		pid_t pid = 0;
-		if (posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), environ) != 0)
+		if (posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ) != 0)
 			return false;
 		int status = 0;
 		while (waitpid(pid, &status, 0) < 0)
@@ -107,31 +118,69 @@ namespace
 		std::fprintf(stderr, "gup: %s\n", message.c_str());
 		if (testRun())
 			return;
-		// The user sees it too: an alert, as WinGUp shows its errors.
+		// The user sees it too: an alert, as WinGUp shows its errors (gup run through pkexec has no
+		// desktop to show it on: the gup that ran it shows what it says).
+#ifdef __APPLE__
 		runProgram({"/usr/bin/osascript", "-e", "display alert \"Notepad++ plugins\" message \"" + message + "\" as warning"});
+#else
+		if (std::getenv("PKEXEC_UID"))
+			return;
+		runProgram({"zenity", "--warning", "--title=Notepad++ plugins", "--no-markup", "--text=" + message});
+#endif
 	}
 
-	// The app bundle whose Resources folder holds notepad++.exe.
+	// What holds the program: the app bundle whose Resources folder holds notepad++.exe on the Mac, the
+	// program folder on Linux.
 	fs::path bundleOf(const fs::path& notepadPath)
 	{
+#ifdef __APPLE__
 		return notepadPath.parent_path().parent_path().parent_path();
+#else
+		std::error_code error;
+		const fs::path folder = fs::canonical(notepadPath.parent_path(), error);
+		return error ? notepadPath.parent_path() : folder;
+#endif
 	}
 
-	// Waits (up to a minute) until no process runs the bundle's executable.
+	// Waits (up to a minute) until no process runs the program's executable.
 	void waitForNotepadToEnd(const fs::path& bundle)
 	{
+#ifdef __APPLE__
 		const std::string executables = (bundle / "Contents" / "MacOS").string() + "/";
+#else
+		const std::string executables = bundle.string() + "/";
+#endif
 		for (int attempt = 0; attempt < 600; ++attempt)
 		{
+			bool running = false;
+#ifdef __APPLE__
 			std::vector<pid_t> pids(4096);
 			const int bytes = proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
-			bool running = false;
 			for (int i = 0; i < bytes / static_cast<int>(sizeof(pid_t)) && !running; ++i)
 			{
 				char path[PROC_PIDPATHINFO_MAXSIZE]{};
 				if (pids[static_cast<size_t>(i)] != getpid() && proc_pidpath(pids[static_cast<size_t>(i)], path, sizeof(path)) > 0)
 					running = std::string{path}.compare(0, executables.size(), executables) == 0;
 			}
+#else
+			if (DIR* processes = ::opendir("/proc"))
+			{
+				while (const dirent* entry = ::readdir(processes))
+				{
+					const std::string name = entry->d_name;
+					if (name.empty() || name.find_first_not_of("0123456789") != std::string::npos || std::stol(name) == getpid())
+						continue;
+					char path[PATH_MAX]{};
+					const ssize_t length = ::readlink(("/proc/" + name + "/exe").c_str(), path, sizeof(path) - 1);
+					if (length > 0 && std::string{path, static_cast<size_t>(length)}.compare(0, executables.size(), executables) == 0)
+					{
+						running = true;
+						break;
+					}
+				}
+				::closedir(processes);
+			}
+#endif
 			if (!running)
 				return;
 			std::this_thread::sleep_for(std::chrono::milliseconds{100});
@@ -140,6 +189,7 @@ namespace
 
 	std::string sha256Of(const fs::path& file)
 	{
+#ifdef __APPLE__
 		std::ifstream in{file, std::ios::binary};
 		const std::string bytes{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 		unsigned char digest[CC_SHA256_DIGEST_LENGTH]{};
@@ -152,6 +202,10 @@ namespace
 			hex += pair;
 		}
 		return hex;
+#else
+		const std::string output = runForOutput({"sha256sum", "--", file.string()});
+		return output.size() >= 64 ? output.substr(0, 64) : std::string{};
+#endif
 	}
 
 	std::string lowercase(std::string text)
@@ -168,7 +222,13 @@ namespace
 	bool fetchPackage(const std::string& package, const fs::path& programFolder, const fs::path& target)
 	{
 		if (package.compare(0, 8, "https://") == 0 || package.compare(0, 7, "http://") == 0)
+		{
+#ifdef __APPLE__
 			return runProgram({"/usr/bin/curl", "-fsSL", "-o", target.string(), package});
+#else
+			return runProgram({"curl", "-fsSL", "-o", target.string(), package}) || runProgram({"wget", "-q", "-O", target.string(), package});
+#endif
+		}
 		std::error_code error;
 		fs::copy_file(programFolder / package, target, fs::copy_options::overwrite_existing, error);
 		return !error;
@@ -190,7 +250,12 @@ namespace
 		}
 		std::error_code error;
 		fs::create_directories(root / folder, error);
-		if (!runProgram({"/usr/bin/ditto", "-x", "-k", zip.string(), (root / folder).string()}))
+#ifdef __APPLE__
+		const bool unzipped = runProgram({"/usr/bin/ditto", "-x", "-k", zip.string(), (root / folder).string()});
+#else
+		const bool unzipped = runProgram({"unzip", "-o", "-q", zip.string(), "-d", (root / folder).string()});
+#endif
+		if (!unzipped)
 		{
 			report("Cannot unzip the package of " + folder + ".");
 			return false;
@@ -199,11 +264,13 @@ namespace
 	}
 
 	// A bundle whose resources are sealed by an ad-hoc signature is signed again, as its plugins changed.
-	void resealBundle(const fs::path& bundle)
+	void resealBundle([[maybe_unused]] const fs::path& bundle)
 	{
+#ifdef __APPLE__
 		const std::string details = runForOutput({"/usr/bin/codesign", "-dv", bundle.string()});
 		if (details.find("Signature=adhoc") != std::string::npos && details.find("Sealed Resources version") != std::string::npos)
 			runProgram({"/usr/bin/codesign", "--force", "--deep", "--sign", "-", bundle.string()});
+#endif
 	}
 
 	int usage()
@@ -211,13 +278,63 @@ namespace
 		std::fprintf(stderr, "usage: gup.exe -unzipTo [-clean] | -clean | -moveFolder <notepad++.exe> <folders and plugins>...\n");
 		return 2;
 	}
+
+#ifndef __APPLE__
+	// Whether this user may change the folder (or make it, in a folder this user may change).
+	bool mayChange(fs::path folder)
+	{
+		std::error_code error;
+		while (!folder.empty() && !fs::exists(folder, error))
+			folder = folder.parent_path();
+		return !folder.empty() && ::access(folder.c_str(), W_OK) == 0;
+	}
+
+	// Runs this gup again through pkexec, as an administrator, for the folders' changes: its report is
+	// shown here, where there is a desktop to show it on.
+	void changeAsAdministrator(const std::vector<std::string>& arguments)
+	{
+		char self[PATH_MAX]{};
+		const ssize_t length = ::readlink("/proc/self/exe", self, sizeof(self) - 1);
+		if (length <= 0)
+			return;
+		std::vector<std::string> command{"pkexec", std::string{self, static_cast<size_t>(length)}, "-elevated"};
+		command.insert(command.end(), arguments.begin(), arguments.end());
+		const std::string output = runForOutput(command);
+		std::fprintf(stderr, "%s", output.c_str());
+		size_t start = 0;
+		while ((start = output.find("gup: ", start)) != std::string::npos)
+		{
+			const size_t end = output.find('\n', start);
+			report(output.substr(start + 5, end == std::string::npos ? std::string::npos : end - start - 5));
+			start = end == std::string::npos ? output.size() : end;
+		}
+	}
+
+	// Starts the program again, without waiting for it.
+	void startAgain(const fs::path& programFolder)
+	{
+		const std::string program = (programFolder / "notepad++").string();
+		char* argv[] = {const_cast<char*>(program.c_str()), nullptr};
+		posix_spawnattr_t attributes;
+		posix_spawnattr_init(&attributes);
+		posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSID);
+		pid_t pid = 0;
+		posix_spawn(&pid, program.c_str(), nullptr, &attributes, argv, environ);
+		posix_spawnattr_destroy(&attributes);
+	}
+#endif
 }
 
 int main(int argc, char* argv[])
 {
 	std::vector<std::string> arguments{argv + 1, argv + argc};
+	// Run again as an administrator (Linux): change the folders, nothing more.
+	const bool elevated = !arguments.empty() && arguments.front() == "-elevated";
+	if (elevated)
+		arguments.erase(arguments.begin());
 	if (arguments.empty())
 		return usage();
+	const std::vector<std::string> allArguments = arguments;
 
 	Operation operation = Operation::remove;
 	bool clean = false;
@@ -253,7 +370,20 @@ int main(int argc, char* argv[])
 	const fs::path notepadPath = arguments[next++];
 	const fs::path programFolder = notepadPath.parent_path();
 	const fs::path bundle = bundleOf(notepadPath);
-	waitForNotepadToEnd(bundle);
+	if (!elevated)
+		waitForNotepadToEnd(bundle);
+#ifndef __APPLE__
+	// A folder that is not the user's: its changes are made as an administrator; Notepad++ starts again
+	// as the user.
+	const fs::path changedFolder = operation == Operation::move ? fs::path{next + 1 < arguments.size() ? arguments[next + 1] : ""} : fs::path{arguments[next]};
+	if (!elevated && geteuid() != 0 && !mayChange(changedFolder))
+	{
+		changeAsAdministrator(allArguments);
+		if (!testRun())
+			startAgain(programFolder);
+		return 0;
+	}
+#endif
 
 	bool changed = false;
 	if (operation == Operation::move)
@@ -307,8 +437,14 @@ int main(int argc, char* argv[])
 
 	if (changed)
 		resealBundle(bundle);
-	// Notepad++ again, as WinGUp restarts it.
-	if (!testRun())
+	// Notepad++ again, as WinGUp restarts it (by the gup the user ran, when this one is an administrator's).
+	if (!testRun() && !elevated)
+	{
+#ifdef __APPLE__
 		runProgram({"/usr/bin/open", bundle.string()});
+#else
+		startAgain(programFolder);
+#endif
+	}
 	return 0;
 }

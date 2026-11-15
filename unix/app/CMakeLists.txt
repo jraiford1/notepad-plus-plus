@@ -298,8 +298,12 @@ else()
 	set_source_files_properties("${nppIconStamp}" PROPERTIES GENERATED TRUE)
 	target_sources(NotepadPlusPlus PRIVATE "${nppIconStamp}")
 
+	# Plugins Admin's updater, where Notepad++ looks for it: updater/gup.exe in the program folder.
+	add_dependencies(NotepadPlusPlus nppGup)
 	add_custom_command(TARGET NotepadPlusPlus POST_BUILD ${nppCopyCommands}
 		COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE_NAME:NotepadPlusPlus>" "${nppProgramDirectory}/notepad++.exe"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${nppProgramDirectory}/updater"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:nppGup>" "${nppProgramDirectory}/updater/gup.exe"
 		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${nppIconFolder}" "${nppProgramDirectory}/appicon"
 		COMMAND "${CMAKE_COMMAND}" -E rm -f "${nppProgramDirectory}/appicon/made.stamp"
 		VERBATIM
