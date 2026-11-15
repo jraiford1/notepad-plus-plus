@@ -106,9 +106,7 @@ if(NPPMAC_PLATFORM STREQUAL "macos")
 	add_subdirectory(gup)
 endif()
 add_subdirectory(app)
-if(NPPMAC_PLATFORM STREQUAL "macos")
-	add_subdirectory(plugins)
-endif() # Linux: its updater and the plugins come with J4's later steps.
+add_subdirectory(plugins) # Linux: the catalog and the updater come with J4's later stages
 
 # Linux: a .deb of what is installed (cpack in the build folder), for this machine's package manager.
 # It is made and installed locally; no package is published.
