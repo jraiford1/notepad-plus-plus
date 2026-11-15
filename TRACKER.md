@@ -13,8 +13,9 @@
   made for upstream itself: each is one commit on its own branch from upstream, merged into `master` and
   listed in `unix/upstream-changes.txt` until upstream takes it (that file says what to do when an
   upstream merge meets one). The pull request upstream is the owner's.
-- **Who consumes a release.** The owner only, on their own Mac. The fork publishes no builds, and GitHub
-  Actions are switched off on it (W43): the app is built and tested on the owner's Mac.
+- **Who consumes a release.** The owner only, on their own machines. The fork publishes no builds, and GitHub
+  Actions are switched off on it (W43): the app is built and tested on the owner's Mac (and, for Linux, on
+  the owner's Linux machine).
 
 ## What the process words mean here
 
@@ -24,15 +25,16 @@
 | **Working copy / increment** | A branch per `W` item, merged to `master` |
 | **APPLIED** | Merged to `master`; the macOS build (`cmake -S unix`) succeeds and its tests (`ctest`) pass |
 | **Cut** (`C` item) | A `macos-v<upstream version>[-<n>]` tag on `master`; its product is the `Notepad++.app` built from that tag on the owner's Mac (see Q1) |
-| **Distribution** (`X` item) | That app, on the owner's Mac only; no build is published (see Q1) |
+| **Distribution** (`X` item) | That app (and the Linux `.deb`), kept privately for the owner; no build is published (see Q1) |
 | **Change ID** | None |
 
 ## How release artifacts are produced
 
 No `cut_script`. A cut's app is built on the owner's Mac from the tag: the native build (see below), in
-Release. GitHub Actions are switched off on the fork (W43), so nothing is built or kept there. The workflow
-files stay as they are, including W42's step that keeps master and tag builds in a private repository
-(on hold; it needs the fork's variable `BUILDS_REPO` and secret `BUILDS_TOKEN`).
+Release; the Linux `.deb` is built from the same commit on the owner's Linux machine (`cpack -G DEB` in
+the Linux build directory). GitHub Actions are switched off on the fork (W43), so nothing is built or kept
+there. The builds are kept privately: a script outside this repository uploads them from the owner's Mac
+(W66). No workflow builds, uploads or names them, so nothing about them is public.
 
 ## Verification checks and tooling
 
