@@ -150,7 +150,10 @@ namespace nppmac::ui
 			if (item._separator)
 				continue;
 			if (item._rightJustified && target == bar)
+			{
 				target = new QMenuBar(bar);
+				styleMenuBar(target);
+			}
 			if (!item._submenu)
 			{
 				QAction* action = target->addAction(itemText(item));
