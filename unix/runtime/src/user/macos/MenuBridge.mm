@@ -191,7 +191,7 @@ namespace
 
 namespace nppmac::ui
 {
-	void setMenuBar(uintptr_t menu, const MenuCallbacks& callbacks, void* context, const std::u16string& applicationName)
+	void setMenuBar(uintptr_t menu, const MenuCallbacks& callbacks, void* context, const std::u16string& applicationName, NativeView*)
 	{
 		if (!g_retained)
 			g_retained = [NSMutableArray array];

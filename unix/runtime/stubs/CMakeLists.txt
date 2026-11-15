@@ -34,9 +34,7 @@ add_custom_command(
 	VERBATIM
 )
 add_library(nppRuntimeStubs STATIC "${stubSource}")
-# The stubs report through the runtime (StubReport.cpp): on Linux it comes after them on the link line,
-# which a one-pass linker (GNU ld) needs. (The Mac's app links the whole runtime in already.)
-if(NPPMAC_PLATFORM STREQUAL "linux")
-	target_link_libraries(nppRuntimeStubs INTERFACE nppRuntime)
-endif()
+# The stubs report through the runtime (StubReport.cpp), which the app links whole; programs that link
+# only what they use take the two as a group (nppRuntimeWithStubs), which a one-pass linker (GNU ld)
+# needs.
 target_compile_options(nppRuntimeStubs PRIVATE -w)

@@ -14,14 +14,16 @@ set(boostRegexSources
 )
 set_source_files_properties(${scintillaCocoaSources} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
-# Scintilla's platform layer: Cocoa on macOS. On Linux its Qt layer comes with J4's editor step; until
-# then the library has Scintilla's portable core only.
+# Scintilla's platform layer: Cocoa on macOS, Qt on Linux (scintilla/qt/ScintillaEditBase, whose classes
+# have Qt signals: the meta-object compiler runs over them).
 if(NPPMAC_PLATFORM STREQUAL "macos")
 	set(scintillaPlatformSources ${scintillaCocoaSources})
 	set(scintillaPlatformInclude "${NPP_ROOT}/scintilla/cocoa")
 else()
-	set(scintillaPlatformSources "")
-	set(scintillaPlatformInclude "")
+	set(scintillaQt "${NPP_ROOT}/scintilla/qt/ScintillaEditBase")
+	set(scintillaPlatformSources "${scintillaQt}/PlatQt.cpp" "${scintillaQt}/ScintillaQt.cpp" "${scintillaQt}/ScintillaEditBase.cpp"
+		"${scintillaQt}/PlatQt.h" "${scintillaQt}/ScintillaQt.h" "${scintillaQt}/ScintillaEditBase.h")
+	set(scintillaPlatformInclude "${scintillaQt}")
 endif()
 
 add_library(nppScintilla STATIC ${scintillaSources} ${scintillaPlatformSources} ${boostRegexSources})
@@ -34,6 +36,12 @@ target_compile_definitions(nppScintilla PRIVATE SCI_OWNREGEX BOOST_REGEX_STANDAL
 target_compile_options(nppScintilla PRIVATE -Wno-deprecated-declarations -Wno-deprecated-this-capture)
 if(NPPMAC_PLATFORM STREQUAL "macos")
 	target_link_libraries(nppScintilla PUBLIC "-framework Cocoa" "-framework QuartzCore")
+else()
+	find_package(Qt6 REQUIRED COMPONENTS Core5Compat)
+	set_target_properties(nppScintilla PROPERTIES AUTOMOC ON)
+	target_compile_definitions(nppScintilla PUBLIC SCINTILLA_QT=1 PRIVATE MAKING_LIBRARY=1)
+	target_include_directories(nppScintilla PRIVATE "${NPP_ROOT}/scintilla/src")
+	target_link_libraries(nppScintilla PUBLIC Qt6::Widgets Qt6::Core5Compat)
 endif()
 
 file(GLOB lexillaSources CONFIGURE_DEPENDS

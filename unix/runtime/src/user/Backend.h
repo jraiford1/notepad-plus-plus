@@ -142,9 +142,14 @@ namespace nppmac::ui
 		virtual Rect nativeCaretRect() = 0;
 	};
 
-	// Creates the application object (an NSApplication subclass that routes keys to the window
-	// manager) and its delegate. Called once at start-up, before anything else uses AppKit.
+	// Creates the application object (on macOS an NSApplication subclass that routes keys to the window
+	// manager, on Linux a QApplication) and its delegate. Called once at start-up, before anything else
+	// uses the toolkit.
 	void createApplication();
+	// Finishes launching: the application becomes a regular one (a test run's never does: no Dock icon,
+	// no menu bar, the keyboard left with whoever uses the computer, its windows never on screen), and
+	// the files the system launched it with arrive (takeLaunchFiles).
+	void finishLaunching();
 
 	// A native view (child) or window (top level), owned by the window manager's Window.
 	class NativeView;
@@ -166,6 +171,8 @@ namespace nppmac::ui
 		bool _topMost = false;
 	};
 
+	// parent: a child's parent view; for a top level or popup, its owner's view (or null), which the
+	// backend may use as its window's parent (macOS ignores it).
 	NativeView* createView(ViewOwner* owner, ViewKind kind, NativeView* parent, const Rect& frame, const TopLevelStyle& style);
 	void destroyView(NativeView* view);
 

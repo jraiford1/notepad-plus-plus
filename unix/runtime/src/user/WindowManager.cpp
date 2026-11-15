@@ -856,8 +856,10 @@ HWND WINAPI CreateWindowExW(DWORD exStyle, LPCWSTR className, LPCWSTR windowName
 	{
 		const nppmac::ui::ViewKind kind = (style & WS_CHILD) ? nppmac::ui::ViewKind::child
 			: ((style & WS_POPUP) && (style & WS_CAPTION) != WS_CAPTION ? nppmac::ui::ViewKind::popup : nppmac::ui::ViewKind::topLevel);
-		window->_view = nppmac::ui::createView(window, kind, parent && (style & WS_CHILD) ? parent->_view : nullptr,
-			{rect.left, rect.top, rect.right, rect.bottom}, topLevelStyle(style, exStyle));
+		// A child's parent, or a top level's owner (which the backend may make its window's parent, as
+		// Wayland places popups relative to one).
+		window->_view = nppmac::ui::createView(window, kind, parent ? parent->_view : nullptr, {rect.left, rect.top, rect.right, rect.bottom},
+			topLevelStyle(style, exStyle));
 	}
 	applyGeometry(window, rect);
 	// The menu is there before WM_CREATE, which may read it with GetMenu.

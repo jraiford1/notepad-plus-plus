@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#import <Cocoa/Cocoa.h>
+// Process start-up: the command line as the CRT and WinMain see it, and the window backend's application.
 
 #include <csignal>
 #include <cstdlib>
@@ -115,12 +115,9 @@ namespace nppmac
 			g_wideArguments.push_back(toUtf16(argv[i]));
 		}
 		nppmac::ui::createApplication();
-		// A test run can never become the active program: no Dock icon, no menu bar, and the keyboard
-		// stays with whoever is using the Mac. Its windows are never on screen; snapshots draw them.
-		[NSApp setActivationPolicy:std::getenv("NPPMAC_TEST_RUN") ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
-		// Files Finder opens the program with (Open With, a double-click) arrive while it finishes
+		// Files the system opens the program with (Open With, a double-click) arrive while it finishes
 		// launching; they are arguments, as for notepad++.exe.
-		[NSApp finishLaunching];
+		nppmac::ui::finishLaunching();
 		nppmac::ui::setLaunched();
 		for (const std::string& path : nppmac::ui::takeLaunchFiles())
 			g_wideArguments.push_back(toUtf16(path));

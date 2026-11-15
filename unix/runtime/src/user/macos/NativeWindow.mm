@@ -1264,6 +1264,12 @@ namespace nppmac::ui
 		g_launched = true;
 	}
 
+	void finishLaunching()
+	{
+		[NSApp setActivationPolicy:std::getenv("NPPMAC_TEST_RUN") ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
+		[NSApp finishLaunching];
+	}
+
 	void createApplication()
 	{
 		// AppKit adds Dictation and Emoji items to any menu titled "Edit", again each time the program
