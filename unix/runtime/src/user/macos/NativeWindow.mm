@@ -1267,7 +1267,27 @@ namespace nppmac::ui
 	void finishLaunching()
 	{
 		[NSApp setActivationPolicy:std::getenv("NPPMAC_TEST_RUN") ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
+		__block bool finished = false;
+		id observer = [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidFinishLaunchingNotification object:NSApp
+			queue:nil usingBlock:^(NSNotification*) { finished = true; }];
 		[NSApp finishLaunching];
+		// Launched to open files (Finder, Open With), AppKit finishes launching only once that Apple Event
+		// is handled, and it can come after finishLaunching returns. A window ordered in before then stays
+		// off the screen for some 5 seconds, so the events are let in until it has finished (a few
+		// milliseconds); the files then join the command line, as files given to notepad++.exe do. In
+		// short waits: an Apple Event is handled inside nextEventMatchingMask, which returns only for an
+		// NSEvent.
+		NSDate* until = [NSDate dateWithTimeIntervalSinceNow:1];
+		while (!finished && until.timeIntervalSinceNow > 0)
+		{
+			@autoreleasepool
+			{
+				NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.01] inMode:NSDefaultRunLoopMode dequeue:YES];
+				if (event)
+					[NSApp sendEvent:event];
+			}
+		}
+		[NSNotificationCenter.defaultCenter removeObserver:observer];
 	}
 
 	void shutDownApplication()
