@@ -277,6 +277,9 @@ namespace nppmac
 	// Every place a path leaves upstream code for the macOS C library goes through this.
 	std::string nativePath(std::u16string_view path);
 	std::string nativePath(std::string_view path);
+	// From then on nativePath gives the paths in folder `from` (the folder too) as in folder `to`, except
+	// the one file `except`, which stays where it is (the Mac's plugins: see redirectPlugins in Startup.cpp).
+	void redirectFolder(std::string from, std::string to, std::string except);
 
 	FILE* fopen(const char* path, const char* mode);
 

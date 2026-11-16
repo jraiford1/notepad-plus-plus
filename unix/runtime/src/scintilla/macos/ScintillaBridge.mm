@@ -140,7 +140,8 @@ namespace
 		{
 			NSView* editor = self.superview.superview;
 			const CGFloat y = self.bounds.origin.y;
-			const CGFloat lineHeight = [editor isKindOfClass:ScintillaView.class]
+			static Class editorClass = NSClassFromString(@"ScintillaView");
+			const CGFloat lineHeight = editorClass && [editor isKindOfClass:editorClass]
 				? static_cast<CGFloat>([static_cast<ScintillaView*>(editor) message:SCI_TEXTHEIGHT wParam:0 lParam:0]) : 0;
 			if (lineHeight > 0 && point.y != y && point.y == std::floor(y / lineHeight) * lineHeight)
 				point.y = y;

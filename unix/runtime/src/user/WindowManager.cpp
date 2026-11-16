@@ -24,6 +24,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <unordered_map>
 
 namespace nppmac::user
@@ -505,9 +506,15 @@ bool nppmac::ui::windowManagerOpenFiles(const std::vector<std::string>& paths)
 nppmac::ui::NativeView* nppmac::ui::windowManagerSnapshotView()
 {
 	using namespace nppmac::user;
+	// NPPMAC_SNAPSHOT_WINDOW=<title>: the window of that title (a dialog beside the main window), if shown.
+	const char* title = std::getenv("NPPMAC_SNAPSHOT_WINDOW");
+	const std::u16string wanted = title && *title ? nppmac::toUtf16(title) : std::u16string{};
 	NativeView* chosen = nullptr;
 	for (Window* window : topLevelWindows())
 	{
+		if (window->_visible && !(window->_style & WS_CHILD) && window->_view && window->_clientWidth > 0 && window->_clientHeight > 0
+			&& !wanted.empty() && window->_text == wanted)
+			return window->_view;
 		if (window->_visible && !(window->_style & WS_DISABLED) && !(window->_style & WS_CHILD) && window->_view
 			&& window->_clientWidth > 0 && window->_clientHeight > 0 && window->_class && window->_class->_name != u"tooltips_class32")
 			chosen = window->_view;
